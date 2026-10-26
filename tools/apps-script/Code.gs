@@ -675,8 +675,23 @@ function addBExtras_(form) {
 // Дополняет уже созданную форму B новыми полями (если их ещё нет).
 function upgradeForms_() {
   var m = formsMap_();
-  if (!m.B) return;
-  var f = FormApp.openById(m.B), have = {};
+  if (m.B) upgradeFormB_(m.B);
+  if (m.C) coverToEnd_(m.C, COVER_C);
+}
+
+// Вопрос «Обложка» (загрузку файла в форму приходится добавлять вручную) переносим в конец формы.
+function coverToEnd_(formId, title) {
+  var f = FormApp.openById(formId), items = f.getItems(), n = items.length;
+  for (var i = 0; i < n; i++) {
+    if (items[i].getTitle() === title) {
+      if (i !== n - 1) f.moveItem(i, n - 1);
+      return;
+    }
+  }
+}
+
+function upgradeFormB_(formId) {
+  var f = FormApp.openById(formId), have = {};
   f.getItems().forEach(function (it) { have[it.getTitle()] = it; });
   if (have[FT.B.list]) have[FT.B.list].asParagraphTextItem().setHelpText(LIST_HELP);
   [[FT.B.collective, 'text', 'Если весь список от одного коллектива, впишите его здесь, а не в каждой строке.'],
@@ -688,6 +703,7 @@ function upgradeForms_() {
     it.setTitle(a[0]).setRequired(false);
     if (a[2]) it.setHelpText(a[2]);
   });
+  coverToEnd_(formId, COVER_B);
 }
 
 function formsMap_() {
