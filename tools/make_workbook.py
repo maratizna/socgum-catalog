@@ -15,6 +15,7 @@ from openpyxl.worksheet.datavalidation import DataValidation
 
 ROOT = Path(__file__).resolve().parent.parent
 MAX_ROWS = 500
+LEAN = False  # легкая версия: без проверок и форматов, их добавляет скрипт из tools/apps-script
 
 HEAD_FILL = PatternFill("solid", fgColor="FF8B36")
 HEAD_FONT = Font(bold=True, color="1A0F05")
@@ -52,13 +53,15 @@ def head(ws, titles, widths, notes=None):
         c.font = HEAD_FONT
         c.alignment = Alignment(vertical="center", wrap_text=True)
         ws.column_dimensions[c.column_letter].width = w
-        if notes and t in notes:
+        if notes and t in notes and not LEAN:
             c.comment = Comment(notes[t], "Каталог")
     ws.row_dimensions[1].height = 32
     ws.freeze_panes = "A2"
 
 
 def text_format(ws, col_letter):
+    if LEAN:
+        return
     for r in range(2, MAX_ROWS + 1):
         ws[f"{col_letter}{r}"].number_format = "@"
 
@@ -119,16 +122,17 @@ def build(path, demo):
     )
     for col in ("D", "K", "L"):
         text_format(ws, col)
-    for r in range(2, MAX_ROWS + 1):
+    for r in range(2, 1 if LEAN else MAX_ROWS + 1):
         ws[f"I{r}"].alignment = Alignment(wrap_text=True, vertical="top")
     dv_c = DataValidation(type="list", formula1="=Концерты!$A$2:$A$100", allow_blank=True)
     dv_c.error, dv_c.errorTitle = "Сначала добавьте концерт на листе «Концерты».", "Нет такого концерта"
     dv_d = DataValidation(type="list", formula1="=Направления!$A$2:$A$100", allow_blank=True)
     dv_d.error, dv_d.errorTitle = "Сначала добавьте направление на листе «Направления».", "Нет такого направления"
-    ws.add_data_validation(dv_c)
-    ws.add_data_validation(dv_d)
-    dv_c.add(f"B2:B{MAX_ROWS}")
-    dv_d.add(f"C2:C{MAX_ROWS}")
+    if not LEAN:
+        ws.add_data_validation(dv_c)
+        ws.add_data_validation(dv_d)
+        dv_c.add(f"B2:B{MAX_ROWS}")
+        dv_d.add(f"C2:C{MAX_ROWS}")
 
     # --- Таймкоды
     ws = wb.create_sheet("Таймкоды")
@@ -140,9 +144,10 @@ def build(path, demo):
     )
     text_format(ws, "B")
     dv_id = DataValidation(type="list", formula1=f"=Номера!$A$2:$A${MAX_ROWS}", allow_blank=True)
-    ws.add_data_validation(dv_id)
-    dv_id.add(f"A2:A{MAX_ROWS}")
-    for r in range(2, MAX_ROWS + 1):
+    if not LEAN:
+        ws.add_data_validation(dv_id)
+        dv_id.add(f"A2:A{MAX_ROWS}")
+    for r in range(2, 1 if LEAN else MAX_ROWS + 1):
         c = ws[f"D{r}"]
         c.value = f'=IF(A{r}="","",IFERROR(VLOOKUP(A{r},Номера!$A$2:$E${MAX_ROWS},5,FALSE),"нет такого ID"))'
         c.fill = HELPER_FILL
@@ -210,6 +215,12 @@ def fill_demo(wb):
 
 
 if __name__ == "__main__":
+    import sys
+    if "--lean" in sys.argv:
+        LEAN = True
+        build(ROOT / "data" / "demo-lean.xlsx", demo=True)
+        build(ROOT / "data" / "template-lean.xlsx", demo=False)
+        raise SystemExit
     (ROOT / "data").mkdir(exist_ok=True)
     build(ROOT / "data" / "template.xlsx", demo=False)
     build(ROOT / "data" / "demo.xlsx", demo=True)
