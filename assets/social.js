@@ -29,6 +29,55 @@
   }
   function clear(n) { while (n.firstChild) n.removeChild(n.firstChild); return n; }
 
+  /* ------------------------------------------------------------ кеш чтений
+     Ответы сервиса держатся в памяти и в localStorage на ограниченное время, чтобы не ходить на сервер при каждом заходе.
+     Любая запись сбрасывает связанные ключи. Без localStorage всё работает, только без запоминания между страницами. */
+  var TTL = { me: 10 * 60e3, pub: 5 * 60e3, comments: 60e3, note: 2 * 60e3, avatar: 30 * 60e3 };
+  var MEM = {};
+  function store() { try { return window.localStorage; } catch (e) { return null; } }
+  function pack(v) {
+    if (v && typeof v === "object") {
+      if (typeof v.toMillis === "function") return { __t: v.toMillis() };
+      if (Array.isArray(v)) return v.map(pack);
+      var o = {}; Object.keys(v).forEach(function (k) { o[k] = pack(v[k]); }); return o;
+    }
+    return v;
+  }
+  function unpack(v) {
+    if (v && typeof v === "object") {
+      if (typeof v.__t === "number") { var ms = v.__t; return { toMillis: function () { return ms; }, toDate: function () { return new Date(ms); } }; }
+      if (Array.isArray(v)) return v.map(unpack);
+      var o = {}; Object.keys(v).forEach(function (k) { o[k] = unpack(v[k]); }); return o;
+    }
+    return v;
+  }
+  function cget(key, ttl) {
+    var now = Date.now(), r = MEM[key];
+    if (!r) {
+      var st = store();
+      try { r = st && JSON.parse(st.getItem("sg:" + key)); } catch (e) { r = null; }
+      if (r) MEM[key] = r;
+    }
+    return r && now - r.t < ttl ? { v: unpack(r.v) } : null;
+  }
+  function cput(key, v) {
+    var r = { t: Date.now(), v: pack(v) };
+    MEM[key] = r;
+    try { var st = store(); if (st) st.setItem("sg:" + key, JSON.stringify(r)); } catch (e) { }
+  }
+  function cdrop(prefix) {
+    Object.keys(MEM).forEach(function (k) { if (k.indexOf(prefix) === 0) delete MEM[k]; });
+    try {
+      var st = store();
+      if (st) for (var i = st.length - 1; i >= 0; i--) { var k = st.key(i); if (k && k.indexOf("sg:" + prefix) === 0) st.removeItem("sg:" + k.slice(3)); }
+    } catch (e) { }
+  }
+  /* прочитать через кеш: fetchFn возвращает обещание значения */
+  function cached(key, ttl, fresh, fetchFn) {
+    if (!fresh) { var hit = cget(key, ttl); if (hit) return Promise.resolve(hit.v); }
+    return fetchFn().then(function (v) { cput(key, v); return v; });
+  }
+
   /* ------------------------------------------------------------ метки времени в тексте */
   var TC = /(^|[^\d:])((?:\d{1,2}:)?[0-5]?\d:[0-5]\d)(?![\d:])/g;
   function tcSeconds(s) {
@@ -153,7 +202,7 @@
           finish(fb.a.createUserWithEmailAndPassword(fb.auth, em, pass.value).then(function (cred) {
             return fb.a.updateProfile(cred.user, { displayName: nm })
               .then(function () { return cred.user.getIdToken(true); })   // имя попадает в токен, по нему работают правила
-              .then(function () { fb.a.sendEmailVerification(cred.user).catch(function () { }); return loadMe(cred.user); })
+              .then(function () { fb.a.sendEmailVerification(cred.user).catch(function () { }); return loadMe(cred.user, true); })
               .then(refreshViews);
           }));
         } else {
@@ -183,17 +232,64 @@
     t.textContent = text; t.hidden = false;
     clearTimeout(t._h); t._h = setTimeout(function () { t.hidden = true; }, 9000);
   }
-  function signOut() { return fb.a.signOut(fb.auth); }
+  function signOut() { cdrop("me:"); return fb.a.signOut(fb.auth); }
 
-  function loadMe(user) {
+  var avatars = {};   // uid → картинка (строка) или "" если фото нет
+
+  function loadMe(user, fresh) {
     state.user = user; state.admin = false; state.claims = {};
     if (!user) { state.ready = true; return Promise.resolve(); }
+    var uid = user.uid;
     return Promise.all([
-      fb.f.getDoc(fdoc("admins/" + user.uid)).then(function (s) { state.admin = s.exists(); }, function () { }),
-      fb.f.getDocs(fb.f.query(fcol("claims"), fb.f.where("uid", "==", user.uid))).then(function (s) {
-        s.forEach(function (d) { state.claims[d.id] = d.data(); });
-      }, function () { })
+      cached("me:" + uid + ":admin", TTL.me, fresh, function () {
+        return fb.f.getDoc(fdoc("admins/" + uid)).then(function (s) { return s.exists(); });
+      }).then(function (v) { state.admin = !!v; }, function () { }),
+      cached("me:" + uid + ":claims", TTL.pub, fresh, function () {
+        return fb.f.getDocs(fb.f.query(fcol("claims"), fb.f.where("uid", "==", uid))).then(function (s) {
+          var o = {}; s.forEach(function (d) { o[d.id] = d.data(); }); return o;
+        });
+      }).then(function (v) { state.claims = v || {}; }, function () { }),
+      loadAvatars([uid], fresh)
     ]).then(function () { state.ready = true; });
+  }
+
+  /* фото пользователей: users/{uid}.avatar, маленькая картинка. Несколько uid читаются одним запросом. */
+  function loadAvatars(uids, fresh) {
+    var need = [];
+    uids.forEach(function (u) {
+      if (!u || (!fresh && avatars[u] !== undefined)) return;
+      var hit = fresh ? null : cget("avatar:" + u, TTL.avatar);
+      if (hit) avatars[u] = hit.v; else if (need.indexOf(u) === -1) need.push(u);
+    });
+    if (!need.length) return Promise.resolve();
+    var jobs = [];
+    for (var i = 0; i < need.length; i += 30) {
+      (function (chunk) {
+        jobs.push(fb.f.getDocs(fb.f.query(fcol("users"), fb.f.where(fb.f.documentId(), "in", chunk))).then(function (s) {
+          var got = {};
+          s.forEach(function (d) { got[d.id] = d.data().avatar || ""; });
+          chunk.forEach(function (u) { avatars[u] = got[u] || ""; cput("avatar:" + u, avatars[u]); });
+        }, function () { chunk.forEach(function (u) { if (avatars[u] === undefined) avatars[u] = ""; }); }));
+      })(need.slice(i, i + 30));
+    }
+    return Promise.all(jobs);
+  }
+  function hue(s) { var h = 0; for (var i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) % 360; return h; }
+  /* круглая картинка: фото или первая буква имени */
+  function saveAvatar(data) {
+    var u = state.user;
+    var p = data
+      ? fb.f.setDoc(fdoc("users/" + u.uid), { avatar: data, updatedAt: fb.f.serverTimestamp() })
+      : fb.f.deleteDoc(fdoc("users/" + u.uid));
+    return p.then(function () { avatars[u.uid] = data; cput("avatar:" + u.uid, data); cdrop("comments:"); refreshViews(); });
+  }
+  function avatarNode(uid, name, size) {
+    var cls = "avatar avatar-" + (size || "s");
+    if (avatars[uid]) return el("img", { class: cls, src: avatars[uid], alt: "" });
+    var ch = (String(name || "?").trim().charAt(0) || "?").toUpperCase();
+    var n = el("span", { class: cls + " avatar-init", "aria-hidden": "true", text: ch });
+    n.style.background = "hsl(" + hue(String(uid || name)) + ",35%,32%)";
+    return n;
   }
 
   /* ------------------------------------------------------------ шапка: вход */
@@ -206,10 +302,8 @@
       slot.append(el("button", { type: "button", class: "head-link head-btn", text: "Войти", onclick: signIn }));
     } else {
       var first = (state.user.displayName || "Аккаунт").split(" ")[0];
-      slot.append(
-        el("a", { class: "head-link", href: ROOT + "account/", text: first + (state.admin ? " (админ)" : "") }),
-        el("button", { type: "button", class: "head-link head-btn", text: "Выйти", onclick: signOut })
-      );
+      slot.append(el("a", { class: "head-link head-me", href: ROOT + "account/", title: "Личный кабинет" },
+        avatarNode(state.user.uid, state.user.displayName, "xs"), el("span", { text: first + (state.admin ? " (админ)" : "") })));
     }
   }
 
@@ -243,16 +337,20 @@
     var noteBox = document.getElementById("director-note");
     root.append(moments, list, form);
 
-    function loadComments() {
+    function loadComments(fresh) {
       var q = state.admin
         ? fb.f.query(fcol("comments"), fb.f.where("numberId", "==", nid))
         : fb.f.query(fcol("comments"), fb.f.where("numberId", "==", nid), fb.f.where("status", "==", "visible"));
-      return fb.f.getDocs(q).then(function (s) {
-        comments = s.docs.map(function (d) { var x = d.data(); x.id = d.id; return x; });
+      return cached("comments:" + nid + (state.admin ? ":a" : state.user ? ":" + state.user.uid : ""), TTL.comments, fresh, function () {
+        return fb.f.getDocs(q).then(function (s) { return s.docs.map(function (d) { var x = d.data(); x.id = d.id; return x; }); });
+      }).then(function (list) {
+        comments = list;
         comments.sort(function (a, b) { return ms(a) - ms(b); });
         loaded = true; fail = "";
+        return loadAvatars(comments.map(function (c) { return c.uid; }));
       }, function (e) { loaded = true; fail = errText(e); });
     }
+    function dropComments() { cdrop("comments:" + nid); }
     function ms(c) { return c.createdAt && c.createdAt.toMillis ? c.createdAt.toMillis() : Date.now(); }
     function when(c) {
       if (!c.createdAt || !c.createdAt.toDate) return "только что";
@@ -303,6 +401,7 @@
       var isDir = c.authorPersonId && directors.indexOf(c.authorPersonId) !== -1;
       var mine = state.user && c.uid === state.user.uid;
       var head = el("p", { class: "c-head" },
+        avatarNode(c.uid, c.authorName, "xs"),
         el("strong", { text: c.authorName || "Без имени" }),
         isDir && el("span", { class: "badge", text: "Постановщик" }),
         c.status === "hidden" && el("span", { class: "badge badge-off", text: "Скрыт" }),
@@ -314,7 +413,7 @@
       return el("article", { class: "comment" + (isReply ? " reply" : "") + (c.status === "hidden" ? " is-hidden" : ""), id: "c-" + c.id },
         head, el("p", { class: "c-text" }, richText(c.text, canSeek)), actions);
     }
-    function act(p) { return p.then(function () { return loadComments(); }).then(draw, function (e) { toast(errText(e)); }); }
+    function act(p) { return p.then(function () { dropComments(); return loadComments(true); }).then(draw, function (e) { toast(errText(e)); }); }
 
     function drawList() {
       clear(list);
@@ -352,7 +451,7 @@
         if (replyTo) data.parentId = replyTo.id;
         var pid = myDirectorPerson();
         if (pid) data.authorPersonId = pid;
-        fb.f.addDoc(fcol("comments"), data).then(function () { replyTo = null; return loadComments(); }).then(draw, function (e) { send.disabled = false; note(form, errText(e), "err"); });
+        fb.f.addDoc(fcol("comments"), data).then(function () { replyTo = null; dropComments(); return loadComments(true); }).then(draw, function (e) { send.disabled = false; note(form, errText(e), "err"); });
       } },
         replyTo && el("p", { class: "c-replyto" }, "Ответ для " + replyTo.authorName + " ",
           el("button", { type: "button", class: "linkbtn", text: "отменить", onclick: function () { replyTo = null; drawForm(); } })),
@@ -363,8 +462,10 @@
     }
 
     /* слово постановщика */
-    function loadNote() {
-      return fb.f.getDoc(fdoc("notes/" + nid)).then(function (s) { noteData = s.exists() ? s.data() : null; }, function () { noteData = null; });
+    function loadNote(fresh) {
+      return cached("note:" + nid, TTL.note, fresh, function () {
+        return fb.f.getDoc(fdoc("notes/" + nid)).then(function (s) { return s.exists() ? s.data() : null; });
+      }).then(function (v) { noteData = v; }, function () { noteData = null; });
     }
     function drawNote() {
       if (!noteBox) return;
@@ -382,7 +483,7 @@
             el("button", { type: "button", class: "btn", text: "Сохранить", onclick: function () {
               var t = ta.value.trim();
               var p = t ? fb.f.setDoc(fdoc("notes/" + nid), { text: t, personId: editorPid, updatedAt: fb.f.serverTimestamp() }) : fb.f.deleteDoc(fdoc("notes/" + nid));
-              p.then(loadNote).then(function () { drawNote(); drawMoments(); }, function (e) { note(box, errText(e), "err"); });
+              p.then(function () { cdrop("note:" + nid); return loadNote(true); }).then(function () { drawNote(); drawMoments(); }, function (e) { note(box, errText(e), "err"); });
             } })));
         noteBox.append(box);
       }
@@ -401,12 +502,16 @@
     var claim = null, profile = null, profileLoaded = false;
     var aboutEl = document.getElementById("p-about"), linkEl = document.getElementById("p-link"), avatarEl = document.getElementById("p-avatar");
 
-    function loadPublic() {
+    function loadPublic(fresh) {
+      fresh = fresh === true;
       return Promise.all([
-        fb.f.getDoc(fdoc("claims/" + pid)).then(function (s) { claim = s.exists() ? s.data() : null; }, function () { claim = null; }),
-        fb.f.getDoc(fdoc("profiles/" + pid)).then(function (s) { profile = s.exists() ? s.data() : null; }, function () { profile = null; })
+        cached("pub:claim:" + pid, TTL.pub, fresh, function () { return fb.f.getDoc(fdoc("claims/" + pid)).then(function (s) { return s.exists() ? s.data() : null; }); })
+          .then(function (v) { claim = v; }, function () { claim = null; }),
+        cached("pub:profile:" + pid, TTL.pub, fresh, function () { return fb.f.getDoc(fdoc("profiles/" + pid)).then(function (s) { return s.exists() ? s.data() : null; }); })
+          .then(function (v) { profile = v; }, function () { profile = null; })
       ]).then(function () { profileLoaded = true; });
     }
+    function reloadPublic() { cdrop("pub:"); return loadPublic(true); }
     function applyProfile() {
       if (!profile) return;
       if (profile.bio && aboutEl) { aboutEl.textContent = profile.bio; aboutEl.hidden = false; }
@@ -421,7 +526,7 @@
     function claimPerson() {
       var u = state.user;
       return fb.f.setDoc(fdoc("claims/" + pid), { uid: u.uid, name: u.displayName || "Без имени", status: "pending", createdAt: fb.f.serverTimestamp() })
-        .then(function () { return loadMe(u); }).then(loadPublic).then(draw, function (e) {
+        .then(function () { return loadMe(u, true); }).then(reloadPublic).then(draw, function (e) {
           note(box, e && e.code === "permission-denied"
             ? "Страница ещё не передана сервису. Попросите администратора открыть «Кабинет» и нажать «Обновить список»."
             : errText(e), "err");
@@ -447,7 +552,7 @@
           var l = link.value.trim();
           if (l && !/^https?:\/\//i.test(l)) { note(wrap, "Ссылка должна начинаться с https://", "err"); return; }
           fb.f.setDoc(fdoc("profiles/" + pid), { bio: ta.value.trim(), link: l, avatar: avatar, updatedAt: fb.f.serverTimestamp() })
-            .then(loadPublic).then(function () { applyProfile(); note(wrap, "Сохранено.", "ok"); }, function (e) { note(wrap, errText(e), "err"); });
+            .then(reloadPublic).then(function () { applyProfile(); note(wrap, "Сохранено.", "ok"); }, function (e) { note(wrap, errText(e), "err"); });
         } })));
       return wrap;
     }
@@ -467,16 +572,16 @@
           el("p", { class: "c-hint", text: "Заявку проверит и подтвердит администратор." }));
       } else if (mine() && claim.status === "pending") {
         box.append(el("p", { class: "msg", text: "Заявка отправлена. Администратор подтвердит её, и здесь появится редактирование." }),
-          el("button", { type: "button", class: "linkbtn", text: "Отозвать заявку", onclick: function () { fb.f.deleteDoc(fdoc("claims/" + pid)).then(function () { return loadMe(u); }).then(loadPublic).then(draw); } }));
+          el("button", { type: "button", class: "linkbtn", text: "Отозвать заявку", onclick: function () { fb.f.deleteDoc(fdoc("claims/" + pid)).then(function () { return loadMe(u, true); }).then(reloadPublic).then(draw); } }));
       }
       if (mine() && claim.status === "approved") {
         box.append(el("details", { class: "edit-box" }, el("summary", { text: "Редактировать страницу" }), editor()),
-          el("button", { type: "button", class: "linkbtn", text: "Отказаться от страницы", onclick: function () { if (confirm("Отвязать аккаунт от этой страницы?")) fb.f.deleteDoc(fdoc("claims/" + pid)).then(function () { return loadMe(u); }).then(loadPublic).then(draw); } }));
+          el("button", { type: "button", class: "linkbtn", text: "Отказаться от страницы", onclick: function () { if (confirm("Отвязать аккаунт от этой страницы?")) fb.f.deleteDoc(fdoc("claims/" + pid)).then(function () { return loadMe(u, true); }).then(reloadPublic).then(draw); } }));
       }
       if (state.admin) {
         var adm = el("div", { class: "admin-box" }, el("p", { class: "c-hint", text: claim ? "Аккаунт: " + claim.name + ", статус: " + (claim.status === "approved" ? "подтверждён" : "ждёт подтверждения") : "Страницу пока никто не занял." }));
-        if (claim && claim.status === "pending") adm.append(el("button", { type: "button", class: "btn", text: "Подтвердить", onclick: function () { fb.f.updateDoc(fdoc("claims/" + pid), { status: "approved" }).then(loadPublic).then(draw, function (e) { toast(errText(e)); }); } }));
-        if (claim) adm.append(el("button", { type: "button", class: "linkbtn", text: "Отозвать доступ", onclick: function () { if (confirm("Отозвать доступ у «" + claim.name + "»?")) fb.f.deleteDoc(fdoc("claims/" + pid)).then(loadPublic).then(draw); } }));
+        if (claim && claim.status === "pending") adm.append(el("button", { type: "button", class: "btn", text: "Подтвердить", onclick: function () { fb.f.updateDoc(fdoc("claims/" + pid), { status: "approved" }).then(function () { cdrop("me:"); }).then(reloadPublic).then(draw, function (e) { toast(errText(e)); }); } }));
+        if (claim) adm.append(el("button", { type: "button", class: "linkbtn", text: "Отозвать доступ", onclick: function () { if (confirm("Отозвать доступ у «" + claim.name + "»?")) fb.f.deleteDoc(fdoc("claims/" + pid)).then(reloadPublic).then(draw); } }));
         if (!mine()) adm.append(el("details", { class: "edit-box" }, el("summary", { text: "Править страницу как администратор" }), editor()));
         box.append(adm);
       }
@@ -485,17 +590,18 @@
   }
 
   /* уменьшаем фото до 192 px: Storage не нужен, картинка хранится строкой в профиле */
-  function shrink(file) {
+  function shrink(file, side, limit) {
+    side = side || 192; limit = limit || 100000;
     return new Promise(function (ok, bad) {
       var img = new Image(), url = URL.createObjectURL(file);
       img.onload = function () {
-        var s = 192, c = document.createElement("canvas"); c.width = c.height = s;
-        var side = Math.min(img.width, img.height), sx = (img.width - side) / 2, sy = (img.height - side) / 3;
-        c.getContext("2d").drawImage(img, sx, Math.max(0, sy), side, side, 0, 0, s, s);
+        var s = side, c = document.createElement("canvas"); c.width = c.height = s;
+        var sq = Math.min(img.width, img.height), sx = (img.width - sq) / 2, sy = (img.height - sq) / 3;
+        c.getContext("2d").drawImage(img, sx, Math.max(0, sy), sq, sq, 0, 0, s, s);
         URL.revokeObjectURL(url);
         var q = 0.85, d = c.toDataURL("image/jpeg", q);
-        while (d.length > 100000 && q > 0.3) { q -= 0.15; d = c.toDataURL("image/jpeg", q); }
-        d.length > 120000 ? bad(new Error("Фото слишком тяжёлое. Выберите другое.")) : ok(d);
+        while (d.length > limit && q > 0.3) { q -= 0.15; d = c.toDataURL("image/jpeg", q); }
+        d.length > limit * 1.2 ? bad(new Error("Фото слишком тяжёлое. Выберите другое.")) : ok(d);
       };
       img.onerror = function () { URL.revokeObjectURL(url); bad(new Error("Не удалось открыть изображение.")); };
       img.src = url;
@@ -554,6 +660,25 @@
       });
     }
 
+    /* своя фотография: сжимается в браузере до 128 px и хранится строкой в users/{uid} */
+    function avatarBox() {
+      var u = state.user, wrap = el("div", { class: "avatar-edit" });
+      var file = el("input", { type: "file", accept: "image/*", "aria-label": "Выбрать фото", hidden: true, onchange: function () {
+        var f = file.files[0]; if (!f) return;
+        note(wrap, "Загружаем…");
+        shrink(f, 128, 30000).then(function (data) { return saveAvatar(data); }).then(function () { note(wrap, "Фото сохранено.", "ok"); draw(); },
+          function (e) { note(wrap, e && e.code ? errText(e) : e.message, "err"); });
+        file.value = "";
+      } });
+      wrap.append(avatarNode(u.uid, u.displayName, "l"),
+        el("div", null,
+          el("button", { type: "button", class: "btn btn-s", text: avatars[u.uid] ? "Заменить фото" : "Загрузить фото", onclick: function () { file.click(); } }),
+          avatars[u.uid] && el("button", { type: "button", class: "linkbtn", text: "Убрать фото", onclick: function () { saveAvatar("").then(draw, function (e) { note(wrap, errText(e), "err"); }); } }),
+          el("p", { class: "c-hint", text: "Фото видно рядом с вашими комментариями. Подойдёт любая картинка, она сожмётся и обрежется до квадрата." })),
+        file);
+      return wrap;
+    }
+
     function draw() {
       clear(box);
       if (!state.ready) { box.append(el("p", { class: "c-hint", text: "Загрузка…" })); return; }
@@ -563,6 +688,7 @@
         return;
       }
       box.append(el("p", { class: "lead", text: state.user.displayName + (state.admin ? ". Вы администратор." : "") }));
+      box.append(avatarBox());
       var nameIn = el("input", { class: "c-input", type: "text", maxlength: "100", "aria-label": "Имя в комментариях" });
       nameIn.value = state.user.displayName || "";
       var nameBox = el("details", { class: "edit-box" }, el("summary", { text: "Изменить имя" }),
@@ -620,8 +746,10 @@
             sync(true).then(function (m) { syncMsg = m; }, function (e) { syncMsg = errText(e); }).then(draw);
           } }), el("p", { class: "msg", text: syncMsg, hidden: !syncMsg }));
       }
+      box.append(el("h2", { text: "Выход" }),
+        el("button", { type: "button", class: "btn btn-s", text: "Выйти из аккаунта", onclick: signOut }));
     }
-    function reload() { loadMe(state.user).then(loadAdmin).then(draw); }
+    function reload() { loadMe(state.user, true).then(loadAdmin).then(draw); }
     views.push(function () {
       draw();
       loadCatalog().then(function () {

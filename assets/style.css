@@ -137,11 +137,20 @@ p{margin:0}
 
 /* вход, комментарии, кабинет (появляются, только если подключён Firebase) */
 .head-nav{display:flex;gap:18px;align-items:baseline;flex-wrap:wrap}
-.auth-slot{display:inline-flex;gap:14px;align-items:baseline}
+.auth-slot{display:inline-flex;gap:14px;align-items:center}
 .head-btn{background:none;border:0;padding:0;text-decoration:underline;text-decoration-color:var(--ember);text-underline-offset:.2em}
 .person-head{display:flex;gap:22px;align-items:flex-start}
 .avatar{width:72px;height:72px;border-radius:50%;object-fit:cover;background:var(--coal)}
 .avatar-l{width:112px;height:112px;flex:none;margin-top:8px}
+.avatar-s{width:40px;height:40px;flex:none}
+.avatar-xs{width:26px;height:26px;flex:none}
+.avatar-init{display:inline-flex;align-items:center;justify-content:center;color:#fff;font-weight:700;font-family:var(--font-display)}
+.avatar-xs.avatar-init{font-size:.8rem}
+.avatar-l.avatar-init{font-size:2.6rem;margin-top:0}
+.head-me{display:inline-flex;align-items:center;gap:8px}
+.avatar-edit{display:flex;gap:18px;align-items:center;margin:6px 0 22px;flex-wrap:wrap}
+.avatar-edit .avatar-l{margin-top:0;width:96px;height:96px}
+.avatar-edit .c-hint{margin:10px 0 0;max-width:46ch}
 .claim{margin:20px 0 0;display:grid;gap:12px;justify-items:start;max-width:62ch}
 .admin-box{display:grid;gap:10px;justify-items:start;border-left:3px solid var(--line);padding-left:14px}
 .director-note{background:var(--coal);border-left:3px solid var(--ember);border-radius:var(--r);padding:16px 18px;margin-top:22px;display:grid;gap:10px}
@@ -151,7 +160,7 @@ p{margin:0}
 .comment:target{border-color:var(--ember)}
 .comment.reply{margin-left:clamp(14px,4vw,36px);background:var(--coal-2)}
 .comment.is-hidden{opacity:.55}
-.c-head{display:flex;gap:10px;align-items:baseline;flex-wrap:wrap;font-size:.95rem}
+.c-head{display:flex;gap:10px;align-items:center;flex-wrap:wrap;font-size:.95rem}
 .c-date{color:var(--ash);font-size:.85rem;text-decoration:none}
 .c-date:hover{color:var(--ink)}
 .c-text{white-space:pre-wrap;overflow-wrap:anywhere}

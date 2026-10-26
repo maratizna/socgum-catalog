@@ -62,6 +62,16 @@ service cloud.firestore {
       allow delete: if isAdmin();
     }
 
+    // Фото пользователя: маленькая картинка (128 px) для комментариев. Видна всем, меняет только владелец.
+    match /users/{uid} {
+      allow read: if true;
+      allow create, update: if signedIn() && request.auth.uid == uid
+        && request.resource.data.keys().hasOnly(['avatar', 'updatedAt'])
+        && request.resource.data.avatar is string && request.resource.data.avatar.size() <= 40000
+        && request.resource.data.updatedAt == request.time;
+      allow delete: if signedIn() && (request.auth.uid == uid || isAdmin());
+    }
+
     // Слово постановщика на странице номера.
     match /notes/{nid} {
       allow read: if true;
