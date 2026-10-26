@@ -5,6 +5,8 @@
  *   Создать структуру      – листы, заголовки, выпадающие списки, форматы (по желанию с демо-данными)
  *   Проверить таблицу      – ищет ошибки до публикации, красит ячейки с ошибками
  *   Собрать список людей   – добавляет на лист «Люди» всех, кто упомянут в номерах
+ *   Проставить ID          – постоянные адреса для концертов, направлений, людей и номеров
+ *   Переименовать выделенное – меняет название или имя везде, ID и ссылки остаются прежними
  *   Обновить сайт сейчас   – запускает сборку сайта на GitHub
  *   Открыть сайт
  *   Ввести GitHub-токен    – один раз, для кнопки «Обновить сайт»
@@ -39,6 +41,10 @@ var HOW_TO = [
   '   «Исполнители» и «Постановщики» — имена через запятую. Пишите имя везде одинаково.',
   '4. Лист «Люди» необязательный: описание и ссылка для человека. Меню Каталог → Собрать список людей заполнит имена сам.',
   '',
+  'Столбец «ID» на листах «Концерты», «Направления» и «Люди» — постоянный адрес на сайте. Он заполняется сам и после публикации не меняется.',
+  'Чтобы переименовать концерт, направление или человека, выделите ячейку с названием или именем и выберите Каталог → Переименовать выделенное.',
+  'Меню поправит все упоминания в листе «Номера», а адрес и привязка аккаунта сохранятся.',
+  '',
   'Начало и конец номера вводите так: ч:мм:сс, например 0:20:52, по записи концерта целиком, как на плеере. Эти столбцы хранят простой текст, формат не меняйте.',
   'ID номера — латинские буквы, цифры и дефис, он станет частью адреса страницы. После публикации ID лучше не менять.',
   '',
@@ -47,22 +53,24 @@ var HOW_TO = [
 ];
 
 var DEF = [
-  { name: SHEETS.concerts, head: ['Название', 'Дата', 'Видео', 'Описание'], widths: [260, 110, 380, 380], text: [1, 2] },
-  { name: SHEETS.dirs, head: ['Название', 'Описание'], widths: [260, 420], text: [] },
+  { name: SHEETS.concerts, head: ['Название', 'Дата', 'Видео', 'Описание', 'ID'], widths: [260, 110, 380, 380, 170], text: [1, 2, 4] },
+  { name: SHEETS.dirs, head: ['Название', 'Описание', 'ID'], widths: [260, 420, 170], text: [2] },
   {
     name: SHEETS.nums,
     head: ['ID', 'Концерт', 'Направление', '№ в концерте', 'Название', 'Коллектив', 'Исполнители',
       'Постановщики', 'Описание', 'Обложка', 'Начало', 'Конец', 'Старый адрес'],
     widths: [120, 220, 170, 90, 240, 200, 320, 260, 360, 140, 90, 90, 280],
-    text: [3, 10, 11]
+    text: [0, 3, 10, 11]
   },
-  { name: SHEETS.people, head: ['Имя', 'О себе', 'Ссылка'], widths: [260, 420, 320], text: [] }
+  { name: SHEETS.people, head: ['Имя', 'О себе', 'Ссылка', 'ID'], widths: [260, 420, 320, 170], text: [3] }
 ];
 
 function onOpen() {
   SpreadsheetApp.getUi().createMenu('Каталог')
     .addItem('Проверить таблицу', 'checkSheet')
     .addItem('Собрать список людей', 'collectPeople')
+    .addItem('Проставить ID', 'fillIds')
+    .addItem('Переименовать выделенное…', 'renameSelected')
     .addSeparator()
     .addItem('Обновить сайт сейчас', 'publishSite')
     .addItem('Открыть сайт', 'openSite')
@@ -148,10 +156,10 @@ function fillDemo_(ss) {
     sh.getRange(2, 1, rows.length, rows[0].length).setValues(rows);
   }
   put(SHEETS.concerts, [
-    [A, '2026-05-14', '', 'Выдуманный концерт для проверки сайта.'],
-    [B, '2026-10-03', '', 'Второй выдуманный концерт: показывает, как работают фильтры.']
+    [A, '2026-05-14', '', 'Выдуманный концерт для проверки сайта.', 'demo-vesna'],
+    [B, '2026-10-03', '', 'Второй выдуманный концерт: показывает, как работают фильтры.', 'demo-osen']
   ]);
-  put(SHEETS.dirs, [['Хореография', ''], ['Вокал', ''], ['Театр', ''], ['Оригинальный жанр', '']]);
+  put(SHEETS.dirs, [['Хореография', '', 'khoreografiya'], ['Вокал', '', 'vokal'], ['Театр', '', 'teatr'], ['Оригинальный жанр', '', 'originalnyy-zhanr']]);
   put(SHEETS.nums, [
     ['demo-01', A, 'Хореография', '1', 'Первый свет', 'Коллектив «Образец»', 'Анна Тестова, Пётр Образцов, Мария Примерова', 'Ольга Макетова', 'Открывающий номер. Текст выдуманный.', 'demo-01.jpg', '0:02:10', '0:06:40', ''],
     ['demo-02', A, 'Вокал', '2', 'Тихий берег', 'Студия «Пример»', 'Иван Шаблонов', 'Иван Шаблонов', 'Вокальный номер для проверки сортировки.', '', '0:07:30', '0:11:05', ''],
@@ -164,8 +172,15 @@ function fillDemo_(ss) {
     ['demo-09', B, 'Оригинальный жанр', '3', 'Эхо зала', 'Коллектив «Образец»', 'Анна Тестова, Пётр Образцов', 'Ольга Макетова', '', '', '0:17:00', '0:22:10', '']
   ]);
   put(SHEETS.people, [
-    ['Анна Тестова', 'Выдуманная участница для демонстрации страницы человека.', ''],
-    ['Ольга Макетова', 'Выдуманный постановщик.', '']
+    ['Анна Тестова', 'Выдуманная участница для демонстрации страницы человека.', '', 'anna-testova'],
+    ['Ольга Макетова', 'Выдуманный постановщик.', '', 'olga-maketova'],
+    ['Пётр Образцов', '', '', 'petr-obraztsov'],
+    ['Мария Примерова', '', '', 'mariya-primerova'],
+    ['Иван Шаблонов', '', '', 'ivan-shablonov'],
+    ['Сергей Заглушкин', '', '', 'sergey-zaglushkin'],
+    ['Елена Черновикова', '', '', 'elena-chernovikova'],
+    ['Дарья Эскизова', '', '', 'darya-eskizova'],
+    ['Павел Набросков', '', '', 'pavel-nabroskov']
   ]);
 }
 
@@ -250,6 +265,26 @@ function runChecks_() {
     return t.head[name];
   }
 
+  function checkIds(t, sheetName, nameHead) {
+    var ci = col(t, 'ID', sheetName), cn = col(t, nameHead, sheetName);
+    if (ci < 0 || cn < 0) return;
+    var seen = {}, empty = 0, firstEmpty = 0;
+    t.rows.forEach(function (r, i) {
+      var id = String(r[ci]).trim(), row = i + 2;
+      if (!id) {
+        if (String(r[cn]).trim()) { empty++; if (!firstEmpty) firstEmpty = row; }
+        return;
+      }
+      if (!/^[A-Za-z0-9_-]+$/.test(id)) add(sheetName, row, ci + 1, 'ID «' + id + '»: только латинские буквы, цифры, дефис и подчёркивание.');
+      else if (seen[id.toLowerCase()]) add(sheetName, row, ci + 1, 'ID «' + id + '» уже есть в строке ' + seen[id.toLowerCase()] + '.');
+      else seen[id.toLowerCase()] = row;
+    });
+    if (empty) add(sheetName, firstEmpty, 0, 'У ' + empty + ' строк нет ID: адрес возьмётся из названия и сменится при переименовании. Выберите Каталог → Проставить ID.', 'warn');
+  }
+  checkIds(T.concerts, SHEETS.concerts, 'Название');
+  checkIds(T.dirs, SHEETS.dirs, 'Название');
+  checkIds(T.people, SHEETS.people, 'Имя');
+
   var concerts = {}, dirs = {};
   var tc = T.concerts, cN = col(tc, 'Название', SHEETS.concerts);
   if (cN >= 0) tc.rows.forEach(function (r, i) {
@@ -264,7 +299,7 @@ function runChecks_() {
     dirs[v] = true;
   });
 
-  var tn = T.nums, ids = {}, span = {};
+  var tn = T.nums, ids = {};
   var cID = col(tn, 'ID', SHEETS.nums), cC = col(tn, 'Концерт', SHEETS.nums), cD = col(tn, 'Направление', SHEETS.nums),
     cT = col(tn, 'Название', SHEETS.nums), cS = col(tn, 'Начало', SHEETS.nums), cE = col(tn, 'Конец', SHEETS.nums),
     cP = col(tn, 'Исполнители', SHEETS.nums), cQ = col(tn, 'Постановщики', SHEETS.nums);
@@ -285,11 +320,17 @@ function runChecks_() {
     if (cS >= 0 && String(r[cS]).trim() && s === null) add(SHEETS.nums, row, cS + 1, 'Начало «' + r[cS] + '» не распознано. Формат ч:мм:сс.');
     if (cE >= 0 && String(r[cE]).trim() && e === null) add(SHEETS.nums, row, cE + 1, 'Конец «' + r[cE] + '» не распознан. Формат ч:мм:сс.');
     if (s !== null && e !== null && e <= s) add(SHEETS.nums, row, cE + 1, 'Конец номера раньше или равен началу.');
-    if (id && s !== null && e !== null) span[id.toLowerCase()] = { s: s, e: e, title: r[cT] };
     [cP, cQ].forEach(function (c) {
       if (c >= 0) splitPeople_(r[c]).forEach(function (n) { names[norm_(n)] = names[norm_(n)] || n; });
     });
   });
+
+  var cpn = T.people.head['Имя'], haveRow = {};
+  if (cpn !== undefined) T.people.rows.forEach(function (r) { haveRow[norm_(r[cpn])] = true; });
+  var loose = Object.keys(names).filter(function (k) { return !haveRow[k]; });
+  if (cpn !== undefined && loose.length) {
+    add(SHEETS.people, 0, 0, 'У ' + loose.length + ' человек нет строки на листе «Люди» (например, «' + names[loose[0]] + '»). Выберите Каталог → Собрать список людей.', 'warn');
+  }
 
   var keys = Object.keys(names);
   for (var a = 0; a < keys.length; a++) for (var b = a + 1; b < keys.length; b++) {
@@ -351,7 +392,110 @@ function collectPeople() {
   var width = tp.sh.getLastColumn();
   var out = add.map(function (n) { var row = new Array(width).fill(''); row[nameCol] = n; return row; });
   tp.sh.getRange(start, 1, out.length, width).setValues(out);
-  SpreadsheetApp.getActive().toast('Добавлено людей: ' + add.length + '. Впишите описание и ссылку, если нужно.', 'Каталог', 8);
+  fillIdsSheet_(SHEETS.people, 'Имя');
+  SpreadsheetApp.getActive().toast('Добавлено людей: ' + add.length + ', ID проставлены. Впишите описание и ссылку, если нужно.', 'Каталог', 8);
+}
+
+/* ------------------------------------------------------------------ постоянные адреса (ID) */
+
+var TRANSLIT = { а: 'a', б: 'b', в: 'v', г: 'g', д: 'd', е: 'e', ж: 'zh', з: 'z', и: 'i', й: 'y', к: 'k', л: 'l', м: 'm', н: 'n',
+  о: 'o', п: 'p', р: 'r', с: 's', т: 't', у: 'u', ф: 'f', х: 'kh', ц: 'ts', ч: 'ch', ш: 'sh', щ: 'shch', ъ: '', ы: 'y', ь: '',
+  э: 'e', ю: 'yu', я: 'ya' };
+
+function slugify_(s) {
+  s = norm_(s);
+  var out = '';
+  for (var i = 0; i < s.length; i++) out += TRANSLIT.hasOwnProperty(s[i]) ? TRANSLIT[s[i]] : s[i];
+  out = out.replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
+  return out || 'x';
+}
+
+// Заполняет пустые ID на листе. Уже заполненные не трогает никогда: на них держатся ссылки.
+function fillIdsSheet_(name, nameHead) {
+  var t = readTable_(name);
+  if (!t) return 0;
+  var ci = t.head['ID'], cn = t.head[nameHead];
+  if (ci === undefined || cn === undefined || !t.rows.length) return 0;
+  var used = Object.create(null), changed = 0, out = [];
+  t.rows.forEach(function (r) { var v = String(r[ci]).trim().toLowerCase(); if (v) used[v] = true; });
+  t.rows.forEach(function (r) {
+    var id = String(r[ci]).trim(), nm = String(r[cn]).trim();
+    if (!id && nm) {
+      var base = slugify_(nm), s = base, k = 2;
+      while (used[s]) { s = base + '-' + k; k++; }
+      used[s] = true; id = s; changed++;
+    }
+    out.push([id]);
+  });
+  if (changed) t.sh.getRange(2, ci + 1, out.length, 1).setNumberFormat('@').setValues(out);
+  return changed;
+}
+
+function fillIds_() {
+  return fillIdsSheet_(SHEETS.concerts, 'Название') + fillIdsSheet_(SHEETS.dirs, 'Название') +
+    fillIdsSheet_(SHEETS.people, 'Имя') + fillIdsSheet_(SHEETS.nums, 'Название');
+}
+
+function fillIds() {
+  var n = fillIds_();
+  SpreadsheetApp.getActive().toast(n ? 'Проставлено ID: ' + n + '. Теперь адреса не зависят от названий.' : 'У всех строк уже есть ID.', 'Каталог', 6);
+}
+
+// Простой триггер: ID появляется сам, как только вписано название или имя.
+function onEdit(e) {
+  try {
+    var sh = e.range.getSheet(), heads = {};
+    heads[SHEETS.concerts] = 'Название'; heads[SHEETS.dirs] = 'Название'; heads[SHEETS.nums] = 'Название'; heads[SHEETS.people] = 'Имя';
+    if (!heads.hasOwnProperty(sh.getName()) || e.range.getRow() < 2) return;
+    fillIdsSheet_(sh.getName(), heads[sh.getName()]);
+  } catch (err) { /* не мешаем редактированию */ }
+}
+
+/* ------------------------------------------------------------------ переименование */
+
+function renameSelected() {
+  var ui = SpreadsheetApp.getUi(), ss = SpreadsheetApp.getActive();
+  var sh = ss.getActiveSheet(), cell = ss.getActiveRange();
+  var kinds = {};
+  kinds[SHEETS.concerts] = { head: 'Название', refs: [[SHEETS.nums, 'Концерт', false]] };
+  kinds[SHEETS.dirs] = { head: 'Название', refs: [[SHEETS.nums, 'Направление', false]] };
+  kinds[SHEETS.people] = { head: 'Имя', refs: [[SHEETS.nums, 'Исполнители', true], [SHEETS.nums, 'Постановщики', true]] };
+  var kind = kinds[sh.getName()];
+  if (!kind || !cell || cell.getRow() < 2 || cell.getNumRows() !== 1 || cell.getNumColumns() !== 1 ||
+      String(sh.getRange(1, cell.getColumn()).getValue()).trim() !== kind.head) {
+    ui.alert('Выделите одну ячейку с названием или именем (столбец «Название» на листах «Концерты» и «Направления» или «Имя» на листе «Люди»), затем снова выберите Каталог → Переименовать выделенное.');
+    return;
+  }
+  var old = String(cell.getDisplayValue()).trim();
+  if (!old) { ui.alert('Ячейка пуста.'); return; }
+  fillIdsSheet_(sh.getName(), kind.head); // ID появляется до переименования, чтобы адрес остался прежним
+  var res = ui.prompt('Переименовать', 'Новое написание для «' + old + '». Адрес на сайте не изменится.', ui.ButtonSet.OK_CANCEL);
+  if (res.getSelectedButton() !== ui.Button.OK) return;
+  var neu = res.getResponseText().trim().replace(/\s+/g, ' ');
+  if (!neu || neu === old) return;
+  var t = readTable_(sh.getName()), cn = t.head[kind.head];
+  var clash = t.rows.some(function (r, i) { return i + 2 !== cell.getRow() && norm_(r[cn]) === norm_(neu); });
+  if (clash) { ui.alert('«' + neu + '» уже есть в этом списке. Объединять двух человек или два названия нужно вручную: вам решать, чьи ID и ссылки сохранить.'); return; }
+
+  cell.setValue(neu);
+  var changedCells = 0;
+  kind.refs.forEach(function (ref) {
+    var rt = readTable_(ref[0]), rc = rt && rt.head[ref[1]];
+    if (!rt || rc === undefined || !rt.rows.length) return;
+    var vals = rt.rows.map(function (r) { return [r[rc]]; }), touched = false;
+    vals.forEach(function (v, i) {
+      var cur = String(v[0]);
+      if (ref[2]) {
+        var parts = splitPeople_(cur), hit = false;
+        parts = parts.map(function (n) { if (norm_(n) === norm_(old)) { hit = true; return neu; } return n; });
+        if (hit) { vals[i][0] = parts.join(', '); touched = true; changedCells++; }
+      } else if (norm_(cur) === norm_(old)) {
+        vals[i][0] = neu; touched = true; changedCells++;
+      }
+    });
+    if (touched) rt.sh.getRange(2, rc + 1, vals.length, 1).setValues(vals);
+  });
+  ss.toast('«' + old + '» → «' + neu + '». Исправлено упоминаний в «Номерах»: ' + changedCells + '. Нажмите «Обновить сайт», чтобы изменения появились на сайте.', 'Каталог', 10);
 }
 
 /* ------------------------------------------------------------------ публикация */
@@ -372,6 +516,7 @@ function publishSite() {
   var ui = SpreadsheetApp.getUi();
   var token = PropertiesService.getUserProperties().getProperty('GH_TOKEN');
   if (!token) { ui.alert('Сначала введите токен: Каталог → Ввести GitHub-токен.'); return; }
+  fillIds_();
   var problems = runChecks_().filter(function (p) { return p.level === 'error'; });
   if (problems.length) {
     var go = ui.alert('В таблице есть ошибки (' + problems.length + ')',

@@ -163,5 +163,21 @@
         playAt(el.dataset.t);
       });
     });
+
+    /* Ссылка с временем открывает номер сразу с нужного места: ?t=135, ?t=2:15, ?t=1h2m3s или #t=2:15.
+       Время считается по записи концерта целиком, как в плеере. */
+    var want = new URLSearchParams(location.search).get("t") || (location.hash.match(/^#t=(.+)$/) || [])[1];
+    var sec = parseTime(want);
+    if (sec !== null) playAt(sec);
+  }
+
+  function parseTime(v) {
+    if (!v) return null;
+    v = String(v).trim();
+    var m;
+    if ((m = v.match(/^(\d+)$/))) return +m[1];
+    if ((m = v.match(/^(?:(\d+):)?(\d{1,2}):(\d{2})$/))) return (+m[1] || 0) * 3600 + (+m[2]) * 60 + (+m[3]);
+    if ((m = v.match(/^(?:(\d+)h)?(?:(\d+)m)?(?:(\d+)s)?$/)) && (m[1] || m[2] || m[3])) return (+m[1] || 0) * 3600 + (+m[2] || 0) * 60 + (+m[3] || 0);
+    return null;
   }
 })();

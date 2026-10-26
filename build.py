@@ -74,6 +74,35 @@ class Slugs:
         return slug
 
 
+ID_RE = re.compile(r"[A-Za-z0-9_-]+")
+
+
+def assign_slugs(rows, sheet, report, label):
+    """Адрес строки = её ID из таблицы. Если ID нет, делаем из названия и предупреждаем:
+    такой адрес сменится при переименовании. Возвращает ({номер строки: адрес}, Slugs)."""
+    slugs, out = Slugs(), {}
+    for r in rows:
+        sid = r.get("id", "")
+        if not sid:
+            continue
+        if not ID_RE.fullmatch(sid):
+            report.error(sheet, r["_row"], f"ID «{sid}» должен состоять только из латинских букв, цифр, дефиса и подчёркивания.")
+        elif sid.casefold() in slugs.used:
+            report.error(sheet, r["_row"], f"ID «{sid}» уже встречался выше. У каждой строки свой ID.")
+        else:
+            slugs.used.add(sid.casefold())
+            out[r["_row"]] = sid
+    missing = []
+    for r in rows:
+        if r["_row"] not in out and r.get("name"):
+            out[r["_row"]] = slugs.make(r["name"])
+            missing.append(r["_row"])
+    if missing:
+        report.warn(sheet, missing[0], f"{label}: у {len(missing)} строк нет ID, адрес взят из названия и сменится при переименовании. "
+                                       "Выберите в таблице Каталог → Проставить ID.")
+    return out, slugs
+
+
 def hms(sec):
     sec = int(sec)
     h, rem = divmod(sec, 3600)
@@ -227,8 +256,9 @@ class Report:
 SPEC = {
     "Концерты": {
         "name": ["название"], "date": ["дата"], "video": ["видео", "ссылка на видео"], "about": ["описание"],
+        "id": ["id"],
     },
-    "Направления": {"name": ["название"], "about": ["описание"]},
+    "Направления": {"name": ["название"], "about": ["описание"], "id": ["id"]},
     "Номера": {
         "id": ["id"], "concert": ["концерт"], "direction": ["направление"],
         "order": ["№ в концерте", "номер в концерте", "порядок"], "title": ["название"],
@@ -236,7 +266,7 @@ SPEC = {
         "about": ["описание"], "cover": ["обложка"], "start": ["начало"], "end": ["конец"],
         "old_url": ["старый адрес"],
     },
-    "Люди": {"name": ["имя"], "about": ["о себе", "описание"], "link": ["ссылка"]},
+    "Люди": {"name": ["имя"], "about": ["о себе", "описание"], "link": ["ссылка"], "id": ["id"]},
 }
 REQUIRED = {
     "Концерты": ["name"], "Направления": ["name"],
@@ -324,7 +354,9 @@ def read_sheet(wb, name, report):
 
 def build_model(wb, report):
     sheets = {n: read_sheet(wb, n, report) for n in SPEC}
-    slugs_c, slugs_d, slugs_p = Slugs(), Slugs(), Slugs()
+    c_slug, _ = assign_slugs(sheets["Концерты"], "Концерты", report, "Концерты")
+    d_slug, _ = assign_slugs(sheets["Направления"], "Направления", report, "Направления")
+    p_slug, slugs_p = assign_slugs(sheets["Люди"], "Люди", report, "Люди")
 
     # Концерты
     concerts = OrderedDict()
@@ -344,7 +376,7 @@ def build_model(wb, report):
         if video_raw and not video:
             report.warn("Концерты", r["_row"], f"Ссылка «{video_raw}» не похожа на видео VK. Плеер на сайте не появится.")
         concerts[norm(name)] = {
-            "name": name, "slug": slugs_c.make(name), "date": date, "video": video,
+            "name": name, "slug": c_slug[r["_row"]], "date": date, "video": video,
             "about": r.get("about", ""), "numbers": [],
         }
 
@@ -353,7 +385,7 @@ def build_model(wb, report):
     for r in sheets["Направления"]:
         name = r["name"]
         if name and norm(name) not in directions:
-            directions[norm(name)] = {"name": name, "slug": slugs_d.make(name), "about": r.get("about", "")}
+            directions[norm(name)] = {"name": name, "slug": d_slug[r["_row"]], "about": r.get("about", "")}
 
     def suggest(value, options):
         close = difflib.get_close_matches(norm(value), list(options), n=1, cutoff=0.6)
@@ -429,7 +461,7 @@ def build_model(wb, report):
         k = norm(name)
         if k not in people:
             e = extra.get(k, {})
-            people[k] = {"name": name, "slug": slugs_p.make(name), "numbers": [],
+            people[k] = {"name": name, "slug": p_slug[e["_row"]] if e else slugs_p.make(name), "numbers": [],
                          "about": e.get("about", ""), "link": e.get("link", "")}
         return people[k]
 
@@ -447,6 +479,10 @@ def build_model(wb, report):
     for k, e in extra.items():
         if k not in people:
             report.warn("Люди", e["_row"], f"«{e['name']}» нет ни в одном номере. Строка пока ни на что не влияет.")
+    loose = [p["name"] for k, p in people.items() if k not in extra]
+    if loose:
+        report.warn("Люди", None, f"У {len(loose)} человек нет строки на листе «Люди» (например, «{loose[0]}»): адрес их страницы зависит от написания имени. "
+                                  "Выберите Каталог → Собрать список людей.")
 
     # похожие имена
     keys = list(people)
