@@ -847,6 +847,7 @@ function applyQueueRow_(q, row, direct) {
   q.getRange(row, 6).setValue(res.ok ? (direct ? 'Добавлено сразу: ' : 'Принято: ') + res.msg : 'Ошибка: ' + res.msg);
   if (!res.ok) q.getRange(row, 6).setBackground(RED);
   if (direct && !res.ok) q.getRange(row, 5).setValue('');
+  if (direct && res.ok) q.getRange(row, 5).setValue('Принять'); // запись администратора принимается сама, нажимать ничего не нужно
 }
 
 function applyDecisions() {
@@ -939,18 +940,45 @@ function applyNumbers_(d) {
   var lastEnd = d.end ? parseSec_(d.end) : null;
   if (d.end && lastEnd === null) return { ok: false, msg: 'время окончания нужно в виде ч:мм:сс' };
   var have = {};
-  tn.rows.forEach(function (r) { if (norm_(r[tn.head['Концерт']]) === norm_(concert)) have[parseSec_(r[tn.head['Начало']])] = true; });
-  var cv = coverUrl_(d.cover), rows = [], skipped = 0;
+  tn.rows.forEach(function (r, i) {
+    if (norm_(r[tn.head['Концерт']]) === norm_(concert)) have[parseSec_(r[tn.head['Начало']])] = { idx: i, row: r };
+  });
+  var cv = coverUrl_(d.cover), rows = [], filled = [], conflicts = [], coverUsed = false;
   items.forEach(function (it, i) {
-    if (have[it.start]) { skipped++; return; }
     var end = i + 1 < items.length ? items[i + 1].start : lastEnd;
+    var ex = have[it.start];
+    if (ex) {
+      var exTitle = String(ex.row[tn.head['Название']] || '');
+      if (norm_(exTitle) !== norm_(it.title)) { conflicts.push(hmsFull_(it.start) + ' («' + exTitle + '»)'); return; }
+      // тот же номер уже есть: заполняем только пустые поля, обложку заменяем, если прислали
+      var vals = { 'Направление': d.direction && d.direction !== '(пока пусто)' ? d.direction : '', 'Коллектив': it.collective || d.collective || '',
+        'Исполнители': it.performers || d.performers || '', 'Постановщики': it.directors || d.directors || '', 'Описание': it.about || d.about || '' };
+      var got = [];
+      Object.keys(vals).forEach(function (h) {
+        var c = tn.head[h];
+        if (c === undefined || !vals[h] || String(ex.row[c] || '').trim()) return;
+        tn.sh.getRange(ex.idx + 2, c + 1).setValue(vals[h]); got.push(h.toLowerCase());
+      });
+      if (d.cover && cv.ok && cv.url && tn.head['Обложка'] !== undefined) {
+        tn.sh.getRange(ex.idx + 2, tn.head['Обложка'] + 1).setValue(cv.url); got.push('обложка'); coverUsed = true;
+      }
+      if (got.length) filled.push('«' + exTitle + '» (' + got.join(', ') + ')');
+      return;
+    }
     rows.push({ 'Концерт': concert, 'Направление': d.direction && d.direction !== '(пока пусто)' ? d.direction : '', 'Название': it.title,
       'Коллектив': it.collective || d.collective || '', 'Исполнители': it.performers || d.performers || '',
       'Постановщики': it.directors || d.directors || '', 'Описание': it.about || d.about || '', 'Обложка': cv.ok ? cv.url : '',
       'Начало': hmsFull_(it.start), 'Конец': end !== null && end > it.start ? hmsFull_(end) : '' });
+    if (cv.ok && cv.url) coverUsed = true;
   });
-  if (rows.length) { addRows_(tn, rows); fillIds_(); try { collectPeople(); } catch (e) { } }
-  return { ok: true, msg: 'номеров: ' + rows.length + (skipped ? ', пропущено уже существующих: ' + skipped : '') + (d.cover ? (cv.ok ? ', обложка добавлена' : ', обложка пропущена: ' + cv.msg) : '') };
+  if (rows.length) { addRows_(tn, rows); fillIds_(); }
+  if (rows.length || filled.length) { try { collectPeople(); } catch (e) { } }
+  var msg = 'новых номеров: ' + rows.length;
+  if (filled.length) msg += '; дополнено существующих: ' + filled.join(', ');
+  if (conflicts.length) msg += '; не добавлено, потому что в это время уже есть другой номер: ' + conflicts.join(', ') + '. Чтобы изменить его, используйте форму «Дополнить номер»';
+  if (d.cover) msg += cv.ok ? (coverUsed ? '; обложка добавлена' : '; обложка не применена: нет подходящих номеров') : '; обложка пропущена: ' + cv.msg;
+  var okAll = rows.length > 0 || filled.length > 0;
+  return { ok: okAll, msg: okAll ? msg : (conflicts.length ? msg : 'нечего добавлять: все номера уже есть и заполнены') };
 }
 
 function applyPatch_(d) {
