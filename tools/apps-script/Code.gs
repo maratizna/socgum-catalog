@@ -606,12 +606,13 @@ var KIND_NAME = { A: 'Новый концерт', B: 'Номера списко�
 function props_() { return PropertiesService.getDocumentProperties(); }
 
 function createForms() {
-  var ui = SpreadsheetApp.getUi(), p = props_();
+  var ui = null, p = props_();
+  try { ui = SpreadsheetApp.getUi(); } catch (eUi) { }
   if (p.getProperty('FORM_A')) {
     upgradeForms_();
     refreshFormChoices();
     fillFormsSheet_();
-    ui.alert('Формы уже созданы. Ссылки на листе «Формы». Списки в формах обновлены, новые поля добавлены.');
+    if (ui) ui.alert('Формы уже созданы. Ссылки на листе «Формы». Списки в формах обновлены, новые поля добавлены.');
     return;
   }
   var ss = SpreadsheetApp.getActive();
