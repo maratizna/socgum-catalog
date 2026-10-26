@@ -406,15 +406,12 @@
     function mine() { return state.user && claim && claim.uid === state.user.uid; }
     function claimPerson() {
       var u = state.user;
-      var match = norm(u.displayName) === norm(pname);
-      function put(status) { return fb.f.setDoc(fdoc("claims/" + pid), { uid: u.uid, name: u.displayName || "Без имени", status: status, createdAt: fb.f.serverTimestamp() }); }
-      var first = put(match ? "approved" : "pending");
-      if (match) first = first.catch(function () { return put("pending"); });
-      return first.then(function () { return loadMe(u); }).then(loadPublic).then(draw, function (e) {
-        note(box, e && e.code === "permission-denied"
-          ? "Страница ещё не передана сервису. Попросите администратора открыть «Кабинет» и нажать «Обновить список»."
-          : errText(e), "err");
-      });
+      return fb.f.setDoc(fdoc("claims/" + pid), { uid: u.uid, name: u.displayName || "Без имени", status: "pending", createdAt: fb.f.serverTimestamp() })
+        .then(function () { return loadMe(u); }).then(loadPublic).then(draw, function (e) {
+          note(box, e && e.code === "permission-denied"
+            ? "Страница ещё не передана сервису. Попросите администратора открыть «Кабинет» и нажать «Обновить список»."
+            : errText(e), "err");
+        });
     }
 
     function editor() {
@@ -453,7 +450,7 @@
         if (!claim) box.append(el("p", { class: "c-hint", text: "Вы постановщик? Войдите через Google, чтобы вести эту страницу." }), el("button", { type: "button", class: "btn", text: "Войти через Google", onclick: signIn }));
       } else if (!claim) {
         box.append(el("button", { type: "button", class: "btn", text: "Это моя страница", onclick: claimPerson }),
-          el("p", { class: "c-hint", text: "Если имя в вашем аккаунте Google совпадает с этим именем, доступ откроется сразу. Иначе заявку подтвердит администратор." }));
+          el("p", { class: "c-hint", text: "Заявку проверит и подтвердит администратор." }));
       } else if (mine() && claim.status === "pending") {
         box.append(el("p", { class: "msg", text: "Заявка отправлена. Администратор подтвердит её, и здесь появится редактирование." }),
           el("button", { type: "button", class: "linkbtn", text: "Отозвать заявку", onclick: function () { fb.f.deleteDoc(fdoc("claims/" + pid)).then(function () { return loadMe(u); }).then(loadPublic).then(draw); } }));

@@ -7,8 +7,6 @@ service cloud.firestore {
 
     function signedIn() { return request.auth != null; }
     function isAdmin() { return signedIn() && exists(/databases/$(database)/documents/admins/$(request.auth.uid)); }
-    // нормализация имени так же, как на сайте: строчные буквы, ё = е, без лишних пробелов
-    function norm(s) { return s.lower().replace('ё', 'е').replace('  ', ' ').trim(); }
     // аккаунт — подтверждённый владелец страницы человека
     function owns(pid) {
       return signedIn()
@@ -36,7 +34,7 @@ service cloud.firestore {
       allow read, write: if isAdmin();
     }
 
-    // Заявка «это моя страница». Сразу подтверждается, если имя в аккаунте Google совпадает с именем в таблице.
+    // Заявка «это моя страница». Всегда создаётся как ждущая, подтверждает администратор.
     match /claims/{pid} {
       allow read: if true;
       allow create: if signedIn()
@@ -46,9 +44,7 @@ service cloud.firestore {
         && request.resource.data.createdAt == request.time
         && exists(/databases/$(database)/documents/people/$(pid))
         && get(/databases/$(database)/documents/people/$(pid)).data.isDirector == true
-        && (request.resource.data.status == 'pending'
-            || (request.resource.data.status == 'approved'
-                && get(/databases/$(database)/documents/people/$(pid)).data.nameKey == norm(request.auth.token.name)));
+        && request.resource.data.status == 'pending';
       allow update: if isAdmin()
         && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status']);
       allow delete: if isAdmin() || (signedIn() && resource.data.uid == request.auth.uid);

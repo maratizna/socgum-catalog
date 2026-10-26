@@ -44,7 +44,7 @@ img{display:block;max-width:100%;height:auto}
 a{color:inherit;text-decoration-color:var(--ember);text-underline-offset:.2em;text-decoration-thickness:1px}
 a:hover{color:var(--ember-hi)}
 :focus-visible{outline:2px solid var(--ember);outline-offset:3px;border-radius:2px}
-button,input,select{font:inherit;color:inherit}
+button,input,select,textarea{font:inherit;color:inherit}
 button{cursor:pointer}
 ul,ol{margin:0;padding:0;list-style:none}
 h1,h2{margin:0;font-family:var(--font-display);font-weight:700;color:var(--ember)}
