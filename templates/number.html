@@ -3,7 +3,6 @@
 {% block main %}
 {% set can_play = video is not none %}
 <article class="number">
-  <p class="back"><a href="{{ root or './' }}?c={{ n.concert.slug }}">Все номера концерта</a></p>
   <div class="number-grid">
     <div class="number-main">
       <h1>{{ n.title }}</h1>
@@ -12,6 +11,7 @@
       <div class="stage" id="stage"
         {% if can_play %}data-oid="{{ video.oid }}" data-vid="{{ video.id }}" data-hash="{{ video.hash }}" data-host="{{ video.host }}"
         data-start="{{ n.start if n.start is not none else 0 }}"{% endif %}>
+        <img class="stage-blur" src="{{ root }}img/{{ n.id }}/cover.webp" alt="" aria-hidden="true">
         <img class="stage-poster" src="{{ root }}img/{{ n.id }}/cover.webp" width="{{ n.cover_size[0] }}" height="{{ n.cover_size[1] }}"
              alt="{% if n.has_cover %}Обложка номера «{{ n.title }}»{% endif %}">
         {% if can_play %}
@@ -31,7 +31,6 @@
       <dl class="facts">
         <div><dt>Концерт</dt><dd><a href="{{ root or './' }}?c={{ n.concert.slug }}">{{ n.concert.name }}</a>{% if n.concert.date %}, {{ n.concert.date|ru_date }}{% endif %}</dd></div>
         {% if n.direction %}<div><dt>Направление</dt><dd><a href="{{ root or './' }}?d={{ n.direction.slug }}">{{ n.direction.name }}</a></dd></div>{% endif %}
-        {% if n.start is not none and n.end is not none %}<div><dt>Длительность</dt><dd>{{ (n.end - n.start)|hms }}</dd></div>{% endif %}
       </dl>
       {% if n.about %}<div class="about"><p>{{ n.about }}</p></div>{% endif %}
 

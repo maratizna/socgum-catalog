@@ -339,8 +339,8 @@
     }).then(function () { refreshViews(); });
   }
   function pageUrl(pid) { return new URL(ROOT + "p/" + pid + "/", location.href).href; }
-  function shareButton(pid, title) {
-    var url = pageUrl(pid), b = el("button", { type: "button", class: "btn btn-s", text: "Поделиться страницей", onclick: function () {
+  function shareButton(pid, title, urlOverride) {
+    var url = urlOverride || pageUrl(pid), b = el("button", { type: "button", class: "btn btn-s", text: "Поделиться страницей", onclick: function () {
       if (navigator.share) { navigator.share({ title: title, url: url }).catch(function () { }); return; }
       var copy = navigator.clipboard && navigator.clipboard.writeText ? navigator.clipboard.writeText(url) : Promise.reject();
       copy.then(function () { b.textContent = "Ссылка скопирована"; setTimeout(function () { b.textContent = "Поделиться страницей"; }, 2500); },
@@ -497,8 +497,8 @@
       var isDir = c.authorPersonId && directors.indexOf(c.authorPersonId) !== -1;
       var mine = state.user && c.uid === state.user.uid;
       var head = el("p", { class: "c-head" },
-        avatarNode(c.uid, c.authorName, "xs"),
-        el("strong", { text: c.authorName || "Без имени" }),
+        el("a", { class: "c-who", href: c.authorPersonId ? ROOT + "p/" + c.authorPersonId + "/" : ROOT + "u/?id=" + encodeURIComponent(c.uid), title: "Страница автора" },
+          avatarNode(c.uid, c.authorName, "xs"), el("strong", { text: c.authorName || "Без имени" })),
         isDir && el("span", { class: "badge", text: "Постановщик" }),
         c.status === "hidden" && el("span", { class: "badge badge-off", text: "Скрыт" }),
         el("a", { class: "c-date", href: "#c-" + c.id, text: when(c) }));
@@ -668,6 +668,73 @@
       }
     }
     views.push(function () { draw(); loadPublic().then(draw); });
+  }
+
+  /* ------------------------------------------------------------ страница пользователя
+     Создаётся сама для каждого, кто оставил комментарий: имя, фото и его комментарии.
+     Если аккаунт подтверждён владельцем страницы человека, ссылка ведёт сразу на ту страницу. */
+  function initUserPage() {
+    var box = document.getElementById("user-page");
+    if (!box) return;
+    var uid = new URLSearchParams(location.search).get("id") || "";
+    var data = null, titles = {}, done = false, moved = false;
+
+    function load() {
+      if (!uid) { done = true; return Promise.resolve(); }
+      return Promise.all([
+        cached("user:claims:" + uid, TTL.pub, false, function () {
+          return fb.f.getDocs(fb.f.query(fcol("claims"), fb.f.where("uid", "==", uid))).then(function (s) {
+            var o = {}; s.forEach(function (d) { o[d.id] = d.data(); }); return o;
+          });
+        }).catch(function () { return {}; }),
+        cached("user:comments:" + uid, TTL.pub, false, function () {
+          return fb.f.getDocs(fb.f.query(fcol("comments"), fb.f.where("uid", "==", uid), fb.f.where("status", "==", "visible"), fb.f.limit(100))).then(function (s) {
+            var a = [];
+            s.forEach(function (d) { var x = d.data(); a.push({ id: d.id, numberId: x.numberId, text: x.text, authorName: x.authorName, createdAt: x.createdAt }); });
+            return a;
+          });
+        }).catch(function () { return null; }),
+        loadAvatars([uid]),
+        fetch(ROOT + "catalog.json").then(function (r) { return r.json(); }).then(function (j) {
+          (j.numbers || []).forEach(function (n) { titles[n.id] = n.title; });
+        }).catch(function () { })
+      ]).then(function (r) {
+        var cl = r[0] || {}, pids = Object.keys(cl).filter(function (p) { return cl[p].status === "approved"; });
+        if (pids.length) { moved = true; location.replace(ROOT + "p/" + pids[0] + "/"); return; }
+        data = r[1]; done = true;
+      });
+    }
+    function ms(c) { return c.createdAt && c.createdAt.toMillis ? c.createdAt.toMillis() : 0; }
+    function when(c) {
+      return c.createdAt && c.createdAt.toDate
+        ? c.createdAt.toDate().toLocaleString("ru-RU", { day: "numeric", month: "long", year: "numeric", hour: "2-digit", minute: "2-digit" }) : "";
+    }
+
+    function draw() {
+      clear(box);
+      if (!uid) { box.append(el("p", { class: "c-hint", text: "Не указан пользователь." })); return; }
+      if (!done || moved) { box.append(el("p", { class: "c-hint", text: "Загрузка…" })); return; }
+      var self = !!(state.user && state.user.uid === uid);
+      var list = (data || []).slice().sort(function (a, b) { return ms(b) - ms(a); });
+      var name = (list.length && list[0].authorName) || (self && state.user.displayName) || "Пользователь";
+      document.title = document.title.replace(/^[^:]*:/, name + ":");
+      box.append(el("div", { class: "user-head" }, avatarNode(uid, name, "l"),
+        el("div", null, el("h1", { text: name }),
+          el("p", { class: "c-hint", text: data === null ? "Комментарии не загрузились." : "Комментариев: " + list.length }))));
+      if (self) box.append(el("div", { class: "c-row" }, shareButton("", name, location.href), el("a", { class: "btn btn-s btn-ghost", href: ROOT + "account/", text: "Мой кабинет" })));
+      if (data && !list.length) box.append(el("p", { class: "c-empty", text: "Пока нет комментариев." }));
+      var ul = el("div", { class: "c-list" });
+      list.forEach(function (c) {
+        ul.append(el("article", { class: "comment user-comment" },
+          el("p", { class: "c-head" },
+            el("a", { href: ROOT + "n/" + c.numberId + "/#c-" + c.id, text: titles[c.numberId] || "Номер" }),
+            el("span", { class: "c-date", text: when(c) })),
+          el("p", { class: "c-text", text: c.text })));
+      });
+      box.append(ul);
+    }
+    views.push(draw);
+    load().then(draw);
   }
 
   /* уменьшаем фото до 192 px: Storage не нужен, картинка хранится строкой в профиле */
@@ -864,7 +931,7 @@
   /* ------------------------------------------------------------ запуск */
   var slot = document.getElementById("auth-slot");
   load().then(function () {
-    initNumber(); initPerson(); initAccount();
+    initNumber(); initPerson(); initAccount(); initUserPage();
     views.unshift(drawAuth);
     fb.a.onAuthStateChanged(fb.auth, function (user) { loadMe(user).then(refreshViews); });
   }, function (e) {

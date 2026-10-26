@@ -699,6 +699,8 @@ def build_site(concerts, directions, numbers, people, report, demo, source):
     if firebase:
         write(TMP / "account" / "index.html", env.get_template("account.html").render(
             root="../", page_title=f"Кабинет: {cfg['site_title']}", canonical="", og_image="", description="", **ctx_common))
+        write(TMP / "u" / "index.html", env.get_template("user.html").render(
+            root="../", page_title=f"Пользователь: {cfg['site_title']}", canonical="", og_image="", description="", **ctx_common))
 
     write(TMP / "404.html", env.get_template("404.html").render(
         root=base_path, page_title=f"Страница не найдена: {cfg['site_title']}", canonical="", og_image="",

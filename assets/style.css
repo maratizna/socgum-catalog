@@ -109,7 +109,8 @@ p{margin:0}
 .number-grid>.comments{grid-area:talk}
 .collective{color:var(--ash);font-size:1.125rem;margin:10px 0 24px}
 .stage{position:relative;aspect-ratio:16/9;background:var(--coal);border-radius:6px;overflow:hidden}
-.stage-poster{width:100%;height:100%;object-fit:cover}
+.stage-blur{position:absolute;inset:-28px;width:calc(100% + 56px);height:calc(100% + 56px);max-width:none;object-fit:cover;filter:blur(24px) brightness(.55) saturate(1.1)}
+.stage-poster{position:relative;width:100%;height:100%;object-fit:contain}
 .stage iframe{position:absolute;inset:0;width:100%;height:100%;border:0;background:#000}
 .play{position:absolute;left:18px;bottom:18px;background:var(--ember);color:var(--night);border:0;border-radius:var(--r);padding:13px 22px;font-family:var(--font-display);font-weight:700;font-size:.9rem}
 .play:hover{background:var(--ember-hi)}
@@ -215,3 +216,12 @@ span.tc{border-color:var(--line);color:var(--ash)}
 .btn-ghost{background:transparent;color:var(--ink);border:1px solid var(--line)}
 .btn-ghost:hover{border-color:var(--ember);color:var(--ember-hi)}
 a.btn{text-decoration:none;display:inline-block}
+
+/* автор комментария и страница пользователя */
+.c-who{display:inline-flex;gap:10px;align-items:center;text-decoration:none;color:inherit}
+.c-who:hover strong{color:var(--ember-hi);text-decoration:underline;text-decoration-color:var(--ember)}
+.user-page{display:grid;gap:18px;max-width:72ch}
+.user-head{display:flex;gap:18px;align-items:center;flex-wrap:wrap}
+.user-head .avatar-l{margin-top:0}
+.user-head h1{margin:0}
+.user-comment .c-head{align-items:baseline}

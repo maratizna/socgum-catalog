@@ -1,0 +1,9 @@
+{% extends "base.html" %}
+{% block body_class %}page-person{% endblock %}
+{% block head_extra %}<meta name="robots" content="noindex">{% endblock %}
+{% block main %}
+<section class="person">
+  <p class="back"><a href="{{ root or './' }}">Все номера</a></p>
+  <div id="user-page" class="user-page"><p class="c-hint">Загрузка…</p></div>
+</section>
+{% endblock %}
