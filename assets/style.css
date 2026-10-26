@@ -58,7 +58,7 @@ p{margin:0}
 
 /* шапка и подвал */
 .demo-note{background:var(--coal-2);border-left:3px solid var(--ember);color:var(--ash);font-size:.875rem;padding:8px var(--pad)}
-.site-head{max-width:var(--wrap);width:100%;margin:0 auto;padding:18px var(--pad);display:flex;align-items:baseline;justify-content:space-between;gap:16px;flex-wrap:wrap}
+.site-head{max-width:var(--wrap);width:100%;margin:0 auto;padding:18px var(--pad);display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap}
 .wordmark{font-family:var(--font-display);font-weight:700;font-size:.95rem;color:var(--ember);text-decoration:none}
 .head-link{color:var(--ash);font-size:.95rem}
 .head-link:hover{color:var(--ink)}
@@ -136,7 +136,7 @@ p{margin:0}
 @media (prefers-reduced-motion:reduce){*{transition:none!important;scroll-behavior:auto!important}}
 
 /* вход, комментарии, кабинет (появляются, только если подключён Firebase) */
-.head-nav{display:flex;gap:18px;align-items:baseline;flex-wrap:wrap}
+.head-nav{display:flex;gap:18px;align-items:center;flex-wrap:wrap}
 .auth-slot{display:inline-flex;gap:14px;align-items:center}
 .head-btn{background:none;border:0;padding:0;text-decoration:underline;text-decoration-color:var(--ember);text-underline-offset:.2em}
 .person-head{display:flex;gap:22px;align-items:flex-start}
@@ -147,6 +147,7 @@ p{margin:0}
 .avatar-init{display:inline-flex;align-items:center;justify-content:center;color:#fff;font-weight:700;font-family:var(--font-display)}
 .avatar-xs.avatar-init{font-size:.8rem}
 .avatar-l.avatar-init{font-size:2.6rem;margin-top:0}
+.head-link,.head-me{line-height:26px}
 .head-me{display:inline-flex;align-items:center;gap:8px}
 .avatar-edit{display:flex;gap:18px;align-items:center;margin:6px 0 22px;flex-wrap:wrap}
 .avatar-edit .avatar-l{margin-top:0;width:96px;height:96px}
