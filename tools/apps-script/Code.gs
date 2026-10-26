@@ -665,11 +665,11 @@ function fillFormsSheet_() {
   ['A', 'B', 'C'].forEach(function (k) {
     if (!m[k]) return;
     var f = FormApp.openById(m[k]);
-    rows.push([info[k][0], info[k][1], '=HYPERLINK("' + f.getPublishedUrl() + '","Открыть форму")']);
+    rows.push([info[k][0], info[k][1], f.getPublishedUrl()]);
   });
   rows.forEach(function (r, i) {
     sh.getRange(i + 1, 1, 1, 2).setValues([[r[0], r[1]]]);
-    if (i && String(r[2]).charAt(0) === '=') sh.getRange(i + 1, 3).setFormula(r[2]); else sh.getRange(i + 1, 3).setValue(r[2]);
+    sh.getRange(i + 1, 3).setValue(r[2]);
   });
   var guide = [
     '', 'Как пользоваться (с телефона тоже)',
@@ -684,7 +684,7 @@ function fillFormsSheet_() {
   sh.getRange(rows.length + 1, 1, guide.length, 1).setValues(guide.map(function (g) { return [g]; }));
   sh.getRange(rows.length + 2, 1).setFontWeight('bold');
   sh.getRange(1, 1, 1, 3).setFontWeight('bold').setBackground(ORANGE);
-  sh.setColumnWidth(1, 200); sh.setColumnWidth(2, 520); sh.setColumnWidth(3, 200);
+  sh.setColumnWidth(1, 200); sh.setColumnWidth(2, 520); sh.setColumnWidth(3, 460);
   sh.getRange(1, 1, rows.length + guide.length, 3).setVerticalAlignment('top');
 }
 
