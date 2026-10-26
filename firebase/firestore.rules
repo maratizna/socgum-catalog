@@ -1,0 +1,103 @@
+rules_version = '2';
+
+// Правила базы каталога номеров СоцГума.
+// Публикуются вручную: Firebase → Firestore Database → Rules → вставить → Publish.
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function signedIn() { return request.auth != null; }
+    function isAdmin() { return signedIn() && exists(/databases/$(database)/documents/admins/$(request.auth.uid)); }
+    // нормализация имени так же, как на сайте: строчные буквы, ё = е, без лишних пробелов
+    function norm(s) { return s.lower().replace('ё', 'е').replace('  ', ' ').trim(); }
+    // аккаунт — подтверждённый владелец страницы человека
+    function owns(pid) {
+      return signedIn()
+        && exists(/databases/$(database)/documents/claims/$(pid))
+        && get(/databases/$(database)/documents/claims/$(pid)).data.uid == request.auth.uid
+        && get(/databases/$(database)/documents/claims/$(pid)).data.status == 'approved';
+    }
+
+    // Администраторы: запись только из консоли Firebase. Каждый видит только свою запись.
+    match /admins/{uid} {
+      allow read: if signedIn() && request.auth.uid == uid;
+      allow write: if false;
+    }
+
+    // Список людей и номеров из таблицы. Обновляет администратор на странице «Кабинет».
+    match /people/{pid} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+    match /numbers/{nid} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+    match /meta/{doc} {
+      allow read, write: if isAdmin();
+    }
+
+    // Заявка «это моя страница». Сразу подтверждается, если имя в аккаунте Google совпадает с именем в таблице.
+    match /claims/{pid} {
+      allow read: if true;
+      allow create: if signedIn()
+        && request.resource.data.keys().hasOnly(['uid', 'name', 'status', 'createdAt'])
+        && request.resource.data.uid == request.auth.uid
+        && request.resource.data.name is string && request.resource.data.name.size() <= 100
+        && request.resource.data.createdAt == request.time
+        && exists(/databases/$(database)/documents/people/$(pid))
+        && get(/databases/$(database)/documents/people/$(pid)).data.isDirector == true
+        && (request.resource.data.status == 'pending'
+            || (request.resource.data.status == 'approved'
+                && get(/databases/$(database)/documents/people/$(pid)).data.nameKey == norm(request.auth.token.name)));
+      allow update: if isAdmin()
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status']);
+      allow delete: if isAdmin() || (signedIn() && resource.data.uid == request.auth.uid);
+    }
+
+    // Страница человека: описание, ссылка, фото. Правит подтверждённый владелец или администратор.
+    match /profiles/{pid} {
+      allow read: if true;
+      allow create, update: if (owns(pid) || isAdmin())
+        && request.resource.data.keys().hasOnly(['bio', 'link', 'avatar', 'updatedAt'])
+        && request.resource.data.bio is string && request.resource.data.bio.size() <= 2000
+        && request.resource.data.link is string && request.resource.data.link.size() <= 300
+        && request.resource.data.avatar is string && request.resource.data.avatar.size() <= 150000
+        && request.resource.data.updatedAt == request.time;
+      allow delete: if isAdmin();
+    }
+
+    // Слово постановщика на странице номера.
+    match /notes/{nid} {
+      allow read: if true;
+      allow create, update: if signedIn()
+        && request.resource.data.keys().hasOnly(['text', 'personId', 'updatedAt'])
+        && request.resource.data.text is string && request.resource.data.text.size() <= 3000
+        && request.resource.data.updatedAt == request.time
+        && (isAdmin()
+            || (owns(request.resource.data.personId)
+                && request.resource.data.personId in get(/databases/$(database)/documents/numbers/$(nid)).data.directors));
+      allow delete: if isAdmin() || (resource.data.personId is string && owns(resource.data.personId));
+    }
+
+    // Комментарии. Читают все (скрытые видит администратор и автор), пишет любой вошедший.
+    match /comments/{cid} {
+      allow read: if resource.data.status == 'visible'
+        || isAdmin()
+        || (signedIn() && resource.data.uid == request.auth.uid);
+      allow create: if signedIn()
+        && request.resource.data.keys().hasOnly(['numberId', 'uid', 'authorName', 'authorPersonId', 'text', 'createdAt', 'status', 'parentId'])
+        && request.resource.data.uid == request.auth.uid
+        && request.resource.data.authorName == request.auth.token.name
+        && request.resource.data.numberId is string && request.resource.data.numberId.size() <= 100
+        && request.resource.data.text is string
+        && request.resource.data.text.size() >= 1 && request.resource.data.text.size() <= 2000
+        && request.resource.data.status == 'visible'
+        && request.resource.data.createdAt == request.time
+        && (!('parentId' in request.resource.data) || request.resource.data.parentId is string)
+        && (!('authorPersonId' in request.resource.data) || owns(request.resource.data.authorPersonId));
+      allow update: if isAdmin()
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status']);
+      allow delete: if isAdmin() || (signedIn() && resource.data.uid == request.auth.uid);
+    }
+  }
+}

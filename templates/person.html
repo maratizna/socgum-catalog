@@ -3,9 +3,15 @@
 {% block main %}
 <section class="person">
   <p class="back"><a href="{{ root or './' }}">Все номера</a></p>
-  <h1>{{ p.name }}</h1>
-  {% if p.about %}<p class="lead">{{ p.about }}</p>{% endif %}
-  {% if p.link %}<p class="person-link"><a href="{{ p.link }}" rel="noopener">{{ p.link|domain }}</a></p>{% endif %}
+  <div class="person-head">
+    {% if firebase %}<img id="p-avatar" class="avatar avatar-l" alt="" hidden>{% endif %}
+    <div>
+      <h1>{{ p.name }}</h1>
+      <p class="lead" id="p-about"{% if not p.about %} hidden{% endif %}>{{ p.about }}</p>
+      <p class="person-link" id="p-link"{% if not p.link %} hidden{% endif %}>{% if p.link %}<a href="{{ p.link }}" rel="noopener">{{ p.link|domain }}</a>{% endif %}</p>
+    </div>
+  </div>
+  {% if firebase %}<div id="claim" class="claim" data-person="{{ p.slug }}" data-name="{{ p.name }}" data-director="{{ 1 if p.is_director else 0 }}" hidden></div>{% endif %}
   <p class="count">Номеров: {{ p.numbers|length }}</p>
   <ul class="grid">
     {% for e in p.numbers %}

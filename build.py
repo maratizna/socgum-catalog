@@ -15,6 +15,7 @@
 """
 import datetime as dt
 import difflib
+import hashlib
 import html
 import io
 import json
@@ -503,6 +504,7 @@ def build_model(wb, report):
         p["numbers"].sort(key=lambda x: (x["number"]["concert"]["date"] or dt.date.min, x["number"]["position"]), reverse=True)
         for entry in p["numbers"]:
             entry["roles"] = sorted(set(entry["roles"]))
+        p["is_director"] = any("постановщик" in e["roles"] for e in p["numbers"])
     return concerts, directions, numbers, people
 
 
@@ -619,7 +621,9 @@ def build_site(concerts, directions, numbers, people, report, demo, source):
 
     env = make_env()
     today = dt.date.today().isoformat()
-    ctx_common = dict(site_title=cfg["site_title"], site_url=site_url, home_url=cfg.get("home_url", ""),
+    fbc = cfg.get("firebase") or {}
+    firebase = {k: fbc[k] for k in ("apiKey", "authDomain", "projectId", "appId") if fbc.get(k)} if fbc.get("apiKey") and fbc.get("projectId") else None
+    ctx_common = dict(firebase=firebase, site_title=cfg["site_title"], site_url=site_url, home_url=cfg.get("home_url", ""),
                       home_label=cfg.get("home_label", ""), demo=demo, brand_font=bool(brand_font),
                       lead=cfg.get("lead", ""))
 
@@ -650,6 +654,10 @@ def build_site(concerts, directions, numbers, people, report, demo, source):
             canonical=f"{site_url}/p/{p['slug']}/" if site_url else "", og_image="",
             description=f"Номера с участием: {p['name']}", **ctx_common))
 
+    if firebase:
+        write(TMP / "account" / "index.html", env.get_template("account.html").render(
+            root="../", page_title=f"Кабинет: {cfg['site_title']}", canonical="", og_image="", description="", **ctx_common))
+
     write(TMP / "404.html", env.get_template("404.html").render(
         root=base_path, page_title=f"Страница не найдена: {cfg['site_title']}", canonical="", og_image="",
         description="", **ctx_common))
@@ -660,7 +668,15 @@ def build_site(concerts, directions, numbers, people, report, demo, source):
         "direction": n["direction"]["name"] if n["direction"] else None, "position": n["position"],
         "start": n["start"], "end": n["end"], "performers": n["performers"], "choreographers": n["choreographers"],
         "old_url": n["old_url"], "url": f"n/{n['id']}/"} for n in all_numbers]
-    write(TMP / "catalog.json", json.dumps({"generated": today, "numbers": feed}, ensure_ascii=False, indent=1))
+    people_feed = [{"id": p["slug"], "name": p["name"], "director": p["is_director"]}
+                   for p in sorted(people.values(), key=lambda p: p["slug"])]
+    for item, n in zip(feed, all_numbers):
+        item["director_ids"] = [p["slug"] for p in n["people"]["choreographers"]]
+    # отпечаток того, что нужно сервису комментариев: меняется, только когда меняются люди или постановщики
+    sync_hash = hashlib.sha1(json.dumps(
+        [people_feed, sorted((f["id"], f["title"], f["director_ids"]) for f in feed)], ensure_ascii=False).encode("utf-8")).hexdigest()[:16]
+    write(TMP / "catalog.json", json.dumps({"generated": today, "sync_hash": sync_hash, "people": people_feed, "numbers": feed},
+                                           ensure_ascii=False, indent=1))
 
     if site_url:
         urls = [f"{site_url}/"] + [f"{site_url}/n/{n['id']}/" for n in numbers.values()] + [f"{site_url}/p/{p['slug']}/" for p in people.values()]

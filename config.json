@@ -3,5 +3,11 @@
   "lead": "Номера концертов с записью. Выберите концерт или направление, найдите исполнителя или постановщика.",
   "site_url": "https://maratizna.github.io/socgum-catalog",
   "home_url": "https://socgumsu.tilda.ws/",
-  "home_label": "Сайт СоцГума"
+  "home_label": "Сайт СоцГума",
+  "firebase": {
+    "apiKey": "AIzaSyA3vyQC6uHWFaOeYab-OL4Q3G7BGgT7atw",
+    "authDomain": "socgum-catalog-sandbox.firebaseapp.com",
+    "projectId": "socgum-catalog-sandbox",
+    "appId": "1:228606252725:web:0f538d8c071d16085950fc"
+  }
 }

@@ -157,11 +157,10 @@
       stage.scrollIntoView({ block: "nearest", behavior: reduceMotion ? "auto" : "smooth" });
     }
 
-    document.querySelectorAll("[data-t]").forEach(function (el) {
-      if (el.tagName !== "BUTTON") return;
-      el.addEventListener("click", function () {
-        playAt(el.dataset.t);
-      });
+    /* Одна обработка на весь документ: кнопки со временем появляются и позже (в комментариях). */
+    document.addEventListener("click", function (e) {
+      var b = e.target.closest && e.target.closest("button[data-t]");
+      if (b) playAt(b.dataset.t);
     });
 
     /* Ссылка с временем открывает номер сразу с нужного места: ?t=135, ?t=2:15, ?t=1h2m3s или #t=2:15.

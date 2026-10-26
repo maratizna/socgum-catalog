@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="ru">
+<html lang="ru" data-root="{{ root }}">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -16,6 +16,8 @@
 <link rel="preload" href="{{ root }}assets/fonts/golos-text-cyrillic-400-normal.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="stylesheet" href="{{ root }}assets/style.css">
 {% if brand_font %}<link rel="stylesheet" href="{{ root }}assets/brand.css">{% endif %}
+{% block head_extra %}{% endblock %}
+{% if firebase %}<script type="application/json" id="fb-config">{{ firebase|tojson }}</script>{% endif %}
 </head>
 <body class="{% block body_class %}{% endblock %}">
 <a class="skip" href="#main">К содержимому</a>
@@ -24,7 +26,10 @@
 {% endif %}
 <header class="site-head">
   <a class="wordmark" href="{{ root or './' }}">{{ site_title }}</a>
-  {% if home_url %}<a class="head-link" href="{{ home_url }}">{{ home_label }}</a>{% endif %}
+  <nav class="head-nav">
+    {% if home_url %}<a class="head-link" href="{{ home_url }}">{{ home_label }}</a>{% endif %}
+    {% if firebase %}<span id="auth-slot" class="auth-slot"></span>{% endif %}
+  </nav>
 </header>
 <main id="main">
 {% block main %}{% endblock %}
@@ -34,5 +39,6 @@
   {% if home_url %}<p><a href="{{ home_url }}">{{ home_label }}</a></p>{% endif %}
 </footer>
 {% block scripts %}{% endblock %}
+{% if firebase %}<script type="module" src="{{ root }}assets/social.js"></script>{% endif %}
 </body>
 </html>
