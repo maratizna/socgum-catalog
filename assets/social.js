@@ -83,10 +83,13 @@
     var provider = new fb.a.GoogleAuthProvider();
     provider.setCustomParameters({ prompt: "select_account" });
     return fb.a.signInWithPopup(fb.auth, provider).catch(function (e) {
-      if (e && (e.code === "auth/popup-blocked" || e.code === "auth/operation-not-supported-in-this-environment"))
-        return fb.a.signInWithRedirect(fb.auth, provider);
-      if (e && (e.code === "auth/popup-closed-by-user" || e.code === "auth/cancelled-popup-request")) return;
-      alert("Не удалось войти: " + (e && e.message ? e.message : e));
+      var c = e && e.code || "";
+      console.warn("Вход не удался:", c, e && e.message);
+      if (c === "auth/popup-closed-by-user" || c === "auth/cancelled-popup-request") return;
+      // Вход «с переходом на другую страницу» между разными адресами браузеры ломают, поэтому только окно входа.
+      alert(c === "auth/popup-blocked"
+        ? "Браузер заблокировал окно входа. Разрешите всплывающие окна для этого сайта и нажмите «Войти» ещё раз."
+        : "Не удалось войти: " + (e && e.message ? e.message : e));
     });
   }
   function signOut() { return fb.a.signOut(fb.auth); }
