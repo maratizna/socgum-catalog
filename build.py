@@ -432,7 +432,7 @@ def build_model(wb, report):
             if re.fullmatch(r"\d+", r["order"]):
                 order = int(r["order"])
             else:
-                report.warn("Номера", row, f"№ в концерте «{r['order']}» не число, порядок возьмётся по строкам.")
+                report.warn("Номера", row, f"№ в концерте «{r['order']}» не число, порядок возьмётся по времени начала.")
         if not ok:
             continue
         ids.add(nid.casefold())
@@ -450,7 +450,7 @@ def build_model(wb, report):
 
     # порядок внутри концерта
     for c in concerts.values():
-        c["numbers"].sort(key=lambda n: (n["order"] is None, n["order"] or 0, n["row"]))
+        c["numbers"].sort(key=lambda n: (n["order"] is None, n["order"] or 0, n["start"] is None, n["start"] or 0, n["row"]))
         for i, n in enumerate(c["numbers"], start=1):
             n["position"] = i
 
