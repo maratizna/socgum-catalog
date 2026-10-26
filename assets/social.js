@@ -276,11 +276,25 @@
       if (!items.length) return;
       items.sort(function (a, b) { return a.sec - b.sec; });
       moments.append(el("summary", { text: "Моменты, о которых пишут (" + items.length + ")" }));
-      var ul = el("ul", { class: "moment-list" });
+      // один человек: все его моменты рядом, по времени
+      var groups = [], byKey = {};
       items.forEach(function (it) {
-        ul.append(el("li", null,
-          canSeek ? el("button", { type: "button", class: "tc", "data-t": it.sec, text: it.label }) : el("span", { class: "tc", text: it.label }),
-          it.c ? el("a", { href: "#c-" + it.c.id, text: " " + it.c.authorName }) : el("span", { text: " слово постановщика" })));
+        var key = it.c ? "u:" + it.c.uid : "note";
+        if (!byKey[key]) { byKey[key] = { c: it.c, items: [] }; groups.push(byKey[key]); }
+        byKey[key].items.push(it);
+      });
+      groups.sort(function (a, b) { return a.items[0].sec - b.items[0].sec; });
+      var ul = el("ul", { class: "moment-list" });
+      groups.forEach(function (g) {
+        var line = el("span", { class: "who" });
+        var seen = {};
+        g.items.forEach(function (it) {
+          if (seen[it.sec]) return;
+          seen[it.sec] = true;
+          line.append(canSeek ? el("button", { type: "button", class: "tc", "data-t": it.sec, text: it.label }) : el("span", { class: "tc", text: it.label }));
+        });
+        ul.append(el("li", null, line,
+          g.c ? el("a", { href: "#c-" + g.items[0].c.id, text: " " + g.c.authorName }) : el("span", { text: " слово постановщика" })));
       });
       moments.append(ul);
     }

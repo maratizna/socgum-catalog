@@ -24,10 +24,6 @@
       </div>
       {% if firebase %}
       <div id="director-note" class="director-note" hidden></div>
-      <section class="comments" aria-labelledby="cm-h">
-        <h2 id="cm-h">Комментарии</h2>
-        <div id="comments" data-number="{{ n.id }}" data-directors="{% for p in n.people.choreographers %}{{ p.slug }}{% if not loop.last %} {% endif %}{% endfor %}"></div>
-      </section>
       {% endif %}
     </div>
 
@@ -50,6 +46,12 @@
       </section>
       {% endif %}
     </aside>
+    {% if firebase %}
+    <section class="comments" aria-labelledby="cm-h">
+      <h2 id="cm-h">Комментарии</h2>
+      <div id="comments" data-number="{{ n.id }}" data-directors="{% for p in n.people.choreographers %}{{ p.slug }}{% if not loop.last %} {% endif %}{% endfor %}"></div>
+    </section>
+    {% endif %}
   </div>
 </article>
 {% endblock %}
