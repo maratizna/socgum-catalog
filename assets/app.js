@@ -14,9 +14,6 @@
 
   function initCatalog() {
     var cards = Array.prototype.slice.call(grid.children);
-    var segs = Array.prototype.slice.call(document.querySelectorAll(".seg"));
-    var segById = {};
-    segs.forEach(function (s) { segById[s.dataset.id] = s; });
     var qInput = document.getElementById("q");
     var sortSel = document.getElementById("sort");
     var count = document.getElementById("count");
@@ -50,8 +47,6 @@
         var ok = matches(card);
         card.hidden = !ok;
         if (ok) visible++;
-        var seg = segById[card.dataset.id];
-        if (seg) seg.classList.toggle("off", !ok);
       });
       var ordered = cards.slice().sort(function (a, b) {
         var ka = sortKey(a), kb = sortKey(b);
@@ -60,9 +55,6 @@
       });
       ordered.forEach(function (c) { grid.appendChild(c); });
 
-      document.querySelectorAll(".runsheet").forEach(function (r) {
-        r.hidden = !!state.c && r.dataset.concert !== state.c;
-      });
       var filtered = state.q || state.c || state.d;
       count.textContent = filtered ? "Найдено: " + visible + " из " + total : "Номеров: " + total;
       empty.hidden = visible !== 0;
@@ -108,41 +100,6 @@
         qInput.value = "";
         apply(true);
       });
-    });
-
-    /* карточка и её отрезок на шкале концерта подсвечиваются вместе */
-    cards.forEach(function (card) {
-      function on() { var s = segById[card.dataset.id]; if (s) s.classList.add("hot"); }
-      function off() { var s = segById[card.dataset.id]; if (s) s.classList.remove("hot"); }
-      card.addEventListener("pointerenter", on);
-      card.addEventListener("pointerleave", off);
-      card.addEventListener("focusin", on);
-      card.addEventListener("focusout", off);
-    });
-
-    /* подсказка над отрезком шкалы */
-    var tip = document.createElement("div");
-    tip.className = "float-tip";
-    tip.hidden = true;
-    document.body.appendChild(tip);
-    function showTip(seg) {
-      tip.textContent = "";
-      tip.appendChild(document.createTextNode(seg.dataset.tip));
-      var sub = document.createElement("small");
-      sub.textContent = seg.dataset.tipSub;
-      tip.appendChild(sub);
-      tip.hidden = false;
-      var r = seg.getBoundingClientRect();
-      var w = tip.offsetWidth;
-      var left = Math.min(Math.max(8, r.left + r.width / 2 - w / 2), window.innerWidth - w - 8);
-      tip.style.left = left + "px";
-      tip.style.top = (r.top - tip.offsetHeight - 8) + "px";
-    }
-    segs.forEach(function (seg) {
-      seg.addEventListener("pointerenter", function () { showTip(seg); });
-      seg.addEventListener("pointerleave", function () { tip.hidden = true; });
-      seg.addEventListener("focus", function () { showTip(seg); });
-      seg.addEventListener("blur", function () { tip.hidden = true; });
     });
 
     apply(false);
@@ -204,9 +161,6 @@
       if (el.tagName !== "BUTTON") return;
       el.addEventListener("click", function () {
         playAt(el.dataset.t);
-        document.querySelectorAll(".cue[aria-current]").forEach(function (c) { c.removeAttribute("aria-current"); });
-        var cue = document.querySelector('button.cue[data-t="' + el.dataset.t + '"]');
-        if (cue) cue.setAttribute("aria-current", "true");
       });
     });
   }

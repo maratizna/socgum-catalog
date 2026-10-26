@@ -236,15 +236,14 @@ SPEC = {
         "about": ["описание"], "cover": ["обложка"], "start": ["начало"], "end": ["конец"],
         "old_url": ["старый адрес"],
     },
-    "Таймкоды": {"number": ["id номера", "id"], "time": ["время"], "label": ["подпись"]},
     "Люди": {"name": ["имя"], "about": ["о себе", "описание"], "link": ["ссылка"]},
 }
 REQUIRED = {
     "Концерты": ["name"], "Направления": ["name"],
-    "Номера": ["id", "concert", "title"], "Таймкоды": ["number", "time"], "Люди": ["name"],
+    "Номера": ["id", "concert", "title"], "Люди": ["name"],
 }
-OPTIONAL_SHEETS = {"Таймкоды", "Люди"}
-RAW_COLS = {("Номера", "start"), ("Номера", "end"), ("Таймкоды", "time")}  # время разбираем сами
+OPTIONAL_SHEETS = {"Люди"}
+RAW_COLS = {("Номера", "start"), ("Номера", "end")}  # время разбираем сами
 
 
 def hnorm(s):
@@ -409,7 +408,7 @@ def build_model(wb, report):
             "concert": concert, "direction": direction, "order": order,
             "performers": split_people(r.get("performers")), "choreographers": split_people(r.get("choreographers")),
             "about": r.get("about", ""), "cover_name": r.get("cover", ""), "start": start, "end": end,
-            "old_url": r.get("old_url", ""), "timecodes": [],
+            "old_url": r.get("old_url", ""),
         }
         if concert and concert["video"] and start is None:
             report.warn("Номера", row, f"У номера «{r['title']}» нет начала: видео откроется с самого начала записи.")
@@ -421,45 +420,6 @@ def build_model(wb, report):
         c["numbers"].sort(key=lambda n: (n["order"] is None, n["order"] or 0, n["row"]))
         for i, n in enumerate(c["numbers"], start=1):
             n["position"] = i
-        ends = [n["end"] for n in c["numbers"] if n["end"] is not None]
-        c["span"] = max(ends) if ends else None
-        for n in c["numbers"]:
-            if c["span"] and n["start"] is not None and n["end"] is not None:
-                n["track"] = {"left": round(n["start"] / c["span"] * 100, 3),
-                              "width": round(max(n["end"] - n["start"], 1) / c["span"] * 100, 3)}
-            else:
-                n["track"] = None
-
-    # Таймкоды
-    for r in sheets["Таймкоды"]:
-        row, nid = r["_row"], r["number"]
-        if not nid and r.get("time") in (None, ""):
-            continue
-        num = numbers.get(nid.casefold())
-        if not num:
-            report.error("Таймкоды", row, f"Номера с ID «{nid}» нет на листе «Номера».")
-            continue
-        sec = parse_seconds(r.get("time"))
-        if sec is None:
-            report.error("Таймкоды", row, f"Время «{cell_text(r.get('time'))}» не распознано. Формат: ч:мм:сс, например 0:22:45.")
-            continue
-        if num["start"] is not None and num["end"] is not None and not (num["start"] <= sec <= num["end"]):
-            report.error("Таймкоды", row, f"Время {hms(sec)} вне номера «{num['title']}» ({hms(num['start'])}–{hms(num['end'])}). Время указывается по записи всего концерта.")
-            continue
-        label = r.get("label", "")
-        if not label:
-            report.warn("Таймкоды", row, f"У метки {hms(sec)} в номере «{num['title']}» нет подписи.")
-        num["timecodes"].append({"t": sec, "label": label})
-    for n in numbers.values():
-        n["timecodes"].sort(key=lambda x: x["t"])
-        base = n["start"]
-        for tc in n["timecodes"]:
-            tc["rel"] = tc["t"] - (base or 0)
-            tc["abs_label"] = hms(tc["t"])
-            if n["start"] is not None and n["end"] is not None:
-                tc["pct"] = round((tc["t"] - n["start"]) / (n["end"] - n["start"]) * 100, 2)
-            else:
-                tc["pct"] = None
 
     # Люди
     people = OrderedDict()
@@ -663,7 +623,6 @@ def build_site(concerts, directions, numbers, people, report, demo, source):
         "concert": n["concert"]["name"], "concert_date": n["concert"]["date"].isoformat() if n["concert"]["date"] else None,
         "direction": n["direction"]["name"] if n["direction"] else None, "position": n["position"],
         "start": n["start"], "end": n["end"], "performers": n["performers"], "choreographers": n["choreographers"],
-        "timecodes": [{"t": t["t"], "label": t["label"]} for t in n["timecodes"]],
         "old_url": n["old_url"], "url": f"n/{n['id']}/"} for n in all_numbers]
     write(TMP / "catalog.json", json.dumps({"generated": today, "numbers": feed}, ensure_ascii=False, indent=1))
 
@@ -683,8 +642,7 @@ def main():
     ok = False
     if wb is not None:
         concerts, directions, numbers, people = build_model(wb, report)
-        stats = (f"Итог: концертов {len(concerts)}, номеров {len(numbers)}, людей {len(people)}, "
-                 f"меток времени {sum(len(n['timecodes']) for n in numbers.values())}.")
+        stats = (f"Итог: концертов {len(concerts)}, номеров {len(numbers)}, людей {len(people)}.")
         if not report.errors:
             built = build_site(concerts, directions, numbers, people, report, demo, source)
             if built and not report.errors:

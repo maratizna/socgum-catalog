@@ -6,26 +6,6 @@
   <p class="lead">{{ lead }}</p>
 </section>
 
-{% set sheets = concerts|selectattr("span")|list %}
-{% if sheets %}
-<section class="runsheets" aria-label="Ход концертов: где в записи идёт каждый номер">
-  {% for c in sheets %}
-  <div class="runsheet" data-concert="{{ c.slug }}">
-    <p class="runsheet-title"><a href="?c={{ c.slug }}">{{ c.name }}</a>{% if c.date %}<span class="runsheet-date">{{ c.date|ru_date }}</span>{% endif %}</p>
-    <div class="runsheet-track">
-      {% for n in c.numbers if n.track %}
-      <a class="seg" href="{{ root }}n/{{ n.id }}/" data-id="{{ n.id }}"
-         data-direction="{{ n.direction.slug if n.direction else '' }}"
-         data-tip="{{ n.title }}" data-tip-sub="{{ n.start|hms }} – {{ n.end|hms }}"
-         style="left:{{ n.track.left }}%;width:{{ n.track.width }}%"><span class="sr">{{ n.title }}</span></a>
-      {% endfor %}
-    </div>
-    <p class="runsheet-ends"><span>0:00</span><span>{{ c.span|hms }}</span></p>
-  </div>
-  {% endfor %}
-</section>
-{% endif %}
-
 <section class="filters" aria-label="Поиск и фильтры">
   <div class="filter-row">
     <input type="search" id="q" class="search" placeholder="Название, коллектив, исполнитель, постановщик" list="people-list" autocomplete="off" aria-label="Поиск по каталогу">
