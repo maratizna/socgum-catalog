@@ -1,0 +1,17 @@
+{% extends "base.html" %}
+{% block body_class %}page-person{% endblock %}
+{% block main %}
+<section class="person">
+  <p class="back"><a href="{{ root or './' }}">Все номера</a></p>
+  <h1>{{ p.name }}</h1>
+  {% if p.about %}<p class="lead">{{ p.about }}</p>{% endif %}
+  {% if p.link %}<p class="person-link"><a href="{{ p.link }}" rel="noopener">{{ p.link|domain }}</a></p>{% endif %}
+  <p class="count">Номеров: {{ p.numbers|length }}</p>
+  <ul class="grid">
+    {% for e in p.numbers %}
+    {% set n = e.number %}
+    <li class="card">{% with roles = e.roles %}{% include "_card.html" %}{% endwith %}</li>
+    {% endfor %}
+  </ul>
+</section>
+{% endblock %}

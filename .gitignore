@@ -1,0 +1,6 @@
+site/
+site.tmp/
+build-report.md
+__pycache__/
+*.pyc
+.DS_Store

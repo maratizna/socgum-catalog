@@ -1,0 +1,14 @@
+{# Карточка номера. Параметры: n, root, roles (необязательно) #}
+<a class="card-link" href="{{ root }}n/{{ n.id }}/">
+  <span class="card-cover">
+    <img src="{{ root }}img/{{ n.id }}/card.webp" width="640" height="480" alt="" loading="lazy" decoding="async">
+  </span>
+  <span class="card-title">{{ n.title }}</span>
+</a>
+<p class="card-sub">{% if n.collective %}{{ n.collective }}{% else %}{{ n.concert.name }}{% endif %}</p>
+{% if roles %}<p class="card-role">{{ roles|join(" и ") }}</p>{% endif %}
+{% if n.track %}
+<span class="where" role="img" aria-label="Номер идёт с {{ n.start|hms }} до {{ n.end|hms }} записи концерта">
+  <i style="left:{{ n.track.left }}%;width:{{ n.track.width }}%"></i>
+</span>
+{% endif %}

@@ -1,0 +1,73 @@
+{% extends "base.html" %}
+{% block body_class %}page-index{% endblock %}
+{% block main %}
+<section class="intro">
+  <h1>{{ site_title }}</h1>
+  <p class="lead">{{ lead }}</p>
+</section>
+
+{% set sheets = concerts|selectattr("span")|list %}
+{% if sheets %}
+<section class="runsheets" aria-label="Ход концертов: где в записи идёт каждый номер">
+  {% for c in sheets %}
+  <div class="runsheet" data-concert="{{ c.slug }}">
+    <p class="runsheet-title"><a href="?c={{ c.slug }}">{{ c.name }}</a>{% if c.date %}<span class="runsheet-date">{{ c.date|ru_date }}</span>{% endif %}</p>
+    <div class="runsheet-track">
+      {% for n in c.numbers if n.track %}
+      <a class="seg" href="{{ root }}n/{{ n.id }}/" data-id="{{ n.id }}"
+         data-direction="{{ n.direction.slug if n.direction else '' }}"
+         data-tip="{{ n.title }}" data-tip-sub="{{ n.start|hms }} – {{ n.end|hms }}"
+         style="left:{{ n.track.left }}%;width:{{ n.track.width }}%"><span class="sr">{{ n.title }}</span></a>
+      {% endfor %}
+    </div>
+    <p class="runsheet-ends"><span>0:00</span><span>{{ c.span|hms }}</span></p>
+  </div>
+  {% endfor %}
+</section>
+{% endif %}
+
+<section class="filters" aria-label="Поиск и фильтры">
+  <div class="filter-row">
+    <input type="search" id="q" class="search" placeholder="Название, коллектив, исполнитель, постановщик" list="people-list" autocomplete="off" aria-label="Поиск по каталогу">
+    <datalist id="people-list">{% for p in people %}<option value="{{ p.name }}">{% endfor %}</datalist>
+    <label class="sort">Порядок
+      <select id="sort">
+        <option value="concert">Как в концерте</option>
+        <option value="title">По названию</option>
+        <option value="collective">По коллективу</option>
+      </select>
+    </label>
+  </div>
+  {% if concerts|length > 1 %}
+  <div class="chips" role="group" aria-label="Концерт" data-group="c">
+    <button type="button" class="chip" data-value="" aria-pressed="true">Все концерты</button>
+    {% for c in concerts %}<button type="button" class="chip" data-value="{{ c.slug }}" aria-pressed="false">{{ c.name }}</button>{% endfor %}
+  </div>
+  {% endif %}
+  {% if directions|length > 1 %}
+  <div class="chips" role="group" aria-label="Направление" data-group="d">
+    <button type="button" class="chip" data-value="" aria-pressed="true">Все направления</button>
+    {% for d in directions %}<button type="button" class="chip" data-value="{{ d.slug }}" aria-pressed="false">{{ d.name }}</button>{% endfor %}
+  </div>
+  {% endif %}
+  <p class="count-row"><span class="count" id="count" aria-live="polite">Номеров: {{ numbers|length }}</span>
+    <button type="button" class="linkbtn" data-reset hidden>Сбросить фильтры</button></p>
+</section>
+
+<ul class="grid" id="grid">
+  {% for n in numbers %}
+  <li class="card" data-id="{{ n.id }}" data-concert="{{ n.concert.slug }}" data-direction="{{ n.direction.slug if n.direction else '' }}"
+      data-order="{{ loop.index0 }}" data-title="{{ n.title }}" data-collective="{{ n.collective }}"
+      data-search="{{ ([n.title, n.collective, n.concert.name, n.direction.name if n.direction else '']
+        + n.choreographers + n.performers)|join(' ') }}">
+    {% include "_card.html" %}
+  </li>
+  {% endfor %}
+</ul>
+
+<div class="empty" id="empty" hidden>
+  <p>По этим условиям номеров нет.</p>
+  <button type="button" class="btn" data-reset>Сбросить фильтры</button>
+</div>
+{% endblock %}
+{% block scripts %}<script src="{{ root }}assets/app.js" defer></script>{% endblock %}

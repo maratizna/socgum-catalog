@@ -1,0 +1,85 @@
+{% extends "base.html" %}
+{% block body_class %}page-number{% endblock %}
+{% block main %}
+{% set can_play = video is not none %}
+<article class="number">
+  <p class="back"><a href="{{ root or './' }}?c={{ n.concert.slug }}">Все номера концерта</a></p>
+  <div class="number-grid">
+    <div class="number-main">
+      <h1>{{ n.title }}</h1>
+      {% if n.collective %}<p class="collective">{{ n.collective }}</p>{% endif %}
+
+      <div class="stage" id="stage"
+        {% if can_play %}data-oid="{{ video.oid }}" data-vid="{{ video.id }}" data-hash="{{ video.hash }}" data-host="{{ video.host }}"
+        data-start="{{ n.start if n.start is not none else 0 }}"{% endif %}>
+        <img class="stage-poster" src="{{ root }}img/{{ n.id }}/cover.webp" width="{{ n.cover_size[0] }}" height="{{ n.cover_size[1] }}"
+             alt="{% if n.has_cover %}Обложка номера «{{ n.title }}»{% endif %}">
+        {% if can_play %}
+        <button class="play" type="button" data-t="{{ n.start if n.start is not none else 0 }}">
+          Смотреть{% if n.start is not none %} с {{ n.start|hms }}{% endif %}
+        </button>
+        {% else %}
+        <p class="stage-note">Запись концерта пока не добавлена.</p>
+        {% endif %}
+      </div>
+
+      {% if n.timecodes or n.start is not none %}
+      <section class="timeline" aria-labelledby="tl-h">
+        <h2 id="tl-h">Метки времени</h2>
+        {% if n.start is not none and n.end is not none %}
+        <div class="track" role="group" aria-label="Шкала номера">
+          {% for tc in n.timecodes if tc.pct is not none %}
+            {% if can_play %}
+            <button type="button" class="mark {{ 'edge-l' if tc.pct < 18 else ('edge-r' if tc.pct > 82 else '') }}" style="left:{{ tc.pct }}%" data-t="{{ tc.t }}" aria-label="{{ tc.rel|hms }}, {{ tc.label }}"><span class="tip">{{ tc.rel|hms }} {{ tc.label }}</span></button>
+            {% else %}
+            <span class="mark {{ 'edge-l' if tc.pct < 18 else ('edge-r' if tc.pct > 82 else '') }}" style="left:{{ tc.pct }}%"><span class="tip">{{ tc.rel|hms }} {{ tc.label }}</span></span>
+            {% endif %}
+          {% endfor %}
+        </div>
+        <p class="track-ends"><span>0:00</span><span>{{ (n.end - n.start)|hms }}</span></p>
+        {% endif %}
+        <ol class="cues">
+          {% if n.start is not none %}
+          <li>{% if can_play %}<button type="button" class="cue" data-t="{{ n.start }}">{% else %}<span class="cue">{% endif %}
+            <time>0:00</time><span>Начало номера</span>{% if can_play %}</button>{% else %}</span>{% endif %}</li>
+          {% endif %}
+          {% for tc in n.timecodes if not (tc.t == n.start) %}
+          <li>{% if can_play %}<button type="button" class="cue" data-t="{{ tc.t }}">{% else %}<span class="cue">{% endif %}
+            <time title="{{ tc.abs_label }} в записи концерта">{{ tc.rel|hms }}</time><span>{{ tc.label }}</span>{% if can_play %}</button>{% else %}</span>{% endif %}</li>
+          {% endfor %}
+        </ol>
+      </section>
+      {% endif %}
+    </div>
+
+    <aside class="number-side">
+      <dl class="facts">
+        <div><dt>Концерт</dt><dd><a href="{{ root or './' }}?c={{ n.concert.slug }}">{{ n.concert.name }}</a>{% if n.concert.date %}, {{ n.concert.date|ru_date }}{% endif %}</dd></div>
+        {% if n.direction %}<div><dt>Направление</dt><dd><a href="{{ root or './' }}?d={{ n.direction.slug }}">{{ n.direction.name }}</a></dd></div>{% endif %}
+        <div><dt>Место в концерте</dt><dd>{{ n.position }} из {{ n.concert.numbers|length }}</dd></div>
+        {% if n.start is not none and n.end is not none %}<div><dt>Длительность</dt><dd>{{ (n.end - n.start)|hms }}</dd></div>{% endif %}
+      </dl>
+      {% if n.track %}
+      <span class="where where-lg" role="img" aria-label="Номер идёт с {{ n.start|hms }} до {{ n.end|hms }} записи концерта">
+        <i style="left:{{ n.track.left }}%;width:{{ n.track.width }}%"></i>
+      </span>
+      <p class="where-caption">Место номера в записи концерта: с {{ n.start|hms }} до {{ n.end|hms }}</p>
+      {% endif %}
+
+      {% if n.about %}<div class="about"><p>{{ n.about }}</p></div>{% endif %}
+
+      {% if n.people.choreographers %}
+      <section class="people" aria-labelledby="ch-h"><h2 id="ch-h">Постановщики</h2>
+        <ul>{% for p in n.people.choreographers %}<li><a href="{{ root }}p/{{ p.slug }}/">{{ p.name }}</a></li>{% endfor %}</ul>
+      </section>
+      {% endif %}
+      {% if n.people.performers %}
+      <section class="people" aria-labelledby="pf-h"><h2 id="pf-h">Исполнители</h2>
+        <ul>{% for p in n.people.performers %}<li><a href="{{ root }}p/{{ p.slug }}/">{{ p.name }}</a></li>{% endfor %}</ul>
+      </section>
+      {% endif %}
+    </aside>
+  </div>
+</article>
+{% endblock %}
+{% block scripts %}<script src="{{ root }}assets/app.js" defer></script>{% endblock %}

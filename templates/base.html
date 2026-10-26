@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{{ page_title }}</title>
+{% if description %}<meta name="description" content="{{ description|striptags|truncate(180) }}">{% endif %}
+{% if canonical %}<link rel="canonical" href="{{ canonical }}">{% endif %}
+<meta property="og:site_name" content="{{ site_title }}">
+<meta property="og:title" content="{{ page_title }}">
+{% if description %}<meta property="og:description" content="{{ description|striptags|truncate(180) }}">{% endif %}
+{% if canonical %}<meta property="og:url" content="{{ canonical }}">{% endif %}
+{% if og_image %}<meta property="og:image" content="{{ og_image }}"><meta property="og:image:width" content="1200"><meta property="og:image:height" content="630"><meta name="twitter:card" content="summary_large_image">{% endif %}
+<meta name="theme-color" content="#090500">
+<link rel="preload" href="{{ root }}assets/fonts/unbounded-cyrillic-700-normal.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="preload" href="{{ root }}assets/fonts/golos-text-cyrillic-400-normal.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="stylesheet" href="{{ root }}assets/style.css">
+{% if brand_font %}<link rel="stylesheet" href="{{ root }}assets/brand.css">{% endif %}
+</head>
+<body class="{% block body_class %}{% endblock %}">
+<a class="skip" href="#main">К содержимому</a>
+{% if demo %}
+<p class="demo-note">Демонстрационные данные: названия, коллективы и имена выдуманы.</p>
+{% endif %}
+<header class="site-head">
+  <a class="wordmark" href="{{ root or './' }}">{{ site_title }}</a>
+  {% if home_url %}<a class="head-link" href="{{ home_url }}">{{ home_label }}</a>{% endif %}
+</header>
+<main id="main">
+{% block main %}{% endblock %}
+</main>
+<footer class="site-foot">
+  <p>{{ site_title }}</p>
+  {% if home_url %}<p><a href="{{ home_url }}">{{ home_label }}</a></p>{% endif %}
+</footer>
+{% block scripts %}{% endblock %}
+</body>
+</html>
