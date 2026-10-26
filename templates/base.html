@@ -14,7 +14,7 @@
 <meta name="theme-color" content="#090500">
 <link rel="preload" href="{{ root }}assets/fonts/unbounded-cyrillic-700-normal.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="preload" href="{{ root }}assets/fonts/golos-text-cyrillic-400-normal.woff2" as="font" type="font/woff2" crossorigin>
-<link rel="stylesheet" href="{{ root }}assets/style.css">
+<link rel="stylesheet" href="{{ root }}assets/style.css?v={{ asset_v }}">
 {% if brand_font %}<link rel="stylesheet" href="{{ root }}assets/brand.css">{% endif %}
 {% block head_extra %}{% endblock %}
 {% if firebase %}<script type="application/json" id="fb-config">{{ firebase|tojson }}</script>{% endif %}
@@ -39,6 +39,6 @@
   {% if home_url %}<p><a href="{{ home_url }}">{{ home_label }}</a></p>{% endif %}
 </footer>
 {% block scripts %}{% endblock %}
-{% if firebase %}<script type="module" src="{{ root }}assets/social.js"></script>{% endif %}
+{% if firebase %}<script type="module" src="{{ root }}assets/social.js?v={{ asset_v }}"></script>{% endif %}
 </body>
 </html>

@@ -623,7 +623,8 @@ def build_site(concerts, directions, numbers, people, report, demo, source):
     today = dt.date.today().isoformat()
     fbc = cfg.get("firebase") or {}
     firebase = {k: fbc[k] for k in ("apiKey", "authDomain", "projectId", "appId") if fbc.get(k)} if fbc.get("apiKey") and fbc.get("projectId") else None
-    ctx_common = dict(firebase=firebase, site_title=cfg["site_title"], site_url=site_url, home_url=cfg.get("home_url", ""),
+    asset_v = hashlib.sha1(b"".join((ROOT / "assets" / f).read_bytes() for f in ("style.css", "app.js", "social.js"))).hexdigest()[:8]
+    ctx_common = dict(firebase=firebase, asset_v=asset_v, site_title=cfg["site_title"], site_url=site_url, home_url=cfg.get("home_url", ""),
                       home_label=cfg.get("home_label", ""), demo=demo, brand_font=bool(brand_font),
                       lead=cfg.get("lead", ""))
 
