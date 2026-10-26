@@ -292,6 +292,102 @@
     return n;
   }
 
+  /* ------------------------------------------------------------ единая страница человека
+     Подтверждённый владелец ведёт одну страницу: описание и ссылка лежат в profiles/{pid}, а фото одно на аккаунт.
+     Фото аккаунта (users) и фото страниц, которыми он владеет (profiles), меняются вместе. */
+  function readProfile(pid) { return fb.f.getDoc(fdoc("profiles/" + pid)).then(function (s) { return s.exists() ? s.data() : null; }); }
+  function profileCached(pid, fresh) { return cached("pub:profile:" + pid, TTL.pub, fresh === true, function () { return readProfile(pid); }); }
+  function writeProfile(pid, patch) {
+    return readProfile(pid).then(function (cur) {
+      cur = cur || {};
+      var d = { bio: cur.bio || "", link: cur.link || "", avatar: cur.avatar || "", updatedAt: fb.f.serverTimestamp() };
+      Object.keys(patch).forEach(function (k) { d[k] = patch[k]; });
+      return fb.f.setDoc(fdoc("profiles/" + pid), d);
+    }).then(function () { cdrop("pub:profile:" + pid); });
+  }
+  function approvedPids() {
+    return Object.keys(state.claims).filter(function (p) { return state.claims[p].status === "approved"; });
+  }
+  /* Фото владельца подтягивается на страницу, если у страницы своего фото ещё нет. Возвращает актуальный профиль. */
+  function ownProfile(pid) {
+    return profileCached(pid).then(function (p) {
+      var a = state.user && avatars[state.user.uid];
+      if ((p && p.avatar) || !a) return p;
+      return writeProfile(pid, { avatar: a }).then(function () { return profileCached(pid, true); }, function () { return p; });
+    });
+  }
+  /* Подтверждение заявки администратором: фото человека сразу переходит на его страницу. */
+  function approveClaim(pid, uid) {
+    return fb.f.updateDoc(fdoc("claims/" + pid), { status: "approved" }).then(function () {
+      cdrop("me:"); cdrop("pub:");
+      return Promise.all([loadAvatars([uid], true), profileCached(pid, true)]).then(function (r) {
+        var a = avatars[uid];
+        if (a && !(r[1] && r[1].avatar)) return writeProfile(pid, { avatar: a });
+      }).catch(function () { });
+    });
+  }
+  function setMyAvatar(file) {
+    return Promise.all([shrink(file, 128, 30000), shrink(file, 192, 100000)]).then(function (r) {
+      return saveAvatar(r[0]).then(function () {
+        return Promise.all(approvedPids().map(function (pid) { return writeProfile(pid, { avatar: r[1] }); }));
+      }).then(function () { refreshViews(); return r[1]; });
+    });
+  }
+  function clearMyAvatar() {
+    return saveAvatar("").then(function () {
+      return Promise.all(approvedPids().map(function (pid) { return writeProfile(pid, { avatar: "" }); }));
+    }).then(function () { refreshViews(); });
+  }
+  function pageUrl(pid) { return new URL(ROOT + "p/" + pid + "/", location.href).href; }
+  function shareButton(pid, title) {
+    var url = pageUrl(pid), b = el("button", { type: "button", class: "btn btn-s", text: "Поделиться страницей", onclick: function () {
+      if (navigator.share) { navigator.share({ title: title, url: url }).catch(function () { }); return; }
+      var copy = navigator.clipboard && navigator.clipboard.writeText ? navigator.clipboard.writeText(url) : Promise.reject();
+      copy.then(function () { b.textContent = "Ссылка скопирована"; setTimeout(function () { b.textContent = "Поделиться страницей"; }, 2500); },
+        function () { window.prompt("Скопируйте ссылку", url); });
+    } });
+    return b;
+  }
+  /* Редактор страницы: описание, ссылка, фото. own: владелец правит свою страницу, и фото общее с аккаунтом. */
+  function profileEditor(pid, profile, aboutDefault, own, done) {
+    var ta = el("textarea", { class: "c-input", rows: "5", maxlength: "2000", "aria-label": "О себе", placeholder: "Коротко о себе" });
+    ta.value = profile && profile.bio || aboutDefault || "";
+    var link = el("input", { class: "c-input", type: "url", maxlength: "300", "aria-label": "Ссылка", placeholder: "https://vk.com/…" });
+    link.value = profile && profile.link || "";
+    var avatar = profile && profile.avatar || "";
+    var prev = el("img", { class: "avatar avatar-l", alt: "", hidden: !avatar, src: avatar || null });
+    var wrap;
+    var file = el("input", { type: "file", accept: "image/*", "aria-label": "Фото", hidden: true, onchange: function () {
+      var f = file.files[0]; if (!f) return;
+      if (own) {
+        note(wrap, "Загружаем…");
+        setMyAvatar(f).then(function (big) { avatar = big; prev.src = big; prev.hidden = false; note(wrap, "Фото сохранено.", "ok"); done && done(); },
+          function (e) { note(wrap, e && e.code ? errText(e) : e.message, "err"); });
+      } else {
+        shrink(f).then(function (data) { avatar = data; prev.src = data; prev.hidden = false; }, function (e) { note(wrap, e.message, "err"); });
+      }
+      file.value = "";
+    } });
+    var removeBtn = el("button", { type: "button", class: "linkbtn", text: "Убрать фото", onclick: function () {
+      if (own) {
+        clearMyAvatar().then(function () { avatar = ""; prev.hidden = true; note(wrap, "Фото убрано.", "ok"); done && done(); }, function (e) { note(wrap, errText(e), "err"); });
+      } else { avatar = ""; prev.hidden = true; }
+    } });
+    wrap = el("div", { class: "edit-box" },
+      el("label", null, "О себе", ta), el("label", null, "Ссылка (сайт или страница)", link),
+      el("div", { class: "c-row" }, prev,
+        el("button", { type: "button", class: "btn btn-s", text: "Загрузить фото", onclick: function () { file.click(); } }), removeBtn, file),
+      own ? el("p", { class: "c-hint", text: "Это же фото показывается рядом с вашими комментариями." }) : null,
+      el("div", { class: "c-row" }, el("button", { type: "button", class: "btn", text: "Сохранить", onclick: function () {
+        var l = link.value.trim();
+        if (l && !/^https?:\/\//i.test(l)) { note(wrap, "Ссылка должна начинаться с https://", "err"); return; }
+        var patch = { bio: ta.value.trim(), link: l };
+        if (!own) patch.avatar = avatar;
+        writeProfile(pid, patch).then(function () { note(wrap, "Сохранено.", "ok"); done && done(); }, function (e) { note(wrap, errText(e), "err"); });
+      } })));
+    return wrap;
+  }
+
   /* ------------------------------------------------------------ шапка: вход */
   function drawAuth() {
     var slot = document.getElementById("auth-slot");
@@ -502,27 +598,33 @@
     var claim = null, profile = null, profileLoaded = false;
     var aboutEl = document.getElementById("p-about"), linkEl = document.getElementById("p-link"), avatarEl = document.getElementById("p-avatar");
 
+    function approved() { return !!(claim && claim.status === "approved"); }
     function loadPublic(fresh) {
       fresh = fresh === true;
       return Promise.all([
         cached("pub:claim:" + pid, TTL.pub, fresh, function () { return fb.f.getDoc(fdoc("claims/" + pid)).then(function (s) { return s.exists() ? s.data() : null; }); })
           .then(function (v) { claim = v; }, function () { claim = null; }),
-        cached("pub:profile:" + pid, TTL.pub, fresh, function () { return fb.f.getDoc(fdoc("profiles/" + pid)).then(function (s) { return s.exists() ? s.data() : null; }); })
-          .then(function (v) { profile = v; }, function () { profile = null; })
-      ]).then(function () { profileLoaded = true; });
+        profileCached(pid, fresh).then(function (v) { profile = v; }, function () { profile = null; })
+      ]).then(function () {
+        if (!approved()) return;
+        // фото владельца: подтягиваем на страницу, а гостям показываем фото аккаунта, пока у страницы нет своего
+        return loadAvatars([claim.uid]).then(function () {
+          if (mine()) return ownProfile(pid).then(function (p) { profile = p; });
+        }).catch(function () { });
+      }).then(function () { profileLoaded = true; });
     }
     function reloadPublic() { cdrop("pub:"); return loadPublic(true); }
     function applyProfile() {
-      if (!profile) return;
-      if (profile.bio && aboutEl) { aboutEl.textContent = profile.bio; aboutEl.hidden = false; }
-      if (profile.link && linkEl) {
+      if (profile && profile.bio && aboutEl) { aboutEl.textContent = profile.bio; aboutEl.hidden = false; }
+      if (profile && profile.link && linkEl) {
         clear(linkEl).append(el("a", { href: profile.link, rel: "noopener ugc", text: profile.link.replace(/^https?:\/\/(www\.)?/, "").replace(/\/$/, "") }));
         linkEl.hidden = false;
       }
-      if (avatarEl) { if (profile.avatar) { avatarEl.src = profile.avatar; avatarEl.hidden = false; } else avatarEl.hidden = true; }
+      var av = profile && profile.avatar || (approved() && avatars[claim.uid]) || "";
+      if (avatarEl) { if (av) { avatarEl.src = av; avatarEl.hidden = false; } else avatarEl.hidden = true; }
     }
 
-    function mine() { return state.user && claim && claim.uid === state.user.uid; }
+    function mine() { return !!(state.user && claim && claim.uid === state.user.uid && claim.status === "approved"); }
     function claimPerson() {
       var u = state.user;
       return fb.f.setDoc(fdoc("claims/" + pid), { uid: u.uid, name: u.displayName || "Без имени", status: "pending", createdAt: fb.f.serverTimestamp() })
@@ -533,30 +635,6 @@
         });
     }
 
-    function editor() {
-      var ta = el("textarea", { class: "c-input", rows: "5", maxlength: "2000", "aria-label": "О себе", placeholder: "Коротко о себе" });
-      ta.value = profile && profile.bio || (aboutEl ? aboutEl.textContent.trim() : "");
-      var link = el("input", { class: "c-input", type: "url", maxlength: "300", "aria-label": "Ссылка", placeholder: "https://vk.com/…" });
-      link.value = profile && profile.link || "";
-      var avatar = profile && profile.avatar || "";
-      var prev = el("img", { class: "avatar", alt: "", hidden: !avatar, src: avatar || null });
-      var file = el("input", { type: "file", accept: "image/*", "aria-label": "Фото", onchange: function () {
-        var f = file.files[0]; if (!f) return;
-        shrink(f).then(function (data) { avatar = data; prev.src = data; prev.hidden = false; }, function (e) { note(wrap, e.message, "err"); });
-      } });
-      var wrap = el("div", { class: "edit-box" },
-        el("label", null, "О себе", ta), el("label", null, "Ссылка (сайт или страница)", link),
-        el("div", { class: "c-row" }, prev, file,
-          el("button", { type: "button", class: "linkbtn", text: "Убрать фото", onclick: function () { avatar = ""; prev.hidden = true; file.value = ""; } })),
-        el("div", { class: "c-row" }, el("button", { type: "button", class: "btn", text: "Сохранить", onclick: function () {
-          var l = link.value.trim();
-          if (l && !/^https?:\/\//i.test(l)) { note(wrap, "Ссылка должна начинаться с https://", "err"); return; }
-          fb.f.setDoc(fdoc("profiles/" + pid), { bio: ta.value.trim(), link: l, avatar: avatar, updatedAt: fb.f.serverTimestamp() })
-            .then(reloadPublic).then(function () { applyProfile(); note(wrap, "Сохранено.", "ok"); }, function (e) { note(wrap, errText(e), "err"); });
-        } })));
-      return wrap;
-    }
-
     function draw() {
       clear(box);
       if (!state.ready || !profileLoaded) return;
@@ -564,25 +642,28 @@
       if (!isDirector) { box.hidden = true; return; }
       box.hidden = false;
       var u = state.user;
-      if (claim && claim.status === "approved") box.append(el("p", { class: "c-hint", text: "Страница подтверждена владельцем." }));
+      if (approved()) box.append(el("p", { class: "c-hint", text: "Страница подтверждена владельцем." }));
       if (!u) {
         if (!claim) box.append(el("p", { class: "c-hint", text: "Вы постановщик? Войдите через Google, чтобы вести эту страницу." }), el("button", { type: "button", class: "btn", text: "Войти через Google", onclick: signIn }));
       } else if (!claim) {
         box.append(el("button", { type: "button", class: "btn", text: "Это моя страница", onclick: claimPerson }),
           el("p", { class: "c-hint", text: "Заявку проверит и подтвердит администратор." }));
-      } else if (mine() && claim.status === "pending") {
+      } else if (claim.uid === u.uid && claim.status === "pending") {
         box.append(el("p", { class: "msg", text: "Заявка отправлена. Администратор подтвердит её, и здесь появится редактирование." }),
           el("button", { type: "button", class: "linkbtn", text: "Отозвать заявку", onclick: function () { fb.f.deleteDoc(fdoc("claims/" + pid)).then(function () { return loadMe(u, true); }).then(reloadPublic).then(draw); } }));
       }
-      if (mine() && claim.status === "approved") {
-        box.append(el("details", { class: "edit-box" }, el("summary", { text: "Редактировать страницу" }), editor()),
+      if (mine()) {
+        box.append(el("div", { class: "c-row" }, shareButton(pid, pname), el("a", { class: "btn btn-s btn-ghost", href: ROOT + "account/", text: "Мой кабинет" })),
+          el("details", { class: "edit-box" }, el("summary", { text: "Редактировать страницу" }),
+            profileEditor(pid, profile, aboutEl ? aboutEl.textContent.trim() : "", true, function () { reloadPublic().then(draw); })),
           el("button", { type: "button", class: "linkbtn", text: "Отказаться от страницы", onclick: function () { if (confirm("Отвязать аккаунт от этой страницы?")) fb.f.deleteDoc(fdoc("claims/" + pid)).then(function () { return loadMe(u, true); }).then(reloadPublic).then(draw); } }));
       }
       if (state.admin) {
         var adm = el("div", { class: "admin-box" }, el("p", { class: "c-hint", text: claim ? "Аккаунт: " + claim.name + ", статус: " + (claim.status === "approved" ? "подтверждён" : "ждёт подтверждения") : "Страницу пока никто не занял." }));
-        if (claim && claim.status === "pending") adm.append(el("button", { type: "button", class: "btn", text: "Подтвердить", onclick: function () { fb.f.updateDoc(fdoc("claims/" + pid), { status: "approved" }).then(function () { cdrop("me:"); }).then(reloadPublic).then(draw, function (e) { toast(errText(e)); }); } }));
+        if (claim && claim.status === "pending") adm.append(el("button", { type: "button", class: "btn", text: "Подтвердить", onclick: function () { approveClaim(pid, claim.uid).then(reloadPublic).then(draw, function (e) { toast(errText(e)); }); } }));
         if (claim) adm.append(el("button", { type: "button", class: "linkbtn", text: "Отозвать доступ", onclick: function () { if (confirm("Отозвать доступ у «" + claim.name + "»?")) fb.f.deleteDoc(fdoc("claims/" + pid)).then(reloadPublic).then(draw); } }));
-        if (!mine()) adm.append(el("details", { class: "edit-box" }, el("summary", { text: "Править страницу как администратор" }), editor()));
+        if (!mine()) adm.append(el("details", { class: "edit-box" }, el("summary", { text: "Править страницу как администратор" }),
+          profileEditor(pid, profile, aboutEl ? aboutEl.textContent.trim() : "", false, function () { reloadPublic().then(draw); })));
         box.append(adm);
       }
     }
@@ -613,6 +694,15 @@
     var box = document.getElementById("account");
     if (!box) return;
     var names = {}, catalog = null, pending = [], approved = [], syncMsg = "";
+    var myProfiles = {};   // pid → профиль страницы, которой владеет этот аккаунт
+
+    function loadMine() {
+      myProfiles = {};
+      if (!state.user) return Promise.resolve();
+      return Promise.all(approvedPids().map(function (pid) {
+        return ownProfile(pid).then(function (p) { myProfiles[pid] = p || {}; }, function () { myProfiles[pid] = {}; });
+      }));
+    }
 
     function loadCatalog() {
       if (catalog) return Promise.resolve(catalog);
@@ -660,21 +750,22 @@
       });
     }
 
-    /* своя фотография: сжимается в браузере до 128 px и хранится строкой в users/{uid} */
+    /* своя фотография: сжимается в браузере и хранится строкой. Одно фото на аккаунт и на все его подтверждённые страницы. */
     function avatarBox() {
       var u = state.user, wrap = el("div", { class: "avatar-edit" });
       var file = el("input", { type: "file", accept: "image/*", "aria-label": "Выбрать фото", hidden: true, onchange: function () {
         var f = file.files[0]; if (!f) return;
         note(wrap, "Загружаем…");
-        shrink(f, 128, 30000).then(function (data) { return saveAvatar(data); }).then(function () { note(wrap, "Фото сохранено.", "ok"); draw(); },
+        setMyAvatar(f).then(function () { note(wrap, "Фото сохранено.", "ok"); return loadMine(); }).then(draw,
           function (e) { note(wrap, e && e.code ? errText(e) : e.message, "err"); });
         file.value = "";
       } });
+      var on = approvedPids().length ? " и на вашей странице" : "";
       wrap.append(avatarNode(u.uid, u.displayName, "l"),
         el("div", null,
           el("button", { type: "button", class: "btn btn-s", text: avatars[u.uid] ? "Заменить фото" : "Загрузить фото", onclick: function () { file.click(); } }),
-          avatars[u.uid] && el("button", { type: "button", class: "linkbtn", text: "Убрать фото", onclick: function () { saveAvatar("").then(draw, function (e) { note(wrap, errText(e), "err"); }); } }),
-          el("p", { class: "c-hint", text: "Фото видно рядом с вашими комментариями. Подойдёт любая картинка, она сожмётся и обрежется до квадрата." })),
+          avatars[u.uid] && el("button", { type: "button", class: "linkbtn", text: "Убрать фото", onclick: function () { clearMyAvatar().then(loadMine).then(draw, function (e) { note(wrap, errText(e), "err"); }); } }),
+          el("p", { class: "c-hint", text: "Фото видно рядом с вашими комментариями" + on + ". Подойдёт любая картинка, она сожмётся и обрежется до квадрата." })),
         file);
       return wrap;
     }
@@ -708,12 +799,22 @@
       }
       var mineIds = Object.keys(state.claims);
       box.append(el("h2", { text: "Мои страницы" }));
-      if (!mineIds.length) box.append(el("p", { class: "c-hint", text: "Пока нет. Откройте свою страницу в каталоге и нажмите «Это моя страница»." }));
+      if (!mineIds.length) box.append(el("p", { class: "c-hint", text: "Пока нет. Откройте свою страницу в каталоге и нажмите «Это моя страница». После подтверждения она станет вашим кабинетом: фото и описание общие, а ссылкой на страницу можно делиться." }));
       else {
-        var ul = el("ul", { class: "acc-list" });
+        var ul = el("div", { class: "my-pages" });
         mineIds.forEach(function (pid) {
-          ul.append(el("li", null, el("a", { href: ROOT + "p/" + pid + "/", text: nameOf(pid) }), " ",
-            el("span", { class: "badge" + (state.claims[pid].status === "approved" ? "" : " badge-off"), text: state.claims[pid].status === "approved" ? "подтверждена" : "ждёт подтверждения" })));
+          var ok = state.claims[pid].status === "approved", pr = myProfiles[pid] || {};
+          var shown = pr.avatar || avatars[state.user.uid] || "";
+          var card = el("div", { class: "my-page" },
+            shown ? el("img", { class: "avatar avatar-l", src: shown, alt: "" }) : avatarNode(state.user.uid, nameOf(pid), "l"),
+            el("div", { class: "my-page-body" },
+              el("div", null, el("a", { href: ROOT + "p/" + pid + "/", text: nameOf(pid) }), " ",
+                el("span", { class: "badge" + (ok ? "" : " badge-off"), text: ok ? "подтверждена" : "ждёт подтверждения" })),
+              ok && pr.bio ? el("p", { class: "c-hint my-page-bio", text: pr.bio.length > 160 ? pr.bio.slice(0, 160) + "…" : pr.bio }) : null,
+              ok ? el("div", { class: "c-row" }, shareButton(pid, nameOf(pid)), el("a", { class: "btn btn-s btn-ghost", href: ROOT + "p/" + pid + "/", text: "Открыть страницу" })) : null),
+            ok ? el("details", { class: "edit-box my-page-edit" }, el("summary", { text: "Описание, ссылка и фото" }),
+              profileEditor(pid, pr, "", true, function () { loadMine().then(draw); })) : null);
+          ul.append(card);
         });
         box.append(ul);
       }
@@ -724,7 +825,7 @@
           var pl = el("ul", { class: "acc-list" });
           pending.forEach(function (c) {
             pl.append(el("li", null, el("a", { href: ROOT + "p/" + c.id + "/", text: nameOf(c.id) }), " ← аккаунт «" + c.name + "» ",
-              el("button", { type: "button", class: "btn btn-s", text: "Подтвердить", onclick: function () { fb.f.updateDoc(fdoc("claims/" + c.id), { status: "approved" }).then(reload); } }), " ",
+              el("button", { type: "button", class: "btn btn-s", text: "Подтвердить", onclick: function () { approveClaim(c.id, c.uid).then(reload); } }), " ",
               el("button", { type: "button", class: "linkbtn", text: "Отклонить", onclick: function () { fb.f.deleteDoc(fdoc("claims/" + c.id)).then(reload); } })));
           });
           box.append(pl);
@@ -749,9 +850,10 @@
       box.append(el("h2", { text: "Выход" }),
         el("button", { type: "button", class: "btn btn-s", text: "Выйти из аккаунта", onclick: signOut }));
     }
-    function reload() { loadMe(state.user, true).then(loadAdmin).then(draw); }
+    function reload() { loadMe(state.user, true).then(loadAdmin).then(loadMine).then(draw); }
     views.push(function () {
       draw();
+      loadMine().then(draw);
       loadCatalog().then(function () {
         if (!state.admin) return draw();
         return sync(false).then(function (m) { syncMsg = /обновлён/.test(m) ? m : ""; }, function (e) { syncMsg = errText(e); }).then(loadAdmin).then(draw);

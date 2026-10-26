@@ -204,3 +204,14 @@ span.tc{border-color:var(--line);color:var(--ash)}
 
 .moment-list .who{display:inline-flex;flex-wrap:wrap;gap:6px;align-items:center}
 .moment-list li{padding:5px 0}
+
+/* кабинет: страницы, которыми владеет аккаунт */
+.my-pages{display:grid;gap:14px;max-width:62ch}
+.my-page{display:grid;grid-template-columns:auto 1fr;gap:10px 16px;align-items:start;padding:16px;border:1px solid var(--line);border-radius:var(--r);background:var(--coal)}
+.my-page .avatar-l{margin-top:0}
+.my-page-body{display:grid;gap:8px;min-width:0}
+.my-page-bio{margin:0;overflow-wrap:anywhere}
+.my-page-edit{grid-column:1 / -1}
+.btn-ghost{background:transparent;color:var(--ink);border:1px solid var(--line)}
+.btn-ghost:hover{border-color:var(--ember);color:var(--ember-hi)}
+a.btn{text-decoration:none;display:inline-block}
