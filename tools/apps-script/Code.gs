@@ -578,6 +578,10 @@ var FORMS_SHEET = 'Формы';
 var QUEUE_HEAD = ['Когда', 'От кого', 'Что', 'Содержание', 'Решение', 'Статус', 'Данные'];
 var WAIT = 'Ждёт решения';
 
+var COVER_MAX = 1572864; // 1,5 МБ
+var COVER_B = 'Обложка (одна на все номера из этой отправки, до 1,5 МБ)';
+var COVER_C = 'Обложка номера (до 1,5 МБ)';
+
 var FT = {
   A: { name: 'Название концерта', date: 'Дата концерта', video: 'Ссылка на запись концерта в VK', about: 'Описание' },
   B: { concert: 'Концерт', direction: 'Направление (для всех номеров списка)', list: 'Список номеров: время начала и название',
@@ -585,9 +589,11 @@ var FT = {
        collective: 'Коллектив (для всех номеров, у которых он не указан в строке)',
        performers: 'Исполнители (для всех номеров, у которых они не указаны в строке)',
        directors: 'Постановщики (для всех номеров, у которых они не указаны в строке)',
-       about: 'Описание (для всех номеров, у которых оно не указано в строке)' },
+       about: 'Описание (для всех номеров, у которых оно не указано в строке)',
+       cover: COVER_B },
   C: { number: 'Номер', direction: 'Направление', collective: 'Коллектив', performers: 'Исполнители (полный список через запятую)',
-       directors: 'Постановщики (полный список через запятую)', about: 'Описание', start: 'Начало (ч:мм:сс)', end: 'Конец (ч:мм:сс)' }
+       directors: 'Постановщики (полный список через запятую)', about: 'Описание', start: 'Начало (ч:мм:сс)', end: 'Конец (ч:мм:сс)',
+       cover: COVER_C }
 };
 var KIND_NAME = { A: 'Новый концерт', B: 'Номера списком', C: 'Дополнение номера' };
 
@@ -713,7 +719,7 @@ function fillFormsSheet_() {
     '', 'Как пользоваться (с телефона тоже)',
     '1. Откройте ссылку на форму и войдите в аккаунт Google. Форма запомнит вашу почту.',
     '2. «Новый концерт»: вставьте название и ссылку на запись VK. Дата необязательна.',
-    '3. «Номера списком»: выберите концерт, вставьте список. Каждая строка: время начала и название, например «0:02:10 Первый свет». После названия через знак | можно дописать коллектив | исполнителей | постановщиков | описание. Если что-то одинаково для всех строк, впишите это в общие поля формы.',
+    '3. «Номера списком»: выберите концерт, вставьте список. Каждая строка: время начала и название, например «0:02:10 Первый свет». После названия через знак | можно дописать коллектив | исполнителей | постановщиков | описание. Если что-то одинаково для всех строк, впишите это в общие поля формы. В обеих формах можно приложить обложку: фото JPG, PNG или WebP до 1,5 МБ.',
     '4. «Дополнить номер»: выберите номер, впишите коллектив, исполнителей, постановщиков, описание. Заполняйте только нужное, пустое ничего не стирает. Форму можно открывать много раз.',
     '5. Если вы редактор этой таблицы, запись появится в ней сразу. Иначе она ляжет на лист «Заявки», и администратор выберет в столбце «Решение» значение «Принять» или «Отклонить».',
     '6. Списки концертов и номеров в формах обновляются раз в час и после каждого ответа. Сразу: Каталог → Формы для заполнения → Обновить списки в формах.',
@@ -782,7 +788,9 @@ function onFormSubmitCatalog(e) {
     Object.keys(titles).forEach(function (k) { byTitle[titles[k]] = k; });
     resp.getItemResponses().forEach(function (ir) {
       var key = byTitle[ir.getItem().getTitle()];
-      if (key) data[key] = String(ir.getResponse() || '').trim();
+      if (!key) return;
+      var resp0 = ir.getResponse();
+      data[key] = Array.isArray(resp0) ? resp0.join(',') : String(resp0 || '').trim();
     });
     var q = queueSheet_(), row = q.getLastRow() + 1;
     q.getRange(row, 1, 1, 7).setValues([[new Date(), email || 'неизвестно', KIND_NAME[kind], summary_(kind, data), '', WAIT, JSON.stringify({ kind: kind, data: data })]]);
@@ -797,11 +805,13 @@ function summary_(kind, d) {
   if (kind === 'B') {
     var extra = [];
     [['collective', 'Коллектив'], ['performers', 'Исполнители'], ['directors', 'Постановщики'], ['about', 'Описание']].forEach(function (x) { if (d[x[0]]) extra.push(x[1] + ': ' + d[x[0]]); });
+    if (d.cover) extra.push('Обложка: ' + coverInfo_(d.cover));
     return 'Концерт: ' + d.concert + (d.direction ? ' | ' + d.direction : '') + '\n' + d.list + (d.end ? '\nКонец последнего: ' + d.end : '') + (extra.length ? '\nДля всех: ' + extra.join('; ') : '');
   }
   var parts = ['Номер: ' + d.number];
   [['direction', 'Направление'], ['collective', 'Коллектив'], ['performers', 'Исполнители'], ['directors', 'Постановщики'],
    ['about', 'Описание'], ['start', 'Начало'], ['end', 'Конец']].forEach(function (x) { if (d[x[0]]) parts.push(x[1] + ': ' + d[x[0]]); });
+  if (d.cover) parts.push('Обложка: ' + coverInfo_(d.cover));
   return parts.join('\n');
 }
 
@@ -828,6 +838,26 @@ function applyDecisions() {
   if (!q) { SpreadsheetApp.getUi().alert('Листа «Заявки» ещё нет. Выберите Каталог → Формы для заполнения → Создать формы.'); return; }
   for (var r = 2; r <= q.getLastRow(); r++) applyQueueRow_(q, r, false);
   SpreadsheetApp.getActive().toast('Решения применены.', 'Каталог', 5);
+}
+
+// Обложка из формы: файл лежит на Google Диске владельца формы. Проверяем размер и тип, открываем «по ссылке»
+// и возвращаем прямую ссылку, из которой сайт скачает и сожмёт картинку при сборке.
+function coverInfo_(ids) {
+  try {
+    var f = DriveApp.getFileById(String(ids).split(',')[0]);
+    return f.getName() + ', ' + (f.getSize() / 1048576).toFixed(2).replace('.', ',') + ' МБ';
+  } catch (e) { return 'файл недоступен'; }
+}
+
+function coverUrl_(ids) {
+  var id = String(ids || '').split(',')[0].trim();
+  if (!id) return { ok: true, url: '' };
+  var f;
+  try { f = DriveApp.getFileById(id); } catch (e) { return { ok: false, msg: 'файл обложки не найден на Диске' }; }
+  if (f.getSize() > COVER_MAX) return { ok: false, msg: 'обложка «' + f.getName() + '» больше 1,5 МБ (' + (f.getSize() / 1048576).toFixed(1).replace('.', ',') + ' МБ). Сожмите фото и пришлите снова' };
+  if (!/^image\/(jpeg|png|webp)$/.test(f.getMimeType())) return { ok: false, msg: 'обложка «' + f.getName() + '» не подходит: нужен JPG, PNG или WebP' };
+  f.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
+  return { ok: true, url: 'https://drive.google.com/uc?export=download&id=' + id };
 }
 
 function lastDataRow_(sh, colIdx) {
@@ -894,17 +924,17 @@ function applyNumbers_(d) {
   if (d.end && lastEnd === null) return { ok: false, msg: 'время окончания нужно в виде ч:мм:сс' };
   var have = {};
   tn.rows.forEach(function (r) { if (norm_(r[tn.head['Концерт']]) === norm_(concert)) have[parseSec_(r[tn.head['Начало']])] = true; });
-  var rows = [], skipped = 0;
+  var cv = coverUrl_(d.cover), rows = [], skipped = 0;
   items.forEach(function (it, i) {
     if (have[it.start]) { skipped++; return; }
     var end = i + 1 < items.length ? items[i + 1].start : lastEnd;
     rows.push({ 'Концерт': concert, 'Направление': d.direction && d.direction !== '(пока пусто)' ? d.direction : '', 'Название': it.title,
       'Коллектив': it.collective || d.collective || '', 'Исполнители': it.performers || d.performers || '',
-      'Постановщики': it.directors || d.directors || '', 'Описание': it.about || d.about || '',
+      'Постановщики': it.directors || d.directors || '', 'Описание': it.about || d.about || '', 'Обложка': cv.ok ? cv.url : '',
       'Начало': hmsFull_(it.start), 'Конец': end !== null && end > it.start ? hmsFull_(end) : '' });
   });
   if (rows.length) { addRows_(tn, rows); fillIds_(); try { collectPeople(); } catch (e) { } }
-  return { ok: true, msg: 'номеров: ' + rows.length + (skipped ? ', пропущено уже существующих: ' + skipped : '') };
+  return { ok: true, msg: 'номеров: ' + rows.length + (skipped ? ', пропущено уже существующих: ' + skipped : '') + (d.cover ? (cv.ok ? ', обложка добавлена' : ', обложка пропущена: ' + cv.msg) : '') };
 }
 
 function applyPatch_(d) {
@@ -924,6 +954,8 @@ function applyPatch_(d) {
     if (k === 'start' || k === 'end') v = hmsFull_(parseSec_(v));
     upd[map[k]] = v;
   });
+  var cv = coverUrl_(d.cover), coverNote = '';
+  if (d.cover) { if (cv.ok) upd['Обложка'] = cv.url; else coverNote = '; обложка пропущена: ' + cv.msg; }
   if (upd.err) return { ok: false, msg: upd.err };
   Object.keys(upd).forEach(function (h) {
     var c = tn.head[h]; if (c === undefined) return;
@@ -931,8 +963,8 @@ function applyPatch_(d) {
     if (h === 'Начало' || h === 'Конец') cell.setNumberFormat('@');
     cell.setValue(upd[h]); changed.push(h);
   });
-  if (!changed.length) return { ok: false, msg: 'ничего не заполнено' };
+  if (!changed.length) return { ok: false, msg: 'ничего не заполнено' + coverNote };
   try { collectPeople(); } catch (e) { }
-  return { ok: true, msg: id + ': ' + changed.join(', ').toLowerCase() };
+  return { ok: true, msg: id + ': ' + changed.join(', ').toLowerCase() + coverNote };
 }
 

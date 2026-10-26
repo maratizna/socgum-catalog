@@ -24,6 +24,7 @@ import random
 import re
 import shutil
 import sys
+import tempfile
 import time
 import urllib.error
 import urllib.request
@@ -510,7 +511,45 @@ def build_model(wb, report):
 
 # ---------------------------------------------------------------- обложки
 
-def find_cover(n):
+COVER_MAX_BYTES = 1_572_864   # 1,5 МБ: больше обложку из ссылки не берём
+_DL_CACHE = {}
+
+
+def drive_direct(url):
+    """Ссылка на файл Google Диска -> прямая ссылка на скачивание. Остальные ссылки без изменений."""
+    m = re.search(r"drive\.google\.com/file/d/([\w-]+)", url) or re.search(r"drive\.google\.com/(?:open|uc)\?[^#]*?id=([\w-]+)", url)
+    return f"https://drive.google.com/uc?export=download&id={m.group(1)}" if m else url
+
+
+def download_cover(url, report, n):
+    """Скачивает обложку по ссылке (Google Диск или любая прямая). Возвращает путь к файлу или None."""
+    url = drive_direct(url.strip())
+    if url in _DL_CACHE:
+        return _DL_CACHE[url]
+    path = None
+    try:
+        req = urllib.request.Request(url, headers={"User-Agent": "socgum-catalog-build"})
+        with urllib.request.urlopen(req, timeout=30) as r:
+            data = r.read(COVER_MAX_BYTES + 1)
+            ctype = r.headers.get("Content-Type", "")
+        if len(data) > COVER_MAX_BYTES:
+            report.warn("Номера", n["row"], f"Обложка по ссылке больше 1,5 МБ, не взята. Сожмите фото. Показана заглушка.")
+        elif "image" not in ctype and not data[:4] in (b"\xff\xd8\xff\xe0", b"\xff\xd8\xff\xe1", b"\x89PNG", b"RIFF"):
+            report.warn("Номера", n["row"], "По ссылке на обложку не картинка (проверьте, что файл открыт «всем, у кого есть ссылка»). Показана заглушка.")
+        else:
+            dl = Path(tempfile.gettempdir()) / "socgum-covers"
+            dl.mkdir(parents=True, exist_ok=True)
+            path = dl / (hashlib.sha1(url.encode()).hexdigest() + ".bin")
+            path.write_bytes(data)
+    except Exception as e:  # noqa: BLE001
+        report.warn("Номера", n["row"], f"Не удалось скачать обложку по ссылке: {e}. Показана заглушка.")
+    _DL_CACHE[url] = path
+    return path
+
+
+def find_cover(n, report=None):
+    if re.match(r"https?://", n["cover_name"] or "", re.I):
+        return download_cover(n["cover_name"], report, n) if report else None
     if not COVERS.exists():
         return None
     files = {f.name.casefold(): f for f in COVERS.iterdir() if f.is_file()}
@@ -598,7 +637,7 @@ def build_site(concerts, directions, numbers, people, report, demo, source):
 
     # обложки
     for n in numbers.values():
-        src = find_cover(n)
+        src = find_cover(n, report)
         if src:
             try:
                 with Image.open(src) as im:
@@ -611,7 +650,9 @@ def build_site(concerts, directions, numbers, people, report, demo, source):
         else:
             size = process_cover(placeholder(n["id"]), TMP / "img" / n["id"])
             n["has_cover"] = False
-            if n["cover_name"]:
+            if re.match(r"https?://", n["cover_name"] or "", re.I):
+                pass  # причина уже в предупреждении о скачивании
+            elif n["cover_name"]:
                 report.warn("Номера", n["row"], f"Файл обложки «{n['cover_name']}» не найден в папке covers. Показана заглушка.")
             else:
                 report.warn("Номера", n["row"], f"У номера «{n['title']}» нет обложки (положите в covers файл {n['id']}.jpg). Показана заглушка.")
