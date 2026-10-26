@@ -87,10 +87,16 @@
       console.warn("Вход не удался:", c, e && e.message);
       if (c === "auth/popup-closed-by-user" || c === "auth/cancelled-popup-request") return;
       // Вход «с переходом на другую страницу» между разными адресами браузеры ломают, поэтому только окно входа.
-      alert(c === "auth/popup-blocked"
+      toast(c === "auth/popup-blocked"
         ? "Браузер заблокировал окно входа. Разрешите всплывающие окна для этого сайта и нажмите «Войти» ещё раз."
         : "Не удалось войти: " + (e && e.message ? e.message : e));
     });
+  }
+  function toast(text) {
+    var t = document.getElementById("toast");
+    if (!t) { t = el("p", { id: "toast", class: "toast", role: "alert" }); document.body.append(t); }
+    t.textContent = text; t.hidden = false;
+    clearTimeout(t._h); t._h = setTimeout(function () { t.hidden = true; }, 9000);
   }
   function signOut() { return fb.a.signOut(fb.auth); }
 
@@ -209,7 +215,7 @@
       return el("article", { class: "comment" + (isReply ? " reply" : "") + (c.status === "hidden" ? " is-hidden" : ""), id: "c-" + c.id },
         head, el("p", { class: "c-text" }, richText(c.text, canSeek)), actions);
     }
-    function act(p) { return p.then(function () { return loadComments(); }).then(draw, function (e) { alert(errText(e)); }); }
+    function act(p) { return p.then(function () { return loadComments(); }).then(draw, function (e) { toast(errText(e)); }); }
 
     function drawList() {
       clear(list);
@@ -373,7 +379,7 @@
       }
       if (state.admin) {
         var adm = el("div", { class: "admin-box" }, el("p", { class: "c-hint", text: claim ? "Аккаунт: " + claim.name + ", статус: " + (claim.status === "approved" ? "подтверждён" : "ждёт подтверждения") : "Страницу пока никто не занял." }));
-        if (claim && claim.status === "pending") adm.append(el("button", { type: "button", class: "btn", text: "Подтвердить", onclick: function () { fb.f.updateDoc(fdoc("claims/" + pid), { status: "approved" }).then(loadPublic).then(draw, function (e) { alert(errText(e)); }); } }));
+        if (claim && claim.status === "pending") adm.append(el("button", { type: "button", class: "btn", text: "Подтвердить", onclick: function () { fb.f.updateDoc(fdoc("claims/" + pid), { status: "approved" }).then(loadPublic).then(draw, function (e) { toast(errText(e)); }); } }));
         if (claim) adm.append(el("button", { type: "button", class: "linkbtn", text: "Отозвать доступ", onclick: function () { if (confirm("Отозвать доступ у «" + claim.name + "»?")) fb.f.deleteDoc(fdoc("claims/" + pid)).then(loadPublic).then(draw); } }));
         if (!mine()) adm.append(el("details", { class: "edit-box" }, el("summary", { text: "Править страницу как администратор" }), editor()));
         box.append(adm);
