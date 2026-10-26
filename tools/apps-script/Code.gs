@@ -700,7 +700,7 @@ function fillFormsSheet_() {
   var ss = SpreadsheetApp.getActive(), sh = ss.getSheetByName(FORMS_SHEET) || ss.insertSheet(FORMS_SHEET);
   var m = formsMap_();
   sh.clear();
-  var rows = [['Форма', 'Для чего', 'Ссылка для сотрудников']];
+  var rows = [['Форма', 'Для чего', 'Ссылка для сотрудников', 'Редактирование формы (только для администратора)']];
   var info = {
     A: ['Новый концерт', 'Название, дата и ссылка на запись концерта в VK.'],
     B: ['Номера списком', 'Выбрать концерт и вставить список «время название», по строке на номер.'],
@@ -709,11 +709,11 @@ function fillFormsSheet_() {
   ['A', 'B', 'C'].forEach(function (k) {
     if (!m[k]) return;
     var f = FormApp.openById(m[k]);
-    rows.push([info[k][0], info[k][1], f.getPublishedUrl()]);
+    rows.push([info[k][0], info[k][1], f.getPublishedUrl(), f.getEditUrl()]);
   });
   rows.forEach(function (r, i) {
     sh.getRange(i + 1, 1, 1, 2).setValues([[r[0], r[1]]]);
-    sh.getRange(i + 1, 3).setValue(r[2]);
+    sh.getRange(i + 1, 3, 1, 2).setValues([[r[2], r[3]]]);
   });
   var guide = [
     '', 'Как пользоваться (с телефона тоже)',
@@ -727,8 +727,8 @@ function fillFormsSheet_() {
   ];
   sh.getRange(rows.length + 1, 1, guide.length, 1).setValues(guide.map(function (g) { return [g]; }));
   sh.getRange(rows.length + 2, 1).setFontWeight('bold');
-  sh.getRange(1, 1, 1, 3).setFontWeight('bold').setBackground(ORANGE);
-  sh.setColumnWidth(1, 200); sh.setColumnWidth(2, 520); sh.setColumnWidth(3, 460);
+  sh.getRange(1, 1, 1, 4).setFontWeight('bold').setBackground(ORANGE);
+  sh.setColumnWidth(1, 200); sh.setColumnWidth(2, 520); sh.setColumnWidth(3, 460); sh.setColumnWidth(4, 460);
   sh.getRange(1, 1, rows.length + guide.length, 3).setVerticalAlignment('top');
 }
 
