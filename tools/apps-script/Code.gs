@@ -567,7 +567,7 @@ function openSite() {
 /*
  * Три формы Google пишут в эту таблицу:
  *   1. «Новый концерт»      – название, дата, ссылка на запись.
- *   2. «Номера списком»     – концерт и список «время название», по строке на номер.
+ *   2. «Номера списком»     – концерт, название номера, время начала и конца (один номер за отправку).
  *   3. «Дополнить номер»    – коллектив, исполнители, постановщики, описание, время.
  * Кто входит в число редакторов таблицы, тот администратор: его ответ попадает в таблицу сразу.
  * Ответ любого другого человека ложится на лист «Заявки» и ждёт решения: в столбце «Решение» выбрать «Принять» или «Отклонить».
@@ -579,17 +579,23 @@ var QUEUE_HEAD = ['Когда', 'От кого', 'Что', 'Содержание
 var WAIT = 'Ждёт решения';
 
 var COVER_MAX = 1572864; // 1,5 МБ
-var COVER_B = 'Обложка (одна на все номера из этой отправки, до 1,5 МБ)';
+var COVER_B = 'Обложка номера (до 1,5 МБ)';
+// Прежние названия полей формы B (до разделения на название, начало и конец): нужны, чтобы обновить уже созданную форму.
+var OLD_B = {
+  direction: 'Направление (для всех номеров списка)', list: 'Список номеров: время начала и название',
+  end: 'Когда закончился последний номер (необязательно, ч:мм:сс)',
+  collective: 'Коллектив (для всех номеров, у которых он не указан в строке)',
+  performers: 'Исполнители (для всех номеров, у которых они не указаны в строке)',
+  directors: 'Постановщики (для всех номеров, у которых они не указаны в строке)',
+  about: 'Описание (для всех номеров, у которых оно не указано в строке)',
+  cover: 'Обложка (одна на все номера из этой отправки, до 1,5 МБ)'
+};
 var COVER_C = 'Обложка номера (до 1,5 МБ)';
 
 var FT = {
   A: { name: 'Название концерта', date: 'Дата концерта', video: 'Ссылка на запись концерта в VK', about: 'Описание' },
-  B: { concert: 'Концерт', direction: 'Направление (для всех номеров списка)', list: 'Список номеров: время начала и название',
-       end: 'Когда закончился последний номер (необязательно, ч:мм:сс)',
-       collective: 'Коллектив (для всех номеров, у которых он не указан в строке)',
-       performers: 'Исполнители (для всех номеров, у которых они не указаны в строке)',
-       directors: 'Постановщики (для всех номеров, у которых они не указаны в строке)',
-       about: 'Описание (для всех номеров, у которых оно не указано в строке)',
+  B: { concert: 'Концерт', direction: 'Направление', title: 'Название номера', start: 'Время начала (ч:мм:сс)', end: 'Время конца (ч:мм:сс)',
+       collective: 'Коллектив', performers: 'Исполнители (через запятую)', directors: 'Постановщики (через запятую)', about: 'Описание',
        cover: COVER_B },
   C: { number: 'Номер', direction: 'Направление', collective: 'Коллектив', performers: 'Исполнители (полный список через запятую)',
        directors: 'Постановщики (полный список через запятую)', about: 'Описание', start: 'Начало (ч:мм:сс)', end: 'Конец (ч:мм:сс)',
@@ -628,10 +634,10 @@ function createForms() {
       .requireTextContainsPattern('(video-?\\d+_\\d+|oid=-?\\d+)').build());
   a.addParagraphTextItem().setTitle(FT.A.about).setRequired(false);
 
-  var b = base('Каталог СоцГума: номера концерта списком', 'Вставьте список номеров с временем начала. Время конца каждого номера считается по началу следующего.');
+  var b = base('Каталог СоцГума: номера концерта списком', 'Один номер за отправку: название, время начала и конца в записи концерта. Коллектив, исполнители, постановщики, описание и обложка по желанию.');
   b.addListItem().setTitle(FT.B.concert).setChoiceValues(['(пока пусто)']).setRequired(true);
   b.addListItem().setTitle(FT.B.direction).setChoiceValues(['(пока пусто)']).setRequired(false);
-  addListHelp_(b);
+  addBNumberFields_(b);
   addBExtras_(b);
 
   var c = base('Каталог СоцГума: дополнить номер', 'Заполните только то, что хотите добавить или исправить. Пустые поля ничего не меняют.');
@@ -656,27 +662,62 @@ function createForms() {
   ss.toast('Формы созданы. Ссылки на листе «Формы».', 'Каталог', 8);
 }
 
-var LIST_HELP = 'По строке на номер: время начала и название, например «0:02:10 Первый свет». ' +
-  'Если нужно, после названия через знак | можно дописать: коллектив | исполнители | постановщики | описание. ' +
-  'Например: 0:02:10 Первый свет | Студия «Образ» | Анна, Борис | Ольга | Номер о весне. Можно вставить таймкоды из описания видео.';
+var TIME_RE = '^(\\d{1,2}:)?\\d{1,2}:\\d{2}$';
+function timeRule_() {
+  return FormApp.createTextValidation().setHelpText('Время в виде ч:мм:сс, например 0:02:10').requireTextMatchesPattern(TIME_RE).build();
+}
 
-function addListHelp_(form) {
-  form.addParagraphTextItem().setTitle(FT.B.list).setHelpText(LIST_HELP).setRequired(true);
+function addBNumberFields_(form) {
+  form.addTextItem().setTitle(FT.B.title).setHelpText('Например: Первый свет').setRequired(true);
+  form.addTextItem().setTitle(FT.B.start).setHelpText('Когда номер начинается в записи концерта, например 0:02:10').setRequired(true).setValidation(timeRule_());
+  form.addTextItem().setTitle(FT.B.end).setHelpText('Когда номер заканчивается, например 0:06:40. Можно оставить пустым.').setRequired(false).setValidation(timeRule_());
 }
 
 function addBExtras_(form) {
-  form.addTextItem().setTitle(FT.B.end).setHelpText('Например 0:41:30. Если пусто, у последнего номера не будет конца.').setRequired(false);
-  form.addTextItem().setTitle(FT.B.collective).setHelpText('Если весь список от одного коллектива, впишите его здесь, а не в каждой строке.').setRequired(false);
-  form.addParagraphTextItem().setTitle(FT.B.performers).setHelpText('Имена через запятую. Подойдёт, если исполнители одни и те же во всех номерах.').setRequired(false);
+  form.addTextItem().setTitle(FT.B.collective).setRequired(false);
+  form.addParagraphTextItem().setTitle(FT.B.performers).setHelpText('Имена через запятую.').setRequired(false);
   form.addParagraphTextItem().setTitle(FT.B.directors).setHelpText('Имена через запятую.').setRequired(false);
   form.addParagraphTextItem().setTitle(FT.B.about).setRequired(false);
 }
 
-// Дополняет уже созданную форму B новыми полями (если их ещё нет).
-function upgradeForms_() {
-  var m = formsMap_();
-  if (m.B) upgradeFormB_(m.B);
-  if (m.C) coverToEnd_(m.C, COVER_C);
+function findItem_(f, title) {
+  var its = f.getItems();
+  for (var i = 0; i < its.length; i++) if (its[i].getTitle() === title) return its[i];
+  return null;
+}
+
+// Приводит уже созданную форму B к нынешнему виду: переименовывает поля, убирает общий список, добавляет название, начало и конец,
+// расставляет вопросы по порядку, обложку ставит в конец.
+function upgradeFormB_(formId) {
+  var f = FormApp.openById(formId);
+  [['direction'], ['collective'], ['performers'], ['directors'], ['about'], ['cover']].forEach(function (x) {
+    var it = findItem_(f, OLD_B[x[0]]);
+    if (it) it.setTitle(FT.B[x[0]]);
+  });
+  [OLD_B.list, OLD_B.end].forEach(function (t) { var it = findItem_(f, t); if (it) f.deleteItem(it); });
+  var h = { performers: 'Имена через запятую.', directors: 'Имена через запятую.' };
+  var fixHelp = ['performers', 'directors'];
+  fixHelp.forEach(function (k) { var it = findItem_(f, FT.B[k]); if (it) it.setHelpText(h[k]); });
+  var c0 = findItem_(f, FT.B.collective); if (c0) c0.setHelpText('');
+  if (!findItem_(f, FT.B.title)) {
+    f.addTextItem().setTitle(FT.B.title).setHelpText('Например: Первый свет').setRequired(true);
+    f.addTextItem().setTitle(FT.B.start).setHelpText('Когда номер начинается в записи концерта, например 0:02:10').setRequired(true).setValidation(timeRule_());
+    f.addTextItem().setTitle(FT.B.end).setHelpText('Когда номер заканчивается, например 0:06:40. Можно оставить пустым.').setRequired(false).setValidation(timeRule_());
+  }
+  [['collective', 'text'], ['performers', 'para'], ['directors', 'para'], ['about', 'para']].forEach(function (a) {
+    if (findItem_(f, FT.B[a[0]])) return;
+    var it = a[1] === 'text' ? f.addTextItem() : f.addParagraphTextItem();
+    it.setTitle(FT.B[a[0]]).setRequired(false);
+    if (h[a[0]]) it.setHelpText(h[a[0]]);
+  });
+  f.setDescription('Один номер за отправку: название, время начала и конца в записи концерта. Коллектив, исполнители, постановщики, описание и обложка по желанию.');
+  var order = ['concert', 'direction', 'title', 'start', 'end', 'collective', 'performers', 'directors', 'about', 'cover'], pos = 0;
+  order.forEach(function (k) {
+    var it = findItem_(f, FT.B[k]);
+    if (!it) return;
+    if (it.getIndex() !== pos) f.moveItem(it.getIndex(), pos);
+    pos++;
+  });
 }
 
 // Вопрос «Обложка» (загрузку файла в форму приходится добавлять вручную) переносим в конец формы.
@@ -690,20 +731,10 @@ function coverToEnd_(formId, title) {
   }
 }
 
-function upgradeFormB_(formId) {
-  var f = FormApp.openById(formId), have = {};
-  f.getItems().forEach(function (it) { have[it.getTitle()] = it; });
-  if (have[FT.B.list]) have[FT.B.list].asParagraphTextItem().setHelpText(LIST_HELP);
-  [[FT.B.collective, 'text', 'Если весь список от одного коллектива, впишите его здесь, а не в каждой строке.'],
-   [FT.B.performers, 'para', 'Имена через запятую. Подойдёт, если исполнители одни и те же во всех номерах.'],
-   [FT.B.directors, 'para', 'Имена через запятую.'],
-   [FT.B.about, 'para', '']].forEach(function (a) {
-    if (have[a[0]]) return;
-    var it = a[1] === 'text' ? f.addTextItem() : f.addParagraphTextItem();
-    it.setTitle(a[0]).setRequired(false);
-    if (a[2]) it.setHelpText(a[2]);
-  });
-  coverToEnd_(formId, COVER_B);
+function upgradeForms_() {
+  var m = formsMap_();
+  if (m.B) upgradeFormB_(m.B);
+  if (m.C) coverToEnd_(m.C, COVER_C);
 }
 
 function formsMap_() {
@@ -719,7 +750,7 @@ function fillFormsSheet_() {
   var rows = [['Форма', 'Для чего', 'Ссылка для сотрудников', 'Редактирование формы (только для администратора)']];
   var info = {
     A: ['Новый концерт', 'Название, дата и ссылка на запись концерта в VK.'],
-    B: ['Номера списком', 'Выбрать концерт и вставить список «время название», по строке на номер.'],
+    B: ['Номера списком', 'Выбрать концерт и вписать название номера, время начала и время конца. Один номер за отправку.'],
     C: ['Дополнить номер', 'Выбрать номер и добавить коллектив, исполнителей, постановщиков, описание, время.']
   };
   ['A', 'B', 'C'].forEach(function (k) {
@@ -735,7 +766,7 @@ function fillFormsSheet_() {
     '', 'Как пользоваться (с телефона тоже)',
     '1. Откройте ссылку на форму и войдите в аккаунт Google. Форма запомнит вашу почту.',
     '2. «Новый концерт»: вставьте название и ссылку на запись VK. Дата необязательна.',
-    '3. «Номера списком»: выберите концерт, вставьте список. Каждая строка: время начала и название, например «0:02:10 Первый свет». После названия через знак | можно дописать коллектив | исполнителей | постановщиков | описание. Если что-то одинаково для всех строк, впишите это в общие поля формы. В обеих формах можно приложить обложку: фото JPG, PNG или WebP до 1,5 МБ.',
+    '3. «Номера списком»: выберите концерт, впишите название номера, время начала и время конца (например 0:02:10 и 0:06:40). Коллектив, исполнителей, постановщиков, описание и обложку (фото JPG, PNG или WebP до 1,5 МБ) добавьте по желанию. Один номер за отправку.',
     '4. «Дополнить номер»: выберите номер, впишите коллектив, исполнителей, постановщиков, описание. Заполняйте только нужное, пустое ничего не стирает. Форму можно открывать много раз.',
     '5. Если вы редактор этой таблицы, запись появится в ней сразу. Иначе она ляжет на лист «Заявки», и администратор выберет в столбце «Решение» значение «Принять» или «Отклонить».',
     '6. Списки концертов и номеров в формах обновляются раз в час и после каждого ответа. Сразу: Каталог → Формы для заполнения → Обновить списки в формах.',
@@ -822,6 +853,7 @@ function summary_(kind, d) {
     var extra = [];
     [['collective', 'Коллектив'], ['performers', 'Исполнители'], ['directors', 'Постановщики'], ['about', 'Описание']].forEach(function (x) { if (d[x[0]]) extra.push(x[1] + ': ' + d[x[0]]); });
     if (d.cover) extra.push('Обложка: ' + coverInfo_(d.cover));
+    if (d.title) return 'Концерт: ' + d.concert + (d.direction ? ' | ' + d.direction : '') + '\nНомер: ' + d.title + '\nНачало: ' + d.start + (d.end ? '\nКонец: ' + d.end : '') + (extra.length ? '\n' + extra.join('; ') : '');
     return 'Концерт: ' + d.concert + (d.direction ? ' | ' + d.direction : '') + '\n' + d.list + (d.end ? '\nКонец последнего: ' + d.end : '') + (extra.length ? '\nДля всех: ' + extra.join('; ') : '');
   }
   var parts = ['Номер: ' + d.number];
@@ -925,6 +957,11 @@ function applyNumbers_(d) {
   tc.rows.forEach(function (r) { if (norm_(r[tc.head['Название']]) === norm_(d.concert)) concert = String(r[tc.head['Название']]).trim(); });
   if (!concert) return { ok: false, msg: 'концерта «' + d.concert + '» нет в таблице' };
   var items = [], bad = [];
+  if (d.title) {
+    var st = parseSec_(d.start);
+    if (st === null) return { ok: false, msg: 'время начала «' + (d.start || '') + '» нужно в виде ч:мм:сс' };
+    items.push({ start: st, title: String(d.title).trim(), collective: '', performers: '', directors: '', about: '' });
+  }
   String(d.list || '').split(/\r?\n/).forEach(function (line) {
     if (!line.trim()) return;
     var parts = line.split('|');
@@ -935,7 +972,7 @@ function applyNumbers_(d) {
     items.push({ start: sec, title: m[2], collective: part(1), performers: part(2), directors: part(3), about: part(4) });
   });
   if (bad.length) return { ok: false, msg: 'не понял строки: ' + bad.slice(0, 3).join(' / ') + (bad.length > 3 ? '…' : '') };
-  if (!items.length) return { ok: false, msg: 'в списке нет номеров' };
+  if (!items.length) return { ok: false, msg: 'нет ни одного номера' };
   items.sort(function (a, b) { return a.start - b.start; });
   var lastEnd = d.end ? parseSec_(d.end) : null;
   if (d.end && lastEnd === null) return { ok: false, msg: 'время окончания нужно в виде ч:мм:сс' };
