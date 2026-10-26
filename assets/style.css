@@ -225,3 +225,10 @@ a.btn{text-decoration:none;display:inline-block}
 .user-head .avatar-l{margin-top:0}
 .user-head h1{margin:0}
 .user-comment .c-head{align-items:baseline}
+
+/* лайки комментариев */
+.c-actions{align-items:center}
+.like-btn{background:transparent;border:1px solid var(--line);border-radius:999px;color:var(--ash);padding:1px 11px;line-height:1.5;cursor:pointer}
+.like-btn:hover{border-color:var(--ember);color:var(--ember-hi)}
+.like-btn.is-on{color:var(--ember);border-color:var(--ember)}
+.like-list{display:flex;flex-wrap:wrap;gap:8px 18px;padding:6px 0 0;font-size:.9rem}

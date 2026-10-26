@@ -101,9 +101,42 @@ service cloud.firestore {
         && request.resource.data.createdAt == request.time
         && (!('parentId' in request.resource.data) || request.resource.data.parentId is string)
         && (!('authorPersonId' in request.resource.data) || owns(request.resource.data.authorPersonId));
-      allow update: if isAdmin()
-        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status']);
+      allow update: if (isAdmin()
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status']))
+        // счётчик лайков: меняется ровно на единицу и только вместе с записью лайка в том же пакете
+        || (signedIn()
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['likeCount'])
+          && ((resource.data.status == 'visible'
+                && request.resource.data.likeCount == resource.data.get('likeCount', 0) + 1
+                && !exists(/databases/$(database)/documents/likes/$(cid + '_' + request.auth.uid))
+                && existsAfter(/databases/$(database)/documents/likes/$(cid + '_' + request.auth.uid)))
+            || (request.resource.data.likeCount == resource.data.get('likeCount', 0) - 1
+                && request.resource.data.likeCount >= 0
+                && exists(/databases/$(database)/documents/likes/$(cid + '_' + request.auth.uid))
+                && !existsAfter(/databases/$(database)/documents/likes/$(cid + '_' + request.auth.uid)))));
       allow delete: if isAdmin() || (signedIn() && resource.data.uid == request.auth.uid);
+    }
+
+    // Лайки комментариям. Один лайк на человека (ключ «комментарий_аккаунт»). Список лайкнувших публичный.
+    // Убрать лайк может сам автор лайка, автор комментария (при удалении комментария) и администратор.
+    match /likes/{lid} {
+      allow read: if true;
+      allow create: if signedIn()
+        && request.resource.data.keys().hasOnly(['commentId', 'numberId', 'uid', 'userName', 'createdAt'])
+        && request.resource.data.commentId is string
+        && lid == request.resource.data.commentId + '_' + request.auth.uid
+        && request.resource.data.uid == request.auth.uid
+        && request.resource.data.userName == request.auth.token.name
+        && request.resource.data.createdAt == request.time
+        && request.resource.data.numberId is string
+        && exists(/databases/$(database)/documents/comments/$(request.resource.data.commentId))
+        && get(/databases/$(database)/documents/comments/$(request.resource.data.commentId)).data.numberId == request.resource.data.numberId
+        && get(/databases/$(database)/documents/comments/$(request.resource.data.commentId)).data.status == 'visible';
+      allow delete: if signedIn()
+        && (resource.data.uid == request.auth.uid
+            || isAdmin()
+            || (exists(/databases/$(database)/documents/comments/$(resource.data.commentId))
+                && get(/databases/$(database)/documents/comments/$(resource.data.commentId)).data.uid == request.auth.uid));
     }
   }
 }

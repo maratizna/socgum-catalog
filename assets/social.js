@@ -426,6 +426,7 @@
     var stage = document.getElementById("stage");
     var canSeek = !!(stage && stage.dataset.oid);
     var comments = [], loaded = false, replyTo = null, noteData = null, fail = "";
+    var myLikes = {}, openLikers = {};   // мои лайки на этой странице; комментарии с раскрытым списком лайкнувших
 
     var list = el("div", { class: "c-list" });
     var form = el("div", { class: "c-form" });
@@ -443,10 +444,72 @@
         comments = list;
         comments.sort(function (a, b) { return ms(a) - ms(b); });
         loaded = true; fail = "";
-        return loadAvatars(comments.map(function (c) { return c.uid; }));
+        return loadAvatars(comments.map(function (c) { return c.uid; })).then(function () { return loadMyLikes(fresh); });
       }, function (e) { loaded = true; fail = errText(e); });
     }
-    function dropComments() { cdrop("comments:" + nid); }
+    /* Лайки читаются только мои (чтобы закрасить сердечко); число лайков приходит вместе с комментарием.
+       Полный список лайкнувших грузится лишь когда его раскрывают. */
+    function loadMyLikes(fresh) {
+      myLikes = {};
+      if (!state.user) return Promise.resolve();
+      var uid = state.user.uid;
+      return cached("likes:" + nid + ":" + uid, TTL.comments, fresh, function () {
+        return fb.f.getDocs(fb.f.query(fcol("likes"), fb.f.where("uid", "==", uid), fb.f.where("numberId", "==", nid))).then(function (s) {
+          return s.docs.map(function (d) { return d.data().commentId; });
+        });
+      }).then(function (ids) { (ids || []).forEach(function (id) { myLikes[id] = true; }); }, function () { });
+    }
+    function dropComments() { cdrop("comments:" + nid); cdrop("likes:" + nid); }
+    function plural(n) {
+      var m = n % 100, d = n % 10;
+      return n + " " + (m > 10 && m < 20 ? "лайков" : d === 1 ? "лайк" : d > 1 && d < 5 ? "лайка" : "лайков");
+    }
+    function toggleLike(c) {
+      if (!state.user) { toast("Войдите, чтобы ставить лайки."); return Promise.resolve(); }
+      var uid = state.user.uid, on = !myLikes[c.id], b = fb.f.writeBatch(fb.db), ref = fdoc("likes/" + c.id + "_" + uid), cref = fdoc("comments/" + c.id);
+      if (on) {
+        b.set(ref, { commentId: c.id, numberId: nid, uid: uid, userName: state.user.displayName || "Без имени", createdAt: fb.f.serverTimestamp() });
+        b.update(cref, { likeCount: fb.f.increment(1) });
+      } else {
+        b.delete(ref);
+        b.update(cref, { likeCount: fb.f.increment(-1) });
+      }
+      return b.commit().then(function () {
+        myLikes[c.id] = on;
+        c.likeCount = Math.max(0, (c.likeCount || 0) + (on ? 1 : -1));
+        dropComments(); cdrop("likers:" + c.id);
+        drawList();
+      }, function (e) { toast(errText(e)); });
+    }
+    /* список лайкнувших: один запрос, только после раскрытия */
+    function likersBox(c) {
+      var box = el("div", { class: "like-list" }, el("p", { class: "c-hint", text: "Загружаем…" }));
+      cached("likers:" + c.id, 30e3, false, function () {
+        return fb.f.getDocs(fb.f.query(fcol("likes"), fb.f.where("commentId", "==", c.id), fb.f.limit(200))).then(function (s) {
+          return s.docs.map(function (d) { var x = d.data(); return { uid: x.uid, userName: x.userName, createdAt: x.createdAt }; });
+        });
+      }).then(function (arr) {
+        arr.sort(function (a, b) { return ms(a) - ms(b); });
+        return loadAvatars(arr.map(function (a) { return a.uid; })).then(function () { return arr; });
+      }).then(function (arr) {
+        clear(box);
+        if (!arr.length) { box.append(el("p", { class: "c-hint", text: "Лайков пока нет." })); return; }
+        arr.forEach(function (a) {
+          box.append(el("a", { class: "c-who", href: ROOT + "u/?id=" + encodeURIComponent(a.uid), title: "Страница пользователя" },
+            avatarNode(a.uid, a.userName, "xs"), el("span", { text: a.userName || "Без имени" })));
+        });
+      }, function (e) { clear(box).append(el("p", { class: "msg msg-err", text: errText(e) })); });
+      return box;
+    }
+    /* комментарий удаляется вместе со своими лайками одним пакетом */
+    function deleteComment(c) {
+      return fb.f.getDocs(fb.f.query(fcol("likes"), fb.f.where("commentId", "==", c.id), fb.f.limit(450))).then(function (s) {
+        var b = fb.f.writeBatch(fb.db);
+        s.forEach(function (d) { b.delete(d.ref); });
+        b.delete(fdoc("comments/" + c.id));
+        return b.commit();
+      }).then(function () { cdrop("likers:" + c.id); });
+    }
     function ms(c) { return c.createdAt && c.createdAt.toMillis ? c.createdAt.toMillis() : Date.now(); }
     function when(c) {
       if (!c.createdAt || !c.createdAt.toDate) return "только что";
@@ -503,11 +566,17 @@
         c.status === "hidden" && el("span", { class: "badge badge-off", text: "Скрыт" }),
         el("a", { class: "c-date", href: "#c-" + c.id, text: when(c) }));
       var actions = el("p", { class: "c-actions" });
+      var n = c.likeCount || 0, liked = !!myLikes[c.id];
+      if (c.status !== "hidden") actions.append(el("button", { type: "button", class: "like-btn" + (liked ? " is-on" : ""), "aria-pressed": liked ? "true" : "false",
+        "aria-label": liked ? "Убрать лайк" : "Поставить лайк", title: liked ? "Убрать лайк" : "Нравится", onclick: function () { toggleLike(c); } },
+        el("span", { "aria-hidden": "true", text: "♥" })));
+      if (n > 0) actions.append(el("button", { type: "button", class: "linkbtn like-count", "aria-expanded": openLikers[c.id] ? "true" : "false", text: plural(n),
+        onclick: function () { openLikers[c.id] = !openLikers[c.id]; drawList(); } }));
       if (!isReply && state.user) actions.append(el("button", { type: "button", class: "linkbtn", text: "Ответить", onclick: function () { replyTo = c; drawForm(); form.scrollIntoView({ block: "center" }); } }));
       if (state.admin) actions.append(el("button", { type: "button", class: "linkbtn", text: c.status === "hidden" ? "Показать" : "Скрыть", onclick: function () { act(fb.f.updateDoc(fdoc("comments/" + c.id), { status: c.status === "hidden" ? "visible" : "hidden" })); } }));
-      if (mine || state.admin) actions.append(el("button", { type: "button", class: "linkbtn", text: "Удалить", onclick: function () { if (confirm("Удалить комментарий насовсем?")) act(fb.f.deleteDoc(fdoc("comments/" + c.id))); } }));
+      if (mine || state.admin) actions.append(el("button", { type: "button", class: "linkbtn", text: "Удалить", onclick: function () { if (confirm("Удалить комментарий насовсем?")) act(deleteComment(c)); } }));
       return el("article", { class: "comment" + (isReply ? " reply" : "") + (c.status === "hidden" ? " is-hidden" : ""), id: "c-" + c.id },
-        head, el("p", { class: "c-text" }, richText(c.text, canSeek)), actions);
+        head, el("p", { class: "c-text" }, richText(c.text, canSeek)), actions, n > 0 && openLikers[c.id] ? likersBox(c) : null);
     }
     function act(p) { return p.then(function () { dropComments(); return loadComments(true); }).then(draw, function (e) { toast(errText(e)); }); }
 
@@ -690,7 +759,7 @@
         cached("user:comments:" + uid, TTL.pub, false, function () {
           return fb.f.getDocs(fb.f.query(fcol("comments"), fb.f.where("uid", "==", uid), fb.f.where("status", "==", "visible"), fb.f.limit(100))).then(function (s) {
             var a = [];
-            s.forEach(function (d) { var x = d.data(); a.push({ id: d.id, numberId: x.numberId, text: x.text, authorName: x.authorName, createdAt: x.createdAt }); });
+            s.forEach(function (d) { var x = d.data(); a.push({ id: d.id, numberId: x.numberId, text: x.text, authorName: x.authorName, createdAt: x.createdAt, likeCount: x.likeCount || 0 }); });
             return a;
           });
         }).catch(function () { return null; }),
@@ -728,7 +797,8 @@
         ul.append(el("article", { class: "comment user-comment" },
           el("p", { class: "c-head" },
             el("a", { href: ROOT + "n/" + c.numberId + "/#c-" + c.id, text: titles[c.numberId] || "Номер" }),
-            el("span", { class: "c-date", text: when(c) })),
+            el("span", { class: "c-date", text: when(c) }),
+            c.likeCount ? el("span", { class: "c-date", text: "♥ " + c.likeCount }) : null),
           el("p", { class: "c-text", text: c.text })));
       });
       box.append(ul);
