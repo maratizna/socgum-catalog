@@ -79,19 +79,104 @@
   function fdoc(path) { return fb.f.doc.apply(null, [fb.db].concat(path.split("/"))); }
   function fcol(name) { return fb.f.collection(fb.db, name); }
 
-  function signIn() {
+  /* ------------------------------------------------------------ вход: окно с двумя способами */
+  function authError(e) {
+    var c = e && e.code || "";
+    var map = {
+      "auth/email-already-in-use": "Этот e-mail уже зарегистрирован. Войдите или восстановите пароль.",
+      "auth/invalid-credential": "Неверный e-mail или пароль.",
+      "auth/wrong-password": "Неверный e-mail или пароль.",
+      "auth/user-not-found": "Неверный e-mail или пароль.",
+      "auth/invalid-email": "Проверьте e-mail: он записан с ошибкой.",
+      "auth/weak-password": "Пароль слишком короткий: нужно не меньше 6 символов.",
+      "auth/too-many-requests": "Слишком много попыток. Подождите немного и повторите.",
+      "auth/network-request-failed": "Нет связи с сервисом. Проверьте интернет и повторите.",
+      "auth/popup-blocked": "Браузер заблокировал окно входа. Разрешите всплывающие окна для этого сайта и повторите."
+    };
+    return map[c] || ("Не удалось войти: " + ((e && e.message) || c));
+  }
+
+  function signInGoogle() {
     var provider = new fb.a.GoogleAuthProvider();
     provider.setCustomParameters({ prompt: "select_account" });
-    return fb.a.signInWithPopup(fb.auth, provider).catch(function (e) {
-      var c = e && e.code || "";
-      console.warn("Вход не удался:", c, e && e.message);
-      if (c === "auth/popup-closed-by-user" || c === "auth/cancelled-popup-request") return;
-      // Вход «с переходом на другую страницу» между разными адресами браузеры ломают, поэтому только окно входа.
-      toast(c === "auth/popup-blocked"
-        ? "Браузер заблокировал окно входа. Разрешите всплывающие окна для этого сайта и нажмите «Войти» ещё раз."
-        : "Не удалось войти: " + (e && e.message ? e.message : e));
-    });
+    // Вход «с переходом на другую страницу» между разными адресами браузеры ломают, поэтому только окно входа.
+    return fb.a.signInWithPopup(fb.auth, provider);
   }
+
+  function signIn() {
+    var old = document.getElementById("auth-dialog");
+    if (old) old.remove();
+    var mode = "login";
+    var dlg = el("dialog", { id: "auth-dialog", class: "auth-dialog", "aria-label": "Вход на сайт" });
+    var body = el("div", { class: "auth-body" });
+    dlg.append(body);
+    dlg.addEventListener("click", function (e) { if (e.target === dlg) dlg.close(); });
+    dlg.addEventListener("close", function () { dlg.remove(); });
+    document.body.append(dlg);
+
+    function finish(p, msg) {
+      return p.then(function () { dlg.close(); }, function (e) {
+        var c = e && e.code || "";
+        if (c === "auth/popup-closed-by-user" || c === "auth/cancelled-popup-request") return;
+        console.warn("Вход не удался:", c, e && e.message);
+        note(body, authError(e), "err");
+        busy(false);
+      });
+    }
+    var buttons = [];
+    function busy(on) { buttons.forEach(function (b) { b.disabled = on; }); }
+
+    function draw() {
+      clear(body); buttons = [];
+      var reg = mode === "register", reset = mode === "reset";
+      body.append(el("h2", { text: reset ? "Восстановление пароля" : reg ? "Регистрация" : "Вход" }));
+      if (!reset) {
+        var g = el("button", { type: "button", class: "btn btn-wide", text: "Продолжить с Google", onclick: function () { busy(true); finish(signInGoogle()); } });
+        buttons.push(g);
+        body.append(g, el("p", { class: "c-hint auth-or", text: "или по e-mail" }));
+      }
+      var name = el("input", { class: "c-input", type: "text", autocomplete: "name", maxlength: "100", required: true, "aria-label": "Имя и фамилия" });
+      var email = el("input", { class: "c-input", type: "email", autocomplete: "email", required: true, "aria-label": "E-mail" });
+      var pass = el("input", { class: "c-input", type: "password", autocomplete: reg ? "new-password" : "current-password", minlength: "6", required: true, "aria-label": "Пароль" });
+      var submit = el("button", { type: "submit", class: "btn btn-wide", text: reset ? "Отправить письмо" : reg ? "Зарегистрироваться" : "Войти" });
+      buttons.push(submit);
+      var f = el("form", { class: "auth-form", onsubmit: function (ev) {
+        ev.preventDefault();
+        busy(true); note(body, "");
+        var em = email.value.trim();
+        if (reset) {
+          fb.a.sendPasswordResetEmail(fb.auth, em).then(function () { busy(false); note(body, "Если такой e-mail зарегистрирован, мы отправили на него письмо со ссылкой для нового пароля.", "ok"); },
+            function (e) { busy(false); note(body, authError(e), "err"); });
+        } else if (reg) {
+          var nm = name.value.trim().replace(/\s+/g, " ");
+          if (nm.length < 2) { busy(false); note(body, "Укажите имя и фамилию.", "err"); return; }
+          finish(fb.a.createUserWithEmailAndPassword(fb.auth, em, pass.value).then(function (cred) {
+            return fb.a.updateProfile(cred.user, { displayName: nm })
+              .then(function () { return cred.user.getIdToken(true); })   // имя попадает в токен, по нему работают правила
+              .then(function () { fb.a.sendEmailVerification(cred.user).catch(function () { }); return loadMe(cred.user); })
+              .then(refreshViews);
+          }));
+        } else {
+          finish(fb.a.signInWithEmailAndPassword(fb.auth, em, pass.value));
+        }
+      } },
+        reg && el("label", null, "Имя и фамилия", name),
+        reg && el("p", { class: "c-hint", text: "Так вас увидят в комментариях. Постановщикам лучше написать имя так же, как в таблице: тогда страница подтвердится сразу." }),
+        el("label", null, "E-mail", email),
+        !reset && el("label", null, "Пароль" + (reg ? " (не меньше 6 символов)" : ""), pass),
+        submit);
+      body.append(f);
+      var links = el("p", { class: "auth-links" });
+      if (mode !== "login") links.append(el("button", { type: "button", class: "linkbtn", text: "Уже есть аккаунт: войти", onclick: function () { mode = "login"; draw(); } }));
+      if (mode !== "register") links.append(el("button", { type: "button", class: "linkbtn", text: "Зарегистрироваться", onclick: function () { mode = "register"; draw(); } }));
+      if (mode === "login") links.append(el("button", { type: "button", class: "linkbtn", text: "Забыли пароль?", onclick: function () { mode = "reset"; draw(); } }));
+      body.append(links, el("button", { type: "button", class: "linkbtn auth-close", text: "Закрыть", onclick: function () { dlg.close(); } }));
+      note(body, "");
+    }
+    draw();
+    if (dlg.showModal) dlg.showModal(); else dlg.setAttribute("open", "");
+  }
+
   function toast(text) {
     var t = document.getElementById("toast");
     if (!t) { t = el("p", { id: "toast", class: "toast", role: "alert" }); document.body.append(t); }
@@ -467,6 +552,23 @@
         return;
       }
       box.append(el("p", { class: "lead", text: state.user.displayName + (state.admin ? ". Вы администратор." : "") }));
+      var nameIn = el("input", { class: "c-input", type: "text", maxlength: "100", "aria-label": "Имя в комментариях" });
+      nameIn.value = state.user.displayName || "";
+      var nameBox = el("details", { class: "edit-box" }, el("summary", { text: "Изменить имя" }),
+        el("label", null, "Имя в комментариях и для подтверждения страницы", nameIn),
+        el("button", { type: "button", class: "btn btn-s", text: "Сохранить имя", onclick: function () {
+          var nm = nameIn.value.trim().replace(/\s+/g, " ");
+          if (nm.length < 2) { note(nameBox, "Имя слишком короткое.", "err"); return; }
+          fb.a.updateProfile(state.user, { displayName: nm }).then(function () { return state.user.getIdToken(true); })
+            .then(function () { refreshViews(); }, function (e) { note(nameBox, errText(e), "err"); });
+        } }));
+      box.append(nameBox);
+      var viaPass = state.user.providerData.some(function (p) { return p.providerId === "password"; });
+      if (viaPass && !state.user.emailVerified) {
+        box.append(el("p", { class: "c-hint", text: "E-mail " + state.user.email + " пока не подтверждён." }),
+          el("button", { type: "button", class: "linkbtn", text: "Отправить письмо ещё раз", onclick: function (ev) {
+            fb.a.sendEmailVerification(state.user).then(function () { ev.target.textContent = "Письмо отправлено"; }, function (e) { toast(errText(e)); }); } }));
+      }
       var mineIds = Object.keys(state.claims);
       box.append(el("h2", { text: "Мои страницы" }));
       if (!mineIds.length) box.append(el("p", { class: "c-hint", text: "Пока нет. Откройте свою страницу в каталоге и нажмите «Это моя страница»." }));
