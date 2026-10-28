@@ -475,11 +475,15 @@
   /* Критерии оценки 1–5: ключ в базе, название, подсказка, короткое название для строки под комментарием */
   var RATE = [
     ["idea", "Замысел", "идея, образы, история номера", "замысел"],
-    ["comp", "Постановка", "композиция, рисунок, ритм, динамика", "постановка"],
-    ["perf", "Исполнение", "техника, синхронность, харизма", "исполнение"],
+    ["comp", "Постановка", "что придумал постановщик: рисунок, переходы, ритм, музыка", "постановка"],
+    ["perf", "Исполнение", "как выступили артисты: техника, синхронность, игра", "исполнение"],
     ["stage", "Сценическое воплощение", "свет, костюмы, видео, реквизит", "сцена"],
     ["overall", "Общее впечатление", "эмоции, атмосфера, вайб", "впечатление"]
   ];
+  /* Вес общего впечатления в сумме: четыре критерия по 1, общее впечатление ×1,2. Каждая оценка по-прежнему от 1 до 5. */
+  var OVERALL_W = 1.2;
+  var TOTAL_MAX = 4 * 5 + 5 * OVERALL_W;   // 26
+  function fmtT(x) { var s = fmt1(x); return s.slice(-2) === ",0" ? s.slice(0, -2) : s; }
   var SORTS = [["old", "Сначала старые"], ["new", "Сначала новые"], ["top", "Популярные"]];
   function fmt1(x) { return (Math.round(x * 10) / 10).toFixed(1).replace(".", ","); }
   function plRate(n) {
@@ -487,11 +491,15 @@
     return n + " " + (m > 10 && m < 20 ? "оценок" : d === 1 ? "оценка" : d > 1 && d < 5 ? "оценки" : "оценок");
   }
 
-  /* Сумма пяти оценок (5–25). Считается только если поставлены все пять. */
+  /* Сумма пяти оценок: четыре критерия плюс общее впечатление ×1,2 (от 5,2 до 26). Считается только если поставлены все пять. */
   function ratingTotal(r) {
     var t = 0;
-    for (var i = 0; i < RATE.length; i++) { if (!r || !r[RATE[i][0]]) return null; t += r[RATE[i][0]]; }
-    return t;
+    for (var i = 0; i < RATE.length; i++) {
+      var v = r && r[RATE[i][0]];
+      if (!v) return null;
+      t += RATE[i][0] === "overall" ? v * OVERALL_W : v;
+    }
+    return Math.round(t * 10) / 10;
   }
   function tipText(k, v) { return k[1] + ": " + v + " из 5" + (k[2] ? " (" + k[2] + ")" : ""); }
   function closeTips(except) { Array.prototype.forEach.call(document.querySelectorAll(".rt-chip.is-open,.rt-total.is-open"), function (n) { if (n !== except) n.classList.remove("is-open"); }); }
@@ -501,7 +509,7 @@
     var wrap = el("div", { class: "rt", role: "group", "aria-label": "Оценка номера" });
     var tot = ratingTotal(r);
     var toggle = function (ev) { var b = ev.currentTarget; closeTips(b); b.classList.toggle("is-open"); };
-    if (tot !== null) wrap.append(el("button", { type: "button", class: "rt-total", "data-tip": "Сумма пяти оценок: " + tot + " из 25", "aria-label": "Сумма оценок: " + tot + " из 25", onclick: toggle }, el("b", { text: String(tot) }), "/25"));
+    if (tot !== null) wrap.append(el("button", { type: "button", class: "rt-total", "data-tip": "Сумма: четыре критерия и общее впечатление ×1,2. " + fmtT(tot) + " из " + TOTAL_MAX, "aria-label": "Сумма оценок: " + fmtT(tot) + " из " + TOTAL_MAX, onclick: toggle }, el("b", { text: fmtT(tot) }), "/" + TOTAL_MAX));
     RATE.forEach(function (k) {
       var v = r[k[0]];
       if (!v) return;
@@ -712,7 +720,7 @@
       });
       sumBox.append(el("h3", { text: "Оценки зрителей" }),
         el("div", { class: "rate-sum-grid" },
-          tcnt ? el("p", { class: "rate-big" }, el("strong", { text: fmt1(tsum / tcnt) }), el("span", { text: " из 25" }),
+          tcnt ? el("p", { class: "rate-big" }, el("strong", { text: fmtT(tsum / tcnt) }), el("span", { text: " из " + TOTAL_MAX }),
             el("small", { text: "средняя сумма, " + plRate(tcnt) })) : el("p", { class: "rate-big" }, el("small", { text: plRate(ratings.length) + ", полных нет" })),
           bars));
       sumBox.hidden = false;
@@ -789,7 +797,7 @@
         var showState = function () {
           var n = setCount(), tot = ratingTotal(draft);
           sumLine.textContent = cleared ? "оценку уберём" : prev && same() && tot !== null ? "ваша оценка сохранена" : n ? "выбрано " + n + " из " + RATE.length : "необязательно";
-          totalLine.textContent = tot !== null ? "Сумма: " + tot + " из 25" : "Сумма появится, когда поставите все пять оценок";
+          totalLine.textContent = tot !== null ? "Сумма: " + fmtT(tot) + " из " + TOTAL_MAX + " (общее впечатление считается с множителем 1,2)" : "Сумма появится, когда поставите все пять оценок";
           totalLine.classList.toggle("is-full", tot !== null);
         };
         var sliderRow = function (k) {
@@ -813,6 +821,7 @@
         };
         var grpCrit = el("div", { class: "rate-grp" }), grpVibe = el("div", { class: "rate-grp rate-vibe" });
         RATE.forEach(function (k) { (k[0] === "overall" ? grpVibe : grpCrit).append(sliderRow(k)); });
+        grpVibe.append(el("p", { class: "rate-feel", text: "Эмоциональный отклик: что вы почувствовали? Этот пункт про ощущение от номера в целом, и в сумме он весит больше остальных (×1,2). Своими словами расскажите об этом в комментарии ниже." }));
         var reset = el("button", { type: "button", class: "linkbtn", text: prev ? "Убрать мою оценку" : "Сбросить", onclick: function () {
           draft = {}; cleared = !!prev;
           painters.forEach(function (f) { f(); });
