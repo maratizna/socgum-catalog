@@ -38,8 +38,9 @@ var HOW_TO = [
   '1. Лист «Концерты»: по строке на концерт. «Видео» — ссылка на запись концерта целиком в VK.',
   '2. Лист «Направления»: список направлений (хореография, вокал и так далее).',
   '3. Лист «Номера»: по строке на номер. «Концерт» и «Направление» выбираются из списка.',
-  '   «Исполнители» и «Постановщики» — имена через запятую. Пишите имя везде одинаково.',
+  '   «Участники» и «Постановщики» — имена через запятую. Пишите имя везде одинаково.',
   '4. Лист «Люди» необязательный: описание и ссылка для человека. Меню Каталог → Собрать список людей заполнит имена сам.',
+  '5. Дополнительные столбцы: «Концерты» — «Учебный год» (например 2025–2026), «Год», «Тема», «Обложка» (ссылка на картинку), «Видео 2»; «Направления» — «Тип» («Вне сцены» для SMM, сценарки, админки и т. п.); «Номера» — «Ещё направление» (второе направление номера).',
   '',
   'Столбец «ID» на листах «Концерты», «Направления» и «Люди» — постоянный адрес на сайте. Он заполняется сам и после публикации не меняется.',
   'Чтобы переименовать концерт, направление или человека, выделите ячейку с названием или именем и выберите Каталог → Переименовать выделенное.',
@@ -53,13 +54,13 @@ var HOW_TO = [
 ];
 
 var DEF = [
-  { name: SHEETS.concerts, head: ['Название', 'Дата', 'Видео', 'Описание', 'ID'], widths: [260, 110, 380, 380, 170], text: [1, 2, 4] },
-  { name: SHEETS.dirs, head: ['Название', 'Описание', 'ID'], widths: [260, 420, 170], text: [2] },
+  { name: SHEETS.concerts, head: ['Название', 'Дата', 'Видео', 'Описание', 'ID', 'Учебный год', 'Год', 'Тема', 'Обложка', 'Видео 2'], widths: [260, 110, 380, 380, 170, 110, 70, 220, 380, 380], text: [1, 2, 4, 5, 6] },
+  { name: SHEETS.dirs, head: ['Название', 'Описание', 'ID', 'Тип'], widths: [260, 420, 170, 110], text: [2] },
   {
     name: SHEETS.nums,
-    head: ['ID', 'Концерт', 'Направление', '№ в концерте', 'Название', 'Коллектив', 'Исполнители',
-      'Постановщики', 'Описание', 'Обложка', 'Начало', 'Конец', 'Старый адрес'],
-    widths: [120, 220, 170, 90, 240, 200, 320, 260, 360, 140, 90, 90, 280],
+    head: ['ID', 'Концерт', 'Направление', '№ в концерте', 'Название', 'Коллектив', 'Участники',
+      'Постановщики', 'Описание', 'Обложка', 'Начало', 'Конец', 'Старый адрес', 'Ещё направление'],
+    widths: [120, 220, 170, 90, 240, 200, 320, 260, 360, 140, 90, 90, 280, 170],
     text: [0, 3, 10, 11]
   },
   { name: SHEETS.people, head: ['Имя', 'О себе', 'Ссылка', 'ID'], widths: [260, 420, 320, 170], text: [3] }
@@ -307,7 +308,7 @@ function runChecks_() {
   var tn = T.nums, ids = {};
   var cID = col(tn, 'ID', SHEETS.nums), cC = col(tn, 'Концерт', SHEETS.nums), cD = col(tn, 'Направление', SHEETS.nums),
     cT = col(tn, 'Название', SHEETS.nums), cS = col(tn, 'Начало', SHEETS.nums), cE = col(tn, 'Конец', SHEETS.nums),
-    cP = col(tn, 'Исполнители', SHEETS.nums), cQ = col(tn, 'Постановщики', SHEETS.nums);
+    cP = col(tn, 'Участники', SHEETS.nums), cQ = col(tn, 'Постановщики', SHEETS.nums);
   var names = {};
   if (cID >= 0 && cC >= 0 && cT >= 0) tn.rows.forEach(function (r, i) {
     var row = i + 2;
@@ -377,7 +378,7 @@ function checkSheet() {
 function collectPeople() {
   var tn = readTable_(SHEETS.nums), tp = readTable_(SHEETS.people);
   if (!tn || !tp) { SpreadsheetApp.getUi().alert('Нет листа «Номера» или «Люди». Выберите Каталог → Создать структуру.'); return; }
-  var cols = ['Исполнители', 'Постановщики'].map(function (n) { return tn.head[n]; }).filter(function (c) { return c !== undefined; });
+  var cols = ['Участники', 'Постановщики'].map(function (n) { return tn.head[n]; }).filter(function (c) { return c !== undefined; });
   var have = {};
   var nameCol = tp.head['Имя'];
   if (nameCol === undefined) { SpreadsheetApp.getUi().alert('На листе «Люди» нет столбца «Имя».'); return; }
@@ -471,7 +472,7 @@ function renameSelected() {
   var kinds = {};
   kinds[SHEETS.concerts] = { head: 'Название', refs: [[SHEETS.nums, 'Концерт', false]] };
   kinds[SHEETS.dirs] = { head: 'Название', refs: [[SHEETS.nums, 'Направление', false]] };
-  kinds[SHEETS.people] = { head: 'Имя', refs: [[SHEETS.nums, 'Исполнители', true], [SHEETS.nums, 'Постановщики', true]] };
+  kinds[SHEETS.people] = { head: 'Имя', refs: [[SHEETS.nums, 'Участники', true], [SHEETS.nums, 'Постановщики', true]] };
   var kind = kinds[sh.getName()];
   if (!kind || !cell || cell.getRow() < 2 || cell.getNumRows() !== 1 || cell.getNumColumns() !== 1 ||
       String(sh.getRange(1, cell.getColumn()).getValue()).trim() !== kind.head) {
@@ -568,7 +569,7 @@ function openSite() {
  * Три формы Google пишут в эту таблицу:
  *   1. «Новый концерт»      – название, дата, ссылка на запись.
  *   2. «Номера списком»     – концерт, название номера, время начала и конца (один номер за отправку).
- *   3. «Дополнить номер»    – коллектив, исполнители, постановщики, описание, время.
+ *   3. «Дополнить номер»    – коллектив, участники, постановщики, описание, время.
  * Кто входит в число редакторов таблицы, тот администратор: его ответ попадает в таблицу сразу.
  * Ответ любого другого человека ложится на лист «Заявки» и ждёт решения: в столбце «Решение» выбрать «Принять» или «Отклонить».
  */
@@ -595,9 +596,9 @@ var COVER_C = 'Обложка номера (до 1,5 МБ)';
 var FT = {
   A: { name: 'Название концерта', date: 'Дата концерта', video: 'Ссылка на запись концерта в VK', about: 'Описание' },
   B: { concert: 'Концерт', direction: 'Направление', title: 'Название номера', start: 'Время начала (ч:мм:сс)', end: 'Время конца (ч:мм:сс)',
-       collective: 'Коллектив', performers: 'Исполнители (через запятую)', directors: 'Постановщики (через запятую)', about: 'Описание',
+       collective: 'Коллектив', performers: 'Участники (через запятую)', directors: 'Постановщики (через запятую)', about: 'Описание',
        cover: COVER_B },
-  C: { number: 'Номер', direction: 'Направление', collective: 'Коллектив', performers: 'Исполнители (полный список через запятую)',
+  C: { number: 'Номер', direction: 'Направление', collective: 'Коллектив', performers: 'Участники (полный список через запятую)',
        directors: 'Постановщики (полный список через запятую)', about: 'Описание', start: 'Начало (ч:мм:сс)', end: 'Конец (ч:мм:сс)',
        cover: COVER_C }
 };
@@ -635,7 +636,7 @@ function createForms() {
       .requireTextContainsPattern('(video-?\\d+_\\d+|oid=-?\\d+)').build());
   a.addParagraphTextItem().setTitle(FT.A.about).setRequired(false);
 
-  var b = base('Каталог СоцГума: номера концерта списком', 'Один номер за отправку: название, время начала и конца в записи концерта. Коллектив, исполнители, постановщики, описание и обложка по желанию.');
+  var b = base('Каталог СоцГума: номера концерта списком', 'Один номер за отправку: название, время начала и конца в записи концерта. Коллектив, участники, постановщики, описание и обложка по желанию.');
   b.addListItem().setTitle(FT.B.concert).setChoiceValues(['(пока пусто)']).setRequired(true);
   b.addListItem().setTitle(FT.B.direction).setChoiceValues(['(пока пусто)']).setRequired(false);
   addBNumberFields_(b);
@@ -711,7 +712,7 @@ function upgradeFormB_(formId) {
     it.setTitle(FT.B[a[0]]).setRequired(false);
     if (h[a[0]]) it.setHelpText(h[a[0]]);
   });
-  f.setDescription('Один номер за отправку: название, время начала и конца в записи концерта. Коллектив, исполнители, постановщики, описание и обложка по желанию.');
+  f.setDescription('Один номер за отправку: название, время начала и конца в записи концерта. Коллектив, участники, постановщики, описание и обложка по желанию.');
   var order = ['concert', 'direction', 'title', 'start', 'end', 'collective', 'performers', 'directors', 'about', 'cover'], pos = 0;
   order.forEach(function (k) {
     var it = findItem_(f, FT.B[k]);
@@ -732,8 +733,25 @@ function coverToEnd_(formId, title) {
   }
 }
 
+// Переименование «Исполнители» → «Участники» в уже созданных формах и в заголовке листа «Номера».
+function renameParticipants_(m) {
+  var olds = { B: ['Исполнители (через запятую)', 'Участники (через запятую)'], C: ['Исполнители (полный список через запятую)', 'Участники (полный список через запятую)'] };
+  ['B', 'C'].forEach(function (k) {
+    if (!m[k]) return;
+    var f = FormApp.openById(m[k]), it = findItem_(f, olds[k][0]);
+    if (it) it.setTitle(olds[k][1]);
+  });
+  var sh = SpreadsheetApp.getActive().getSheetByName(SHEETS.nums);
+  if (sh) {
+    var head = sh.getRange(1, 1, 1, sh.getLastColumn()).getValues()[0];
+    var i = head.indexOf('Исполнители');
+    if (i >= 0 && head.indexOf('Участники') < 0) sh.getRange(1, i + 1).setValue('Участники');
+  }
+}
+
 function upgradeForms_() {
   var m = formsMap_();
+  renameParticipants_(m);
   if (m.B) upgradeFormB_(m.B);
   if (m.C) coverToEnd_(m.C, COVER_C);
 }
@@ -752,7 +770,7 @@ function fillFormsSheet_() {
   var info = {
     A: ['Новый концерт', 'Название, дата и ссылка на запись концерта в VK.'],
     B: ['Номера списком', 'Выбрать концерт и вписать название номера, время начала и время конца. Один номер за отправку.'],
-    C: ['Дополнить номер', 'Выбрать номер и добавить коллектив, исполнителей, постановщиков, описание, время.']
+    C: ['Дополнить номер', 'Выбрать номер и добавить коллектив, участников, постановщиков, описание, время.']
   };
   ['A', 'B', 'C'].forEach(function (k) {
     if (!m[k]) return;
@@ -767,8 +785,8 @@ function fillFormsSheet_() {
     '', 'Как пользоваться (с телефона тоже)',
     '1. Откройте ссылку на форму и войдите в аккаунт Google. Форма запомнит вашу почту.',
     '2. «Новый концерт»: вставьте название и ссылку на запись VK. Дата необязательна.',
-    '3. «Номера списком»: выберите концерт, впишите название номера, время начала и время конца (например 0:02:10 и 0:06:40). Коллектив, исполнителей, постановщиков, описание и обложку (фото JPG, PNG или WebP до 1,5 МБ) добавьте по желанию. Один номер за отправку.',
-    '4. «Дополнить номер»: выберите номер, впишите коллектив, исполнителей, постановщиков, описание. Заполняйте только нужное, пустое ничего не стирает. Форму можно открывать много раз.',
+    '3. «Номера списком»: выберите концерт, впишите название номера, время начала и время конца (например 0:02:10 и 0:06:40). Коллектив, участников, постановщиков, описание и обложку (фото JPG, PNG или WebP до 1,5 МБ) добавьте по желанию. Один номер за отправку.',
+    '4. «Дополнить номер»: выберите номер, впишите коллектив, участников, постановщиков, описание. Заполняйте только нужное, пустое ничего не стирает. Форму можно открывать много раз.',
     '5. Если вы редактор этой таблицы, запись появится в ней сразу. Иначе она ляжет на лист «Заявки», и администратор выберет в столбце «Решение» значение «Принять» или «Отклонить».',
     '6. Списки концертов и номеров в формах обновляются раз в час и после каждого ответа. Сразу: Каталог → Формы для заполнения → Обновить списки в формах.',
     '7. Чтобы запись попала на сайт, администратор выбирает Каталог → Обновить сайт сейчас (или ждёт ночной сборки).'
@@ -852,13 +870,13 @@ function summary_(kind, d) {
   if (kind === 'A') return d.name + ' | ' + (d.date || 'без даты') + ' | ' + d.video + (d.about ? ' | ' + d.about : '');
   if (kind === 'B') {
     var extra = [];
-    [['collective', 'Коллектив'], ['performers', 'Исполнители'], ['directors', 'Постановщики'], ['about', 'Описание']].forEach(function (x) { if (d[x[0]]) extra.push(x[1] + ': ' + d[x[0]]); });
+    [['collective', 'Коллектив'], ['performers', 'Участники'], ['directors', 'Постановщики'], ['about', 'Описание']].forEach(function (x) { if (d[x[0]]) extra.push(x[1] + ': ' + d[x[0]]); });
     if (d.cover) extra.push('Обложка: ' + coverInfo_(d.cover));
     if (d.title) return 'Концерт: ' + d.concert + (d.direction ? ' | ' + d.direction : '') + '\nНомер: ' + d.title + '\nНачало: ' + d.start + (d.end ? '\nКонец: ' + d.end : '') + (extra.length ? '\n' + extra.join('; ') : '');
     return 'Концерт: ' + d.concert + (d.direction ? ' | ' + d.direction : '') + '\n' + d.list + (d.end ? '\nКонец последнего: ' + d.end : '') + (extra.length ? '\nДля всех: ' + extra.join('; ') : '');
   }
   var parts = ['Номер: ' + d.number];
-  [['direction', 'Направление'], ['collective', 'Коллектив'], ['performers', 'Исполнители'], ['directors', 'Постановщики'],
+  [['direction', 'Направление'], ['collective', 'Коллектив'], ['performers', 'Участники'], ['directors', 'Постановщики'],
    ['about', 'Описание'], ['start', 'Начало'], ['end', 'Конец']].forEach(function (x) { if (d[x[0]]) parts.push(x[1] + ': ' + d[x[0]]); });
   if (d.cover) parts.push('Обложка: ' + coverInfo_(d.cover));
   return parts.join('\n');
@@ -990,7 +1008,7 @@ function applyNumbers_(d) {
       if (norm_(exTitle) !== norm_(it.title)) { conflicts.push(hmsFull_(it.start) + ' («' + exTitle + '»)'); return; }
       // тот же номер уже есть: заполняем только пустые поля, обложку заменяем, если прислали
       var vals = { 'Направление': d.direction && d.direction !== '(пока пусто)' ? d.direction : '', 'Коллектив': it.collective || d.collective || '',
-        'Исполнители': it.performers || d.performers || '', 'Постановщики': it.directors || d.directors || '', 'Описание': it.about || d.about || '' };
+        'Участники': it.performers || d.performers || '', 'Постановщики': it.directors || d.directors || '', 'Описание': it.about || d.about || '' };
       var got = [];
       Object.keys(vals).forEach(function (h) {
         var c = tn.head[h];
@@ -1004,7 +1022,7 @@ function applyNumbers_(d) {
       return;
     }
     rows.push({ 'Концерт': concert, 'Направление': d.direction && d.direction !== '(пока пусто)' ? d.direction : '', 'Название': it.title,
-      'Коллектив': it.collective || d.collective || '', 'Исполнители': it.performers || d.performers || '',
+      'Коллектив': it.collective || d.collective || '', 'Участники': it.performers || d.performers || '',
       'Постановщики': it.directors || d.directors || '', 'Описание': it.about || d.about || '', 'Обложка': cv.ok ? cv.url : '',
       'Начало': hmsFull_(it.start), 'Конец': end !== null && end > it.start ? hmsFull_(end) : '' });
     if (cv.ok && cv.url) coverUsed = true;
@@ -1026,7 +1044,7 @@ function applyPatch_(d) {
   var idCol = tn.head['ID'], rowIdx = -1;
   tn.rows.forEach(function (r, i) { if (String(r[idCol]).trim() === id) rowIdx = i; });
   if (rowIdx < 0) return { ok: false, msg: 'номер «' + id + '» не найден' };
-  var map = { direction: 'Направление', collective: 'Коллектив', performers: 'Исполнители', directors: 'Постановщики', about: 'Описание', start: 'Начало', end: 'Конец' };
+  var map = { direction: 'Направление', collective: 'Коллектив', performers: 'Участники', directors: 'Постановщики', about: 'Описание', start: 'Начало', end: 'Конец' };
   var changed = [];
   var upd = {};
   Object.keys(map).forEach(function (k) {
