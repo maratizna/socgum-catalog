@@ -13,21 +13,42 @@
   if (grid && document.getElementById("q")) initCatalog();
 
   function initCatalog() {
+    var PAGE = 16;   // сколько номеров показываем сразу и сколько добавляет «Показать ещё»
     var cards = Array.prototype.slice.call(grid.children);
     var qInput = document.getElementById("q");
     var sortSel = document.getElementById("sort");
+    var selSeason = document.getElementById("f-season");
+    var selConcert = document.getElementById("f-concert");
+    var selDir = document.getElementById("f-direction");
     var count = document.getElementById("count");
     var empty = document.getElementById("empty");
+    var more = document.getElementById("more");
+    var panels = Array.prototype.slice.call(document.querySelectorAll(".concert-panel"));
     var total = cards.length;
     var params = new URLSearchParams(location.search);
-    var state = { q: params.get("q") || "", c: params.get("c") || "", d: params.get("d") || "", s: params.get("s") || "concert" };
-    if (!/^(concert|title|collective)$/.test(state.s)) state.s = "concert";
+    var state = { q: params.get("q") || "", y: params.get("y") || "", c: params.get("c") || "", d: params.get("d") || "", s: params.get("s") || "new" };
+    if (!/^(new|concert|title|collective)$/.test(state.s)) state.s = "new";
+    var shown = PAGE;
 
-    cards.forEach(function (c) { c._search = norm(c.dataset.search); });
+    cards.forEach(function (c) { c._search = norm(c.dataset.search); c._dirs = (c.dataset.direction || "").split(" "); });
+
+    /* Концерты в списке показываем только выбранного учебного года */
+    var concertOpts = selConcert ? Array.prototype.slice.call(selConcert.options).slice(1) : [];
+    function syncConcertList() {
+      if (!selConcert) return;
+      concertOpts.forEach(function (o) {
+        var okSeason = !state.y || o.dataset.season === state.y;
+        o.hidden = !okSeason; o.disabled = !okSeason;
+      });
+      var cur = concertOpts.filter(function (o) { return o.value === state.c; })[0];
+      if (state.c && (!cur || cur.disabled)) state.c = "";
+      selConcert.value = state.c;
+    }
 
     function matches(card) {
+      if (state.y && card.dataset.season !== state.y) return false;
       if (state.c && card.dataset.concert !== state.c) return false;
-      if (state.d && card.dataset.direction !== state.d) return false;
+      if (state.d && card._dirs.indexOf(state.d) === -1) return false;
       if (state.q) {
         var words = norm(state.q).split(" ");
         for (var i = 0; i < words.length; i++) if (card._search.indexOf(words[i]) === -1) return false;
@@ -41,38 +62,49 @@
       return null;
     }
 
-    function apply(pushUrl) {
-      var visible = 0;
-      cards.forEach(function (card) {
-        var ok = matches(card);
-        card.hidden = !ok;
-        if (ok) visible++;
-      });
+    function apply(pushUrl, keepShown) {
+      if (!keepShown) shown = PAGE;
+      syncConcertList();
       var ordered = cards.slice().sort(function (a, b) {
+        if (state.s === "new") return (+b.dataset.row) - (+a.dataset.row);   // чем ниже строка в таблице, тем новее номер
         var ka = sortKey(a), kb = sortKey(b);
         if (ka === null) return (+a.dataset.order) - (+b.dataset.order);
         return ka < kb ? -1 : ka > kb ? 1 : (+a.dataset.order) - (+b.dataset.order);
       });
-      ordered.forEach(function (c) { grid.appendChild(c); });
+      var visible = 0, drawn = 0;
+      ordered.forEach(function (card) {
+        var ok = matches(card);
+        if (ok) visible++;
+        var show = ok && drawn < shown;
+        if (show) drawn++;
+        card.hidden = !show;
+        grid.appendChild(card);
+      });
 
-      var filtered = state.q || state.c || state.d;
+      var filtered = state.q || state.y || state.c || state.d;
       count.textContent = filtered ? "Найдено: " + visible + " из " + total : "Номеров: " + total;
+      var left = visible - drawn;
+      if (more) {
+        more.hidden = left <= 0;
+        more.textContent = "Показать ещё" + (left > 0 ? " (" + Math.min(PAGE, left) + " из " + left + ")" : "");
+      }
+      var resetBtn = document.querySelector(".linkbtn[data-reset]");
+      if (resetBtn) resetBtn.hidden = !filtered;
       empty.hidden = visible !== 0;
-      document.querySelector(".linkbtn[data-reset]").hidden = !filtered;
       grid.hidden = visible === 0;
 
-      document.querySelectorAll(".chips").forEach(function (group) {
-        var key = group.dataset.group;
-        group.querySelectorAll(".chip").forEach(function (chip) {
-          chip.setAttribute("aria-pressed", String(chip.dataset.value === state[key]));
-        });
-      });
+      /* Карточка выбранного концерта: обложка, тема, ссылка на запись */
+      panels.forEach(function (p) { p.hidden = !(state.c && p.dataset.concert === state.c); });
+
+      if (selSeason) selSeason.value = state.y;
+      if (selDir) selDir.value = state.d;
       if (pushUrl) {
         var p = new URLSearchParams();
         if (state.q) p.set("q", state.q);
+        if (state.y) p.set("y", state.y);
         if (state.c) p.set("c", state.c);
         if (state.d) p.set("d", state.d);
-        if (state.s !== "concert") p.set("s", state.s);
+        if (state.s !== "new") p.set("s", state.s);
         var qs = p.toString();
         try { history.replaceState(null, "", location.pathname + (qs ? "?" + qs : "")); } catch (e) { /* file:// */ }
       }
@@ -86,17 +118,18 @@
       timer = setTimeout(function () { state.q = qInput.value; apply(true); }, 120);
     });
     sortSel.addEventListener("change", function () { state.s = sortSel.value; apply(true); });
-    document.querySelectorAll(".chips").forEach(function (group) {
-      group.addEventListener("click", function (e) {
-        var chip = e.target.closest(".chip");
-        if (!chip) return;
-        state[group.dataset.group] = chip.dataset.value;
-        apply(true);
-      });
+    if (selSeason) selSeason.addEventListener("change", function () { state.y = selSeason.value; apply(true); });
+    if (selConcert) selConcert.addEventListener("change", function () {
+      state.c = selConcert.value;
+      var o = concertOpts.filter(function (x) { return x.value === state.c; })[0];
+      if (o && o.dataset.season) state.y = o.dataset.season;   // выбрали концерт: учебный год подставится сам
+      apply(true);
     });
+    if (selDir) selDir.addEventListener("change", function () { state.d = selDir.value; apply(true); });
+    if (more) more.addEventListener("click", function () { shown += PAGE; apply(false, true); });
     document.querySelectorAll("[data-reset]").forEach(function (btn) {
       btn.addEventListener("click", function () {
-        state.q = ""; state.c = ""; state.d = "";
+        state.q = ""; state.y = ""; state.c = ""; state.d = "";
         qInput.value = "";
         apply(true);
       });

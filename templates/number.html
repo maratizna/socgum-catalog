@@ -18,6 +18,9 @@
         <button class="play" type="button" data-t="{{ n.start if n.start is not none else 0 }}">
           Смотреть{% if n.start is not none %} с {{ n.start|hms }}{% endif %}
         </button>
+        {% elif watch_links %}
+        <div class="stage-note"><p>Запись концерта открывается на другом сайте.</p>
+          <p class="stage-links">{% for l in watch_links %}<a class="add-btn" href="{{ l.url }}" rel="noopener" target="_blank">Смотреть запись {{ l.label }}</a> {% endfor %}</p></div>
         {% else %}
         <p class="stage-note">Запись концерта пока не добавлена.</p>
         {% endif %}
@@ -29,8 +32,9 @@
 
     <aside class="number-side">
       <dl class="facts">
-        <div><dt>Концерт</dt><dd><a href="{{ root or './' }}?c={{ n.concert.slug }}">{{ n.concert.name }}</a>{% if n.concert.date %}, {{ n.concert.date|ru_date }}{% endif %}</dd></div>
-        {% if n.direction %}<div><dt>Направление</dt><dd><a href="{{ root or './' }}?d={{ n.direction.slug }}">{{ n.direction.name }}</a></dd></div>{% endif %}
+        <div><dt>Концерт</dt><dd><a href="{{ root or './' }}?c={{ n.concert.slug }}">{{ n.concert.name }}</a>{% if n.concert.date %}, {{ n.concert.date|ru_date }}{% endif %}{% if n.concert.topic %}. {{ n.concert.topic }}{% endif %}</dd></div>
+        {% if n.concert.season %}<div><dt>Учебный год</dt><dd><a href="{{ root or './' }}?y={{ n.concert.season }}">{{ n.concert.season }}</a></dd></div>{% endif %}
+        {% if n.directions %}<div><dt>Направление</dt><dd>{% for d in n.directions %}<a href="{{ root or './' }}?d={{ d.slug }}">{{ d.name }}</a>{% if not loop.last %}, {% endif %}{% endfor %}</dd></div>{% endif %}
       </dl>
       {% if n.about %}<div class="about"><p>{{ n.about }}</p></div>{% endif %}
 
@@ -40,7 +44,7 @@
       </section>
       {% endif %}
       {% if n.people.performers %}
-      <section class="people" aria-labelledby="pf-h"><h2 id="pf-h">Исполнители</h2>
+      <section class="people" aria-labelledby="pf-h"><h2 id="pf-h">Участники</h2>
         <ul>{% for p in n.people.performers %}<li><a href="{{ root }}p/{{ p.slug }}/">{{ p.name }}</a></li>{% endfor %}</ul>
       </section>
       {% endif %}

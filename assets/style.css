@@ -306,3 +306,21 @@ a.btn{text-decoration:none;display:inline-block}
 .add-btn:hover,.add-btn:focus-visible{border-color:var(--ember);color:var(--ember-hi);background:var(--coal)}
 .add-btn:focus-visible{outline:2px solid var(--ember-hi);outline-offset:2px}
 .rate-feel{margin:0;color:var(--ash);font-size:.875rem;line-height:1.45}
+
+/* выпадающие фильтры, карточка концерта, «Показать ещё» */
+.filter-selects{gap:12px 14px}
+.sel{display:flex;flex-direction:column;gap:5px;color:var(--ash);font-size:.85rem;min-width:0;flex:1 1 200px}
+.sel select{background:var(--coal);border:1px solid var(--line);border-radius:var(--r);padding:11px 12px;color:var(--ink);font:inherit;font-size:1rem;width:100%;min-width:0}
+.sel select:hover{border-color:#5a4430}
+.sel select:focus-visible{outline:2px solid var(--ember);outline-offset:2px}
+.concert-panel{display:flex;gap:18px;align-items:flex-start;margin:0 0 26px;padding:16px;border:1px solid var(--line);border-radius:var(--r);background:var(--coal)}
+.concert-panel[hidden]{display:none}
+.concert-cover{width:120px;height:120px;object-fit:cover;border-radius:var(--r);flex:none;background:var(--coal-2)}
+.concert-text{min-width:0}
+.concert-text h2{margin:0 0 4px;font-size:1.25rem}
+.concert-topic{margin:0 0 4px;font-size:1.0625rem}
+.concert-meta,.concert-empty{margin:0 0 10px;color:var(--ash);font-size:.95rem}
+.more-row{display:flex;justify-content:center;margin:30px 0 0}
+.more-row .add-btn{cursor:pointer;font:inherit;font-weight:600}
+.stage-links{margin:10px 0 0}
+@media (max-width:640px){.concert-panel{flex-direction:column}.concert-cover{width:100%;height:auto;aspect-ratio:4/3}}

@@ -212,6 +212,37 @@ def parse_video(url):
     return {"oid": oid, "id": vid, "hash": h, "host": host}
 
 
+def season_of(raw, date, year):
+    """Учебный год: «25-26» или «2025–2026» из таблицы, иначе по дате (с сентября начинается новый год).
+    Возвращает (подпись «2025–2026», год начала) или ("", 0)."""
+    m = re.fullmatch(r"\s*(\d{2,4})\s*[-–—/]\s*(\d{2,4})\s*", str(raw or ""))
+    if m:
+        a, b = int(m.group(1)), int(m.group(2))
+        a = a + 2000 if a < 100 else a
+        b = b + 2000 if b < 100 else b
+        if b == a + 1:
+            return f"{a}–{b}", a
+    if date:
+        a = date.year if date.month >= 9 else date.year - 1
+        return f"{a}–{a + 1}", a
+    return "", 0
+
+
+def watch_link(url):
+    """Ссылка на запись, которую нельзя встроить плеером (пост VK, YouTube): кнопка «Смотреть…»."""
+    url = html.unescape(str(url or "")).strip()
+    if not re.match(r"^https?://\S+$", url, re.I):
+        return None
+    host = urlparse(url).netloc.lower()
+    if host.endswith(("vk.com", "vk.ru", "vkvideo.ru")):
+        label = "во ВКонтакте"
+    elif "youtube.com" in host or "youtu.be" in host:
+        label = "на YouTube"
+    else:
+        label = "по ссылке"
+    return {"url": url, "label": label}
+
+
 def split_people(text):
     seen, out = set(), []
     for part in re.split(r"[,;\n]+", text or ""):
@@ -258,15 +289,16 @@ class Report:
 SPEC = {
     "Концерты": {
         "name": ["название"], "date": ["дата"], "video": ["видео", "ссылка на видео"], "about": ["описание"],
-        "id": ["id"],
+        "id": ["id"], "season": ["учебный год", "поколение"], "year": ["год"], "topic": ["тема"],
+        "cover": ["обложка"], "video2": ["видео 2", "видео2"],
     },
-    "Направления": {"name": ["название"], "about": ["описание"], "id": ["id"]},
+    "Направления": {"name": ["название"], "about": ["описание"], "id": ["id"], "kind": ["тип", "вне сцены"]},
     "Номера": {
         "id": ["id"], "concert": ["концерт"], "direction": ["направление"],
         "order": ["№ в концерте", "номер в концерте", "порядок"], "title": ["название"],
-        "collective": ["коллектив"], "performers": ["исполнители"], "choreographers": ["постановщики"],
+        "collective": ["коллектив"], "performers": ["участники", "исполнители"], "choreographers": ["постановщики"],
         "about": ["описание"], "cover": ["обложка"], "start": ["начало"], "end": ["конец"],
-        "old_url": ["старый адрес"],
+        "old_url": ["старый адрес"], "direction2": ["ещё направление", "еще направление", "второе направление"],
     },
     "Люди": {"name": ["имя"], "about": ["о себе", "описание"], "link": ["ссылка"], "id": ["id"]},
     "Формы": {"title": ["форма"], "url": ["ссылка для сотрудников", "ссылка"]},
@@ -400,11 +432,23 @@ def build_model(wb, report):
             report.warn("Концерты", r["_row"], f"Дата «{cell_text(r['date'])}» не распознана. Формат: ГГГГ-ММ-ДД.")
         video_raw = r.get("video", "")
         video = parse_video(video_raw)
-        if video_raw and not video:
-            report.warn("Концерты", r["_row"], f"Ссылка «{video_raw}» не похожа на видео VK. Плеер на сайте не появится.")
+        links = []
+        for raw in (video_raw if not video else "", r.get("video2", "")):
+            if raw:
+                wl = watch_link(raw)
+                if wl:
+                    links.append(wl)
+                else:
+                    report.warn("Концерты", r["_row"], f"Ссылка «{raw}» не похожа на ссылку на запись. Кнопки на сайте не будет.")
+        season, season_start = season_of(r.get("season"), date, r.get("year"))
+        if r.get("season") and not season:
+            report.warn("Концерты", r["_row"], f"Учебный год «{r['season']}» не распознан. Пишите так: 25-26 или 2025–2026.")
+        year = int(r["year"]) if re.fullmatch(r"\d{4}", r.get("year") or "") else (date.year if date else 0)
+        cover_url = r.get("cover", "") if re.match(r"^https?://\S+$", r.get("cover", "") or "") else ""
         concerts[norm(name)] = {
-            "name": name, "slug": c_slug[r["_row"]], "date": date, "video": video,
-            "about": r.get("about", ""), "numbers": [],
+            "name": name, "slug": c_slug[r["_row"]], "date": date, "video": video, "links": links, "row": r["_row"],
+            "about": r.get("about", ""), "numbers": [], "season": season, "season_start": season_start,
+            "year": year, "topic": r.get("topic", ""), "cover_url": cover_url,
         }
 
     # Направления
@@ -412,7 +456,8 @@ def build_model(wb, report):
     for r in sheets["Направления"]:
         name = r["name"]
         if name and norm(name) not in directions:
-            directions[norm(name)] = {"name": name, "slug": d_slug[r["_row"]], "about": r.get("about", "")}
+            directions[norm(name)] = {"name": name, "slug": d_slug[r["_row"]], "about": r.get("about", ""),
+                                      "offstage": "вне" in norm(r.get("kind", ""))}
 
     def suggest(value, options):
         close = difflib.get_close_matches(norm(value), list(options), n=1, cutoff=0.6)
@@ -436,12 +481,20 @@ def build_model(wb, report):
             report.error("Номера", row, "Не выбран концерт."); ok = False
         elif not concert:
             report.error("Номера", row, f"Концерта «{r['concert']}» нет на листе «Концерты».{suggest(r['concert'], concerts)}"); ok = False
-        direction = None
-        if r.get("direction"):
-            direction = directions.get(norm(r["direction"]))
-            if not direction:
-                report.error("Номера", row, f"Направления «{r['direction']}» нет на листе «Направления».{suggest(r['direction'], directions)}"); ok = False
-        else:
+        dirs_found = []
+        for cell in (r.get("direction"), r.get("direction2")):
+            if not cell:
+                continue
+            whole = directions.get(norm(cell))
+            parts = [cell] if whole else [x.strip() for x in re.split(r"[;,/]+", cell) if x.strip()]
+            for part in parts:
+                d = directions.get(norm(part))
+                if not d:
+                    report.error("Номера", row, f"Направления «{part}» нет на листе «Направления».{suggest(part, directions)}"); ok = False
+                elif d not in dirs_found:
+                    dirs_found.append(d)
+        direction = dirs_found[0] if dirs_found else None
+        if not dirs_found and ok:
             report.warn("Номера", row, f"У номера «{r['title']}» не выбрано направление: он не попадёт в фильтр по направлениям.")
         start, end = parse_seconds(r.get("start")), parse_seconds(r.get("end"))
         if cell_text(r.get("start")) and start is None:
@@ -464,7 +517,7 @@ def build_model(wb, report):
         ids.add(nid.casefold())
         num = {
             "id": nid, "row": row, "title": r["title"], "collective": r.get("collective", ""),
-            "concert": concert, "direction": direction, "order": order,
+            "concert": concert, "direction": direction, "directions": dirs_found, "order": order,
             "performers": split_people(r.get("performers")), "choreographers": split_people(r.get("choreographers")),
             "about": r.get("about", ""), "cover_name": r.get("cover", ""), "start": start, "end": end,
             "old_url": r.get("old_url", ""),
@@ -494,7 +547,7 @@ def build_model(wb, report):
 
     for n in numbers.values():
         n["people"] = {"choreographers": [], "performers": []}
-        for role_key, role_word in (("choreographers", "постановщик"), ("performers", "исполнитель")):
+        for role_key, role_word in (("choreographers", "постановщик"), ("performers", "участник")):
             for name in n[role_key]:
                 p = person(name)
                 n["people"][role_key].append(p)
@@ -527,7 +580,11 @@ def build_model(wb, report):
                     report.warn("Номера", None, f"Возможно, это один человек: «{people[a]['name']}» и «{people[b]['name']}». Проверьте написание.")
 
     for p in people.values():
-        p["numbers"].sort(key=lambda x: (x["number"]["concert"]["date"] or dt.date.min, x["number"]["position"]), reverse=True)
+        def newest(x):
+            c = x["number"]["concert"]
+            when = c["date"].toordinal() if c["date"] else (dt.date(c["year"], 1, 1).toordinal() if c["year"] else 0)
+            return (c["season_start"], when, -c["row"], x["number"]["position"])
+        p["numbers"].sort(key=newest, reverse=True)
         for entry in p["numbers"]:
             entry["roles"] = sorted(set(entry["roles"]))
         p["is_director"] = any("постановщик" in e["roles"] for e in p["numbers"])
@@ -536,7 +593,7 @@ def build_model(wb, report):
 
 # ---------------------------------------------------------------- обложки
 
-COVER_MAX_BYTES = 1_572_864   # 1,5 МБ: больше обложку из ссылки не берём
+COVER_MAX_BYTES = 8_388_608   # 8 МБ: больше обложку из ссылки не берём (формы принимают до 1,5 МБ, это проверяет скрипт)
 _DL_CACHE = {}
 
 
@@ -558,7 +615,7 @@ def download_cover(url, report, n):
             data = r.read(COVER_MAX_BYTES + 1)
             ctype = r.headers.get("Content-Type", "")
         if len(data) > COVER_MAX_BYTES:
-            report.warn("Номера", n["row"], f"Обложка по ссылке больше 1,5 МБ, не взята. Сожмите фото. Показана заглушка.")
+            report.warn("Номера", n["row"], f"Обложка по ссылке больше 8 МБ, не взята. Сожмите фото. Показана заглушка.")
         elif "image" not in ctype and not data[:4] in (b"\xff\xd8\xff\xe0", b"\xff\xd8\xff\xe1", b"\x89PNG", b"RIFF"):
             report.warn("Номера", n["row"], "По ссылке на обложку не картинка (проверьте, что файл открыт «всем, у кого есть ссылка»). Показана заглушка.")
         else:
@@ -694,16 +751,25 @@ def build_site(concerts, directions, numbers, people, report, demo, source):
                       home_label=cfg.get("home_label", ""), demo=demo, brand_font=bool(brand_font),
                       lead=cfg.get("lead", ""), forms=list(FORMS))
 
-    all_numbers = sorted(numbers.values(), key=lambda n: (
-        -(n["concert"]["date"].toordinal() if n["concert"]["date"] else 0), n["position"]))
-    concert_list = sorted(concerts.values(), key=lambda c: c["date"] or dt.date.min, reverse=True)
-    used_dirs = [d for d in directions.values() if any(n["direction"] is d for n in numbers.values())]
-    used_concerts = [c for c in concert_list if c["numbers"]]
+    def concert_key(c):
+        when = c["date"].toordinal() if c["date"] else (dt.date(c["year"], 1, 1).toordinal() if c["year"] else 0)
+        return (-c["season_start"], -when, c["row"])
+
+    concert_list = sorted(concerts.values(), key=concert_key)
+    rank = {id(c): i for i, c in enumerate(concert_list)}
+    all_numbers = sorted(numbers.values(), key=lambda n: (rank[id(n["concert"])], n["position"]))
+    seasons = OrderedDict()
+    for c in concert_list:
+        if c["season"] and c["season"] not in seasons:
+            seasons[c["season"]] = c["season_start"]
+    used_dirs = [d for d in directions.values() if any(d in n["directions"] for n in numbers.values())]
+    dirs_on = [d for d in used_dirs if not d["offstage"]]
+    dirs_off = [d for d in used_dirs if d["offstage"]]
     all_people = sorted(people.values(), key=lambda p: norm(p["name"]))
 
     write(TMP / "index.html", env.get_template("index.html").render(
-        root="", page_title=cfg["site_title"], numbers=all_numbers, concerts=used_concerts,
-        directions=used_dirs, people=all_people, canonical=site_url + "/" if site_url else "",
+        root="", page_title=cfg["site_title"], numbers=all_numbers, concerts=concert_list, seasons=list(seasons),
+        dirs_on=dirs_on, dirs_off=dirs_off, people=all_people, canonical=site_url + "/" if site_url else "",
         og_image="", description=cfg.get("lead", ""), **ctx_common))
 
     for n in numbers.values():
@@ -713,7 +779,7 @@ def build_site(concerts, directions, numbers, people, report, demo, source):
             root="../../", n=n, page_title=f"{n['title']}: {cfg['site_title']}",
             canonical=f"{site_url}/n/{n['id']}/" if site_url else "",
             og_image=f"{site_url}/img/{n['id']}/og.jpg" if site_url else "", description=desc,
-            video=n["concert"]["video"], people_names=people_names, **ctx_common))
+            video=n["concert"]["video"], watch_links=n["concert"]["links"], people_names=people_names, **ctx_common))
 
     for p in people.values():
         write(TMP / "p" / p["slug"] / "index.html", env.get_template("person.html").render(
@@ -734,7 +800,8 @@ def build_site(concerts, directions, numbers, people, report, demo, source):
     feed = [{
         "id": n["id"], "title": n["title"], "collective": n["collective"],
         "concert": n["concert"]["name"], "concert_date": n["concert"]["date"].isoformat() if n["concert"]["date"] else None,
-        "direction": n["direction"]["name"] if n["direction"] else None, "position": n["position"],
+        "direction": n["direction"]["name"] if n["direction"] else None,
+        "directions": [d["name"] for d in n["directions"]], "position": n["position"],
         "start": n["start"], "end": n["end"], "performers": n["performers"], "choreographers": n["choreographers"],
         "old_url": n["old_url"], "url": f"n/{n['id']}/"} for n in all_numbers]
     people_feed = [{"id": p["slug"], "name": p["name"], "director": p["is_director"]}
