@@ -749,6 +749,12 @@ function renameParticipants_(m) {
   }
 }
 
+// Запускается один раз: переименовывает «Исполнители» в «Участники» в формах и в заголовке листа.
+function migrateParticipants() {
+  upgradeForms_();
+  try { fillFormsSheet_(); } catch (e) { }
+}
+
 function upgradeForms_() {
   var m = formsMap_();
   renameParticipants_(m);
