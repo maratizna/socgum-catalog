@@ -54,11 +54,10 @@
 <aside class="concert-panel" data-concert="{{ c.slug }}" hidden>
   {% if c.cover_url %}<img class="concert-cover" src="{{ c.cover_url }}" alt="" width="160" height="160" loading="lazy" decoding="async" referrerpolicy="no-referrer">{% endif %}
   <div class="concert-text">
-    <h2>{{ c.name }}</h2>
-    {% if c.topic %}<p class="concert-topic">{{ c.topic }}</p>{% endif %}
-    <p class="concert-meta">{% if c.season %}Учебный год {{ c.season }}{% endif %}{% if c.date %}{% if c.season %}, {% endif %}{{ c.date|ru_date }}{% endif %}</p>
+    {% if c.topic %}<h2>{{ c.topic }}</h2><p class="concert-name">{{ c.name }}</p>{% else %}<h2>{{ c.name }}</h2>{% endif %}
+    <p class="concert-meta">{% if c.season %}{{ c.season }}{% endif %}{% if c.date %}{% if c.season %}, {% endif %}{{ c.date|ru_date }}{% endif %}</p>
     {% if c.about %}<p>{{ c.about }}</p>{% endif %}
-    {% for l in c.links %}<a class="add-btn" href="{{ l.url }}" rel="noopener" target="_blank">Смотреть запись {{ l.label }}</a> {% endfor %}
+    {% for l in c.links %}<a class="add-btn add-btn-s" href="{{ l.url }}" rel="noopener" target="_blank">Смотреть запись {{ l.label }}</a> {% endfor %}
     {% if not c.numbers %}<p class="concert-empty">Номера этого концерта пока не добавлены. Добавить их можно через форму внизу страницы.</p>{% endif %}
   </div>
 </aside>

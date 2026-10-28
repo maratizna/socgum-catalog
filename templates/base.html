@@ -27,7 +27,6 @@
 <header class="site-head">
   <a class="wordmark" href="{{ root or './' }}">{{ site_title }}</a>
   <nav class="head-nav">
-    {% if home_url %}<a class="head-link" href="{{ home_url }}">{{ home_label }}</a>{% endif %}
     {% if firebase %}<span id="auth-slot" class="auth-slot"></span>{% endif %}
   </nav>
 </header>

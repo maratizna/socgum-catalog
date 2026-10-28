@@ -11,6 +11,9 @@
   /* ------------------------------------------------------------ главная: фильтры */
   var grid = document.getElementById("grid");
   if (grid && document.getElementById("q")) initCatalog();
+  // на телефоне список участников свёрнут, на компьютере раскрыт
+  var fold = document.getElementById("performers");
+  if (fold && window.matchMedia && window.matchMedia("(max-width:820px)").matches) fold.removeAttribute("open");
 
   function initCatalog() {
     var PAGE = 16;   // сколько номеров показываем сразу и сколько добавляет «Показать ещё»
@@ -121,8 +124,6 @@
     if (selSeason) selSeason.addEventListener("change", function () { state.y = selSeason.value; apply(true); });
     if (selConcert) selConcert.addEventListener("change", function () {
       state.c = selConcert.value;
-      var o = concertOpts.filter(function (x) { return x.value === state.c; })[0];
-      if (o && o.dataset.season) state.y = o.dataset.season;   // выбрали концерт: учебный год подставится сам
       apply(true);
     });
     if (selDir) selDir.addEventListener("change", function () { state.d = selDir.value; apply(true); });

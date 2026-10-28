@@ -957,12 +957,11 @@
       clear(box);
       if (!state.ready || !profileLoaded) return;
       applyProfile();
-      if (!isDirector) { box.hidden = true; return; }
       box.hidden = false;
       var u = state.user;
       if (approved()) box.append(el("p", { class: "c-hint", text: "Страница подтверждена владельцем." }));
       if (!u) {
-        if (!claim) box.append(el("p", { class: "c-hint", text: "Вы постановщик? Войдите через Google, чтобы вести эту страницу." }), el("button", { type: "button", class: "btn", text: "Войти через Google", onclick: signIn }));
+        if (!claim) box.append(el("p", { class: "c-hint", text: "Это вы? Войдите через Google, чтобы вести эту страницу." }), el("button", { type: "button", class: "btn", text: "Войти через Google", onclick: signIn }));
       } else if (!claim) {
         box.append(el("button", { type: "button", class: "btn", text: "Это моя страница", onclick: claimPerson }),
           el("p", { class: "c-hint", text: "Заявку проверит и подтвердит администратор." }));

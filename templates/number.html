@@ -19,8 +19,7 @@
           Смотреть{% if n.start is not none %} с {{ n.start|hms }}{% endif %}
         </button>
         {% elif watch_links %}
-        <div class="stage-note"><p>Запись концерта открывается на другом сайте.</p>
-          <p class="stage-links">{% for l in watch_links %}<a class="add-btn" href="{{ l.url }}" rel="noopener" target="_blank">Смотреть запись {{ l.label }}</a> {% endfor %}</p></div>
+        <div class="stage-note stage-links">{% for l in watch_links %}<a class="add-btn add-btn-s" href="{{ l.url }}" rel="noopener" target="_blank">Смотреть запись {{ l.label }}</a> {% endfor %}</div>
         {% else %}
         <p class="stage-note">Запись концерта пока не добавлена.</p>
         {% endif %}
@@ -44,9 +43,10 @@
       </section>
       {% endif %}
       {% if n.people.performers %}
-      <section class="people" aria-labelledby="pf-h"><h2 id="pf-h">Участники</h2>
+      <details class="people people-fold" id="performers" open>
+        <summary><h2 id="pf-h">Участники <span class="people-n">{{ n.people.performers|length }}</span></h2></summary>
         <ul>{% for p in n.people.performers %}<li><a href="{{ root }}p/{{ p.slug }}/">{{ p.name }}</a></li>{% endfor %}</ul>
-      </section>
+      </details>
       {% endif %}
     </aside>
     {% if firebase %}

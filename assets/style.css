@@ -323,4 +323,26 @@ a.btn{text-decoration:none;display:inline-block}
 .more-row{display:flex;justify-content:center;margin:30px 0 0}
 .more-row .add-btn{cursor:pointer;font:inherit;font-weight:600}
 .stage-links{margin:10px 0 0}
-@media (max-width:640px){.concert-panel{flex-direction:column}.concert-cover{width:100%;height:auto;aspect-ratio:4/3}}
+
+
+/* панель концерта: тема крупно, название мелко */
+.concert-text h2{margin:0 0 4px;font-size:1.25rem}
+.concert-name{margin:0 0 4px;font-size:.95rem;color:var(--ink)}
+.add-btn-s{padding:7px 14px;font-size:.875rem}
+.stage-links{display:flex;flex-wrap:wrap;gap:8px;margin:0}
+.people-fold summary{cursor:pointer;list-style:none}
+.people-fold summary::-webkit-details-marker{display:none}
+.people-fold summary h2{display:inline-flex;align-items:center;gap:8px;margin:0 0 4px}
+.people-fold summary h2::after{content:"";width:.5em;height:.5em;border:solid var(--ember);border-width:0 2px 2px 0;transform:rotate(45deg);margin:-.2em 0 0 4px;transition:transform .15s}
+.people-fold[open] summary h2::after{transform:rotate(-135deg);margin-top:.2em}
+.people-n{color:var(--ash);font-weight:400;font-size:.9rem}
+.people-fold ul{margin-top:8px}
+@media (max-width:640px){
+  .concert-panel{flex-direction:column;gap:12px}
+  .concert-cover{width:120px;height:120px;aspect-ratio:1/1}
+  .site-head{flex-wrap:nowrap;gap:10px}
+  .head-nav{flex-wrap:nowrap;min-width:0;gap:10px}
+  .auth-slot{min-width:0}
+  .head-me span{max-width:34vw;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .stage-note{padding:22px 12px 12px}
+}
