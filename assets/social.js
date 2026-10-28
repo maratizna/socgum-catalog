@@ -80,8 +80,8 @@
 
   /* ------------------------------------------------------------ фильтр мата
      Проверка в браузере до отправки комментария. Понимает замену букв латиницей и цифрами, повтор букв,
-     пробелы и знаки между буквами, звёздочки вместо букв. Корни ищутся с начала слова (с приставками),
-     чтобы не ловить обычные слова вроде «небо», «хлеб», «скипидар». Список правится только здесь. */
+     пробелы и знаки между буквами. Корни ищутся с начала слова (с приставками),
+     чтобы не ловить обычные слова вроде «небо», «хлеб», «скипидар». Слова с буквой, закрытой звёздочкой, пропускаются. Список правится только здесь. */
   /* PROFANITY BEGIN */
   var LATMAP = { a: "а", b: "в", c: "с", e: "е", h: "н", k: "к", m: "м", o: "о", p: "р", t: "т", x: "х", y: "у" };
   var BAD_CYR = [
@@ -99,22 +99,15 @@
     /^хули$/
   ];
   var BAD_LAT = /^(?:[xh]u[yij]|xy[ijyu]|pizd|pezd|ebat|ebal|eban|ebu|blya|blyat|blyad|pidor|pidar|pidr|mudak|gandon|zalup)/;
-  var ABC = "абвгдежзийклмнопрстуфхцчшщъыьэюя".split("").concat([""]);
   function badCyr(w) { for (var i = 0; i < BAD_CYR.length; i++) if (BAD_CYR[i].test(w)) return true; return false; }
   function badWord(raw) {
     var w = raw.toLowerCase().replace(/ё/g, "е");
+    if (/[а-яa-z][*#@%$&]+[а-яa-z]/.test(w)) return false;   // слово с буквой, закрытой звёздочкой, пропускаем
     var cyr = /[а-я]/.test(w);
     if (cyr) w = w.replace(/[a-z]/g, function (c) { return LATMAP[c] || c; }).replace(/0/g, "о").replace(/3/g, "з").replace(/6/g, "б").replace(/4/g, "ч");
-    w = w.replace(/[^а-яa-z*#@%$&]/g, "").replace(/(.)\1+/g, "$1");
+    w = w.replace(/[^а-яa-z]/g, "").replace(/(.)\1+/g, "$1");
     if (w.length < 2) return false;
-    if (!cyr) return BAD_LAT.test(w);
-    var masks = w.match(/[*#@%$&]/g);
-    if (!masks) return badCyr(w);
-    if (masks.length > 2 || w.length > 14) return false;
-    var p = w.split(/[*#@%$&]/), i, j;
-    if (masks.length === 1) { for (i = 0; i < ABC.length; i++) if (badCyr(p[0] + ABC[i] + p[1])) return true; return false; }
-    for (i = 0; i < ABC.length; i++) for (j = 0; j < ABC.length; j++) if (badCyr(p[0] + ABC[i] + p[1] + ABC[j] + p[2])) return true;
-    return false;
+    return cyr ? badCyr(w) : BAD_LAT.test(w);
   }
   /* Возвращает найденное слово (как написал человек) или "" */
   function findProfanity(text) {
@@ -481,17 +474,40 @@
   /* ------------------------------------------------------------ страница номера: оценки и комментарии */
   /* Критерии оценки 1–5: ключ в базе, название, подсказка, короткое название для строки под комментарием */
   var RATE = [
-    ["idea", "Замысел", "идея, мысль, история номера", "замысел"],
-    ["perf", "Исполнение", "техника, синхронность, чистота", "исполнение"],
-    ["stage", "Сценическое воплощение", "свет, костюмы, видео, декорации", "сцена"],
-    ["emo", "Эмоциональный отклик", "что вы почувствовали", "отклик"],
-    ["overall", "Общее впечатление", "", "впечатление"]
+    ["idea", "Замысел", "идея, образы, история номера", "замысел"],
+    ["comp", "Постановка", "композиция, рисунок, ритм, динамика", "постановка"],
+    ["perf", "Исполнение", "техника, синхронность, харизма", "исполнение"],
+    ["stage", "Сценическое воплощение", "свет, костюмы, видео, реквизит", "сцена"],
+    ["overall", "Общее впечатление", "эмоции, атмосфера, вайб", "впечатление"]
   ];
-  var SORTS = [["old", "Старые сверху"], ["new", "Новые сверху"], ["top", "Популярные"]];
+  var SORTS = [["old", "Сначала старые"], ["new", "Сначала новые"], ["top", "Популярные"]];
   function fmt1(x) { return (Math.round(x * 10) / 10).toFixed(1).replace(".", ","); }
   function plRate(n) {
     var m = n % 100, d = n % 10;
     return n + " " + (m > 10 && m < 20 ? "оценок" : d === 1 ? "оценка" : d > 1 && d < 5 ? "оценки" : "оценок");
+  }
+
+  /* Сумма пяти оценок (5–25). Считается только если поставлены все пять. */
+  function ratingTotal(r) {
+    var t = 0;
+    for (var i = 0; i < RATE.length; i++) { if (!r || !r[RATE[i][0]]) return null; t += r[RATE[i][0]]; }
+    return t;
+  }
+  function tipText(k, v) { return k[1] + ": " + v + " из 5" + (k[2] ? " (" + k[2] + ")" : ""); }
+  function closeTips(except) { Array.prototype.forEach.call(document.querySelectorAll(".rt-chip.is-open,.rt-total.is-open"), function (n) { if (n !== except) n.classList.remove("is-open"); }); }
+  document.addEventListener("click", function (e) { if (!e.target.closest || !e.target.closest(".rt-chip,.rt-total")) closeTips(); });
+  /* Компактная строка оценки у комментария: сумма и пять цифр, подсказка по наведению или нажатию */
+  function ratingNode(r) {
+    var wrap = el("div", { class: "rt", role: "group", "aria-label": "Оценка номера" });
+    var tot = ratingTotal(r);
+    var toggle = function (ev) { var b = ev.currentTarget; closeTips(b); b.classList.toggle("is-open"); };
+    if (tot !== null) wrap.append(el("button", { type: "button", class: "rt-total", "data-tip": "Сумма пяти оценок: " + tot + " из 25", "aria-label": "Сумма оценок: " + tot + " из 25", onclick: toggle }, el("b", { text: String(tot) }), "/25"));
+    RATE.forEach(function (k) {
+      var v = r[k[0]];
+      if (!v) return;
+      wrap.append(el("button", { type: "button", class: "rt-chip v" + v + (k[0] === "overall" ? " vibe" : ""), "data-tip": tipText(k, v), "aria-label": tipText(k, v), onclick: toggle, text: String(v) }));
+    });
+    return wrap;
   }
 
   function initNumber() {
@@ -513,7 +529,7 @@
     var form = el("div", { class: "c-form" });
     var moments = el("details", { class: "moments", open: true });
     var noteBox = document.getElementById("director-note");
-    root.append(sumBox, moments, sortBar, list, form);
+    root.append(sumBox, form, moments, sortBar, list);
 
     function loadComments(fresh) {
       var q = state.admin
@@ -671,36 +687,33 @@
       if (!isReply && state.user) actions.append(el("button", { type: "button", class: "linkbtn", text: "Ответить", onclick: function () { replyTo = c; drawForm(); form.scrollIntoView({ block: "center" }); } }));
       if (state.admin) actions.append(el("button", { type: "button", class: "linkbtn", text: c.status === "hidden" ? "Показать" : "Скрыть", onclick: function () { act(fb.f.updateDoc(fdoc("comments/" + c.id), { status: c.status === "hidden" ? "visible" : "hidden" })); } }));
       if (mine || state.admin) actions.append(el("button", { type: "button", class: "linkbtn", text: "Удалить", onclick: function () { if (confirm("Удалить комментарий насовсем?")) act(deleteComment(c)); } }));
-      var rt = !isReply && firstTop[c.uid] === c.id && ratingBy[c.uid], rline = null;
-      if (rt) {
-        rline = el("p", { class: "c-rate" }, el("span", { class: "c-rate-label", text: "Оценка:" }));
-        RATE.forEach(function (k) { if (rt[k[0]]) rline.append(el("span", { class: "c-rate-item" }, k[3] + " ", el("b", { text: String(rt[k[0]]) }))); });
-      }
+      var rt = !isReply && firstTop[c.uid] === c.id && ratingBy[c.uid], rline = rt ? ratingNode(rt) : null;
       return el("article", { class: "comment" + (isReply ? " reply" : "") + (c.status === "hidden" ? " is-hidden" : ""), id: "c-" + c.id },
         head, el("p", { class: "c-text" }, richText(c.text, canSeek)), rline, actions, n > 0 && openLikers[c.id] ? likersBox(c) : null);
     }
     function act(p) { return p.then(function () { dropComments(); return loadComments(true); }).then(draw, function (e) { toast(errText(e)); }); }
 
-    /* Средние оценки зрителей: общее впечатление крупно, четыре критерия полосками */
+    /* Сводка: средняя сумма крупно, пять средних полосками (четыре критерия и общее впечатление) */
     function drawSummary() {
       clear(sumBox);
       if (!ratings.length) { sumBox.hidden = true; return; }
-      var sum = {}, cnt = {};
-      ratings.forEach(function (r) { RATE.forEach(function (k) { if (r[k[0]]) { sum[k[0]] = (sum[k[0]] || 0) + r[k[0]]; cnt[k[0]] = (cnt[k[0]] || 0) + 1; } }); });
-      var avg = function (key) { return cnt[key] ? sum[key] / cnt[key] : null; };
-      var head = avg("overall");
-      if (head === null) { var parts = RATE.slice(0, 4).map(function (k) { return avg(k[0]); }).filter(function (v) { return v !== null; }); head = parts.reduce(function (a, b) { return a + b; }, 0) / parts.length; }
+      var sum = {}, cnt = {}, tsum = 0, tcnt = 0;
+      ratings.forEach(function (r) {
+        RATE.forEach(function (k) { if (r[k[0]]) { sum[k[0]] = (sum[k[0]] || 0) + r[k[0]]; cnt[k[0]] = (cnt[k[0]] || 0) + 1; } });
+        var t = ratingTotal(r); if (t !== null) { tsum += t; tcnt++; }
+      });
       var bars = el("ul", { class: "rate-bars" });
-      RATE.slice(0, 4).forEach(function (k) {
-        var v = avg(k[0]);
-        bars.append(el("li", null, el("span", { class: "rate-bar-name", text: k[1] }),
+      RATE.forEach(function (k) {
+        var v = cnt[k[0]] ? sum[k[0]] / cnt[k[0]] : null;
+        bars.append(el("li", { class: k[0] === "overall" ? "vibe" : null, title: k[2] ? k[1] + ": " + k[2] : k[1] },
+          el("span", { class: "rate-bar-name", text: k[1] }),
           el("span", { class: "rate-bar", role: "img", "aria-label": v === null ? "нет оценок" : fmt1(v) + " из 5" }, el("i", { style: "width:" + (v === null ? 0 : Math.round(v / 5 * 100)) + "%" })),
           el("span", { class: "rate-bar-val", text: v === null ? "–" : fmt1(v) })));
       });
       sumBox.append(el("h3", { text: "Оценки зрителей" }),
         el("div", { class: "rate-sum-grid" },
-          el("p", { class: "rate-big" }, el("strong", { text: fmt1(head) }), el("span", { text: " из 5" }),
-            el("small", { text: (cnt.overall ? "общее впечатление, " : "по критериям, ") + plRate(ratings.length) })),
+          tcnt ? el("p", { class: "rate-big" }, el("strong", { text: fmt1(tsum / tcnt) }), el("span", { text: " из 25" }),
+            el("small", { text: "средняя сумма, " + plRate(tcnt) })) : el("p", { class: "rate-big" }, el("small", { text: plRate(ratings.length) + ", полных нет" })),
           bars));
       sumBox.hidden = false;
     }
@@ -744,12 +757,12 @@
       });
     }
 
-    /* Форма: правило, необязательные оценки (выпадающий блок), текст комментария */
+    /* Форма: необязательные оценки (ползунки, выпадающий блок), потом комментарий */
     function drawForm() {
       clear(form);
       if (!state.ready) return;
       if (!state.user) {
-        form.append(el("p", { class: "c-hint", text: "Чтобы написать комментарий или поставить оценку, войдите." }),
+        form.append(el("p", { class: "c-hint", text: "Чтобы поставить оценку или написать комментарий, войдите." }),
           el("button", { type: "button", class: "btn", text: "Войти", onclick: signIn }));
         return;
       }
@@ -761,49 +774,54 @@
       var ta = el("textarea", { class: "c-input", rows: "3", maxlength: "2000", placeholder: canSeek ? "Ваш комментарий. Время вида 1:23:45 станет ссылкой на этот момент записи." : "Ваш комментарий", "aria-label": "Комментарий" });
       var send = el("button", { type: "submit", class: "btn", text: "Отправить" });
 
-      function same() {
-        var keys = RATE.map(function (k) { return k[0]; });
-        return keys.every(function (k) { return (draft[k] || 0) === ((prev && prev[k]) || 0); });
-      }
+      function setCount() { return Object.keys(draft).length; }
+      function same() { return RATE.every(function (k) { return (draft[k[0]] || 0) === ((prev && prev[k[0]]) || 0); }); }
       function rateChanged() { return !same(); }
       function syncSend() {
-        var hasText = !!ta.value.trim(), rc = rateChanged() && Object.keys(draft).length > 0;
+        var hasText = !!ta.value.trim(), rc = rateChanged() && setCount() > 0;
         send.textContent = hasText ? (rc ? "Отправить с оценкой" : "Отправить") : (rc ? "Сохранить оценку" : (cleared ? "Убрать оценку" : "Отправить"));
       }
 
-      /* оценки: пять строк по пять кнопок 1–5, ничего не обязательно */
       var rateBox = null;
       if (!replyTo) {
-        var rows = el("div", { class: "rate-rows" });
-        var sumLine = el("span", { class: "rate-state" });
-        var pills = {};
+        var sumLine = el("span", { class: "rate-state" }), totalLine = el("p", { class: "rate-total" });
+        var painters = [];
         var showState = function () {
-          var n = Object.keys(draft).length;
-          sumLine.textContent = cleared ? "оценку уберём" : prev && same() ? "ваша оценка сохранена" : n ? "выбрано: " + n + " из " + RATE.length : "необязательно";
+          var n = setCount(), tot = ratingTotal(draft);
+          sumLine.textContent = cleared ? "оценку уберём" : prev && same() && tot !== null ? "ваша оценка сохранена" : n ? "выбрано " + n + " из " + RATE.length : "необязательно";
+          totalLine.textContent = tot !== null ? "Сумма: " + tot + " из 25" : "Сумма появится, когда поставите все пять оценок";
+          totalLine.classList.toggle("is-full", tot !== null);
         };
-        RATE.forEach(function (k) {
-          var group = el("span", { class: "rate-pills", role: "radiogroup", "aria-label": k[1] });
-          pills[k[0]] = [];
-          for (var v = 1; v <= 5; v++) (function (v) {
-            var id = "rt-" + k[0] + "-" + v;
-            var inp = el("input", { type: "radio", class: "rate-in", name: "rt-" + k[0], id: id, value: String(v) });
-            if (draft[k[0]] === v) inp.checked = true;
-            inp.addEventListener("change", function () { draft[k[0]] = v; cleared = false; showState(); syncSend(); });
-            pills[k[0]].push(inp);
-            group.append(inp, el("label", { class: "rate-pill", for: id, text: String(v) }));
-          })(v);
-          rows.append(el("div", { class: "rate-row" },
-            el("span", { class: "rate-name" }, k[1], k[2] ? el("small", { text: k[2] }) : null), group));
-        });
+        var sliderRow = function (k) {
+          var out = el("span", { class: "rate-val", "aria-hidden": "true", text: "–" });
+          var inp = el("input", { type: "range", class: "rate-range", min: "1", max: "5", step: "1", value: String(draft[k[0]] || 3), "aria-label": k[1] + (k[2] ? " (" + k[2] + ")" : "") + ", от 1 до 5" });
+          var paint = function () {
+            var v = draft[k[0]];
+            inp.classList.toggle("is-unset", !v);
+            inp.style.setProperty("--p", v ? ((v - 1) / 4 * 100) + "%" : "0%");
+            out.textContent = v ? String(v) : "–";
+            inp.setAttribute("aria-valuetext", v ? v + " из 5" : "не выбрано");
+          };
+          var take = function () { draft[k[0]] = Number(inp.value); cleared = false; paint(); showState(); syncSend(); };
+          inp.addEventListener("input", take);
+          inp.addEventListener("pointerup", take);     // нажать на среднюю тройку без сдвига тоже считается выбором
+          painters.push(function () { inp.value = String(draft[k[0]] || 3); paint(); });
+          paint();
+          return el("div", { class: "rate-row" },
+            el("div", { class: "rate-head" }, el("span", { class: "rate-name" }, k[1], k[2] ? el("small", { text: k[2] }) : null), out),
+            inp, el("span", { class: "rate-ticks", "aria-hidden": "true" }, el("i", { text: "1" }), el("i", { text: "2" }), el("i", { text: "3" }), el("i", { text: "4" }), el("i", { text: "5" })));
+        };
+        var grpCrit = el("div", { class: "rate-grp" }), grpVibe = el("div", { class: "rate-grp rate-vibe" });
+        RATE.forEach(function (k) { (k[0] === "overall" ? grpVibe : grpCrit).append(sliderRow(k)); });
         var reset = el("button", { type: "button", class: "linkbtn", text: prev ? "Убрать мою оценку" : "Сбросить", onclick: function () {
           draft = {}; cleared = !!prev;
-          Object.keys(pills).forEach(function (key) { pills[key].forEach(function (i) { i.checked = false; }); });
+          painters.forEach(function (f) { f(); });
           showState(); syncSend();
         } });
         rateBox = el("details", { class: "rate-box" },
           el("summary", null, el("span", { text: prev ? "Ваша оценка номера" : "Оценить номер" }), " ", sumLine),
-          el("p", { class: "c-hint", text: "От 1 до 5. Можно поставить только общее впечатление. Если оценка не нужна, оставьте блок закрытым." }),
-          rows, el("div", { class: "c-row" }, reset));
+          el("p", { class: "c-hint", text: "От 1 до 5, ползунком. Нужны все пять пунктов, сумма считается по ним. Если оценка не нужна, оставьте блок закрытым." }),
+          grpCrit, grpVibe, totalLine, el("div", { class: "c-row" }, reset));
         showState();
       }
 
@@ -814,7 +832,9 @@
       ta.addEventListener("input", syncSend);
       var f = el("form", { onsubmit: function (ev) {
         ev.preventDefault();
-        var text = ta.value.trim(), wantRate = Object.keys(draft).length > 0 && rateChanged(), wantClear = cleared && !!prev && !wantRate;
+        var text = ta.value.trim(), full = setCount() === RATE.length;
+        if (setCount() && !full && rateChanged()) { note(form, "Оцените все пять пунктов или нажмите «Сбросить».", "err"); return; }
+        var wantRate = full && rateChanged(), wantClear = cleared && !!prev && !wantRate;
         if (!text && !wantRate && !wantClear) { note(form, replyTo ? "Напишите текст ответа." : "Напишите комментарий или поставьте оценку.", "err"); return; }
         if (text) {
           var bad = findProfanity(text);
@@ -832,7 +852,7 @@
         var rref = fdoc("ratings/" + nid + "_" + uid);
         if (wantRate) {
           var rd = { numberId: nid, uid: uid, updatedAt: fb.f.serverTimestamp() };
-          RATE.forEach(function (k) { if (draft[k[0]]) rd[k[0]] = draft[k[0]]; });
+          RATE.forEach(function (k) { rd[k[0]] = draft[k[0]]; });
           b.set(rref, rd);
         } else if (wantClear) b.delete(rref);
         b.commit().then(function () { replyTo = null; dropComments(); return loadComments(true); }).then(draw, function (e) { send.disabled = false; note(form, errText(e), "err"); });

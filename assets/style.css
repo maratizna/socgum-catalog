@@ -243,28 +243,52 @@ a.btn{text-decoration:none;display:inline-block}
 .rate-big small{color:var(--ash);font-size:.85rem;margin-top:6px}
 .rate-bars{display:grid;gap:8px;list-style:none;margin:0;padding:0}
 .rate-bars li{display:grid;grid-template-columns:minmax(0,13rem) 1fr 2.6rem;gap:12px;align-items:center;font-size:.95rem}
+.rate-bars li.vibe{margin-top:4px;padding-top:10px;border-top:1px dashed var(--line)}
 .rate-bar-val{font-variant-numeric:tabular-nums;text-align:right}
 .rate-bar{display:block;height:8px;background:var(--night);border:1px solid var(--line);border-radius:999px;overflow:hidden}
 .rate-bar i{display:block;height:100%;background:var(--ember)}
-@media (max-width:640px){.rate-sum-grid{grid-template-columns:1fr}.rate-bars li{grid-template-columns:1fr 2.6rem;}.rate-bars .rate-bar{grid-column:1 / -1;grid-row:2}.rate-bar-name{grid-column:1}.rate-bar-val{grid-column:2;grid-row:1}}
+@media (max-width:640px){.rate-sum-grid{grid-template-columns:1fr}.rate-bars li{grid-template-columns:1fr 2.6rem}.rate-bars .rate-bar{grid-column:1 / -1;grid-row:2}.rate-bar-val{grid-column:2;grid-row:1}}
 
+/* форма оценки: ползунки */
 .rate-box{background:var(--coal);border:1px solid var(--line);border-radius:var(--r);padding:10px 14px}
 .rate-box summary{cursor:pointer;font-weight:600}
 .rate-box[open] summary{margin-bottom:8px}
 .rate-state{color:var(--ash);font-weight:400;font-size:.9rem;margin-left:6px}
-.rate-rows{display:grid;gap:10px;margin:10px 0 12px}
-.rate-row{display:flex;justify-content:space-between;align-items:center;gap:10px 18px;flex-wrap:wrap}
-.rate-name{display:grid;gap:1px}
-.rate-name small{color:var(--ash);font-size:.82rem}
-.rate-pills{display:inline-flex;gap:6px}
-.rate-in{position:absolute;opacity:0;width:1px;height:1px}
-.rate-pill{display:inline-block;min-width:42px;text-align:center;padding:7px 0;border:1px solid var(--line);border-radius:var(--r);cursor:pointer;color:var(--ink);font-variant-numeric:tabular-nums}
-.rate-pill:hover{border-color:var(--ember)}
-.rate-in:checked+.rate-pill{background:var(--ember);border-color:var(--ember);color:var(--night);font-weight:600}
-.rate-in:focus-visible+.rate-pill{outline:2px solid var(--ember-hi);outline-offset:2px}
-.c-rate{display:flex;flex-wrap:wrap;gap:4px 14px;margin:0;font-size:.88rem;color:var(--ash)}
-.c-rate-label{color:var(--ink)}
-.c-rate-item b{color:var(--ember-hi);font-weight:600}
+.rate-grp{display:grid;gap:14px;margin:12px 0 0;padding:12px 14px;border:1px solid var(--line);border-radius:var(--r);background:rgba(255,139,54,.04)}
+.rate-grp.rate-vibe{border-color:var(--ember);background:rgba(255,139,54,.09)}
+.rate-head{display:flex;justify-content:space-between;align-items:baseline;gap:12px;margin-bottom:6px}
+.rate-name{display:grid;gap:1px;font-weight:600;font-size:.95rem}
+.rate-name small{color:var(--ash);font-size:.82rem;font-weight:400}
+.rate-val{font-family:var(--font-display);font-size:1.25rem;color:var(--ember);min-width:1.2em;text-align:right}
+.rate-range{-webkit-appearance:none;appearance:none;display:block;width:100%;height:26px;margin:0;background:transparent;cursor:grab;touch-action:pan-y;--p:0%}
+.rate-range:active{cursor:grabbing}
+.rate-range::-webkit-slider-runnable-track{height:10px;border-radius:999px;border:1px solid var(--line);background:linear-gradient(to right,var(--ember) var(--p),var(--night) var(--p))}
+.rate-range::-moz-range-track{height:10px;border-radius:999px;border:1px solid var(--line);background:var(--night)}
+.rate-range::-moz-range-progress{height:10px;border-radius:999px;background:var(--ember)}
+.rate-range::-webkit-slider-thumb{-webkit-appearance:none;appearance:none;width:22px;height:22px;margin-top:-7px;border-radius:50%;background:var(--ember-hi);border:3px solid var(--night);box-shadow:0 0 0 1px var(--ember)}
+.rate-range::-moz-range-thumb{width:16px;height:16px;border-radius:50%;background:var(--ember-hi);border:3px solid var(--night);box-shadow:0 0 0 1px var(--ember)}
+.rate-range.is-unset::-webkit-slider-thumb{background:var(--ash);box-shadow:0 0 0 1px var(--line)}
+.rate-range.is-unset::-moz-range-thumb{background:var(--ash);box-shadow:0 0 0 1px var(--line)}
+.rate-range.is-unset::-moz-range-progress{background:transparent}
+.rate-range:focus-visible{outline:2px solid var(--ember-hi);outline-offset:3px;border-radius:var(--r)}
+.rate-ticks{display:flex;justify-content:space-between;padding:0 8px;color:var(--ash);font-size:.78rem;font-style:normal;margin-top:-2px}
+.rate-ticks i{font-style:normal;width:1em;text-align:center}
+.rate-total{margin:12px 0 4px;color:var(--ash);font-size:.95rem}
+.rate-total.is-full{color:var(--ink);font-weight:600}
+
+/* оценка у комментария: сумма и пять цифр, подсказка при наведении и нажатии */
+.rt{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin:2px 0}
+.rt-total,.rt-chip{position:relative;border-radius:var(--r);border:1px solid var(--line);color:var(--ink);font:inherit;font-size:.9rem;line-height:1;padding:6px 9px;cursor:pointer;font-variant-numeric:tabular-nums;background:transparent}
+.rt-total{border-color:var(--ember);color:var(--ember-hi)}
+.rt-total b{font-size:1rem;font-weight:700;color:var(--ink)}
+.rt-chip{min-width:30px;text-align:center}
+.rt-chip.v1{background:rgba(255,139,54,.06)}.rt-chip.v2{background:rgba(255,139,54,.16)}.rt-chip.v3{background:rgba(255,139,54,.28)}
+.rt-chip.v4{background:rgba(255,139,54,.45)}.rt-chip.v5{background:rgba(255,139,54,.7);color:var(--night);font-weight:600}
+.rt-chip.vibe{border-color:var(--ember);margin-left:6px}
+.rt-total:hover,.rt-chip:hover,.rt-total:focus-visible,.rt-chip:focus-visible{border-color:var(--ember-hi)}
+.rt-total::after,.rt-chip::after{content:attr(data-tip);position:absolute;left:0;bottom:calc(100% + 8px);z-index:20;width:max-content;max-width:min(240px,70vw);background:var(--coal-2);color:var(--ink);border:1px solid var(--ember);border-radius:var(--r);padding:7px 10px;font-size:.85rem;font-weight:400;line-height:1.35;text-align:left;white-space:normal;opacity:0;visibility:hidden;pointer-events:none;transition:opacity .12s}
+.rt-chip:nth-last-child(-n+2)::after{left:auto;right:0}
+.rt-total:hover::after,.rt-chip:hover::after,.rt-total:focus-visible::after,.rt-chip:focus-visible::after,.rt-total.is-open::after,.rt-chip.is-open::after{opacity:1;visibility:visible}
 
 /* правило над полем комментария и сортировка */
 .c-rules{margin:0;padding:8px 12px;border-left:3px solid var(--ember);background:var(--coal);color:var(--ash);font-size:.92rem}
@@ -278,3 +302,6 @@ a.btn{text-decoration:none;display:inline-block}
 .add-block h2{font-family:var(--font-display);font-size:1.05rem;margin:0}
 .add-block p{margin:0;color:var(--ash);max-width:62ch}
 .add-links{display:flex;gap:10px;flex-wrap:wrap}
+.add-btn{display:inline-block;padding:11px 20px;border:1px solid var(--line);border-radius:var(--r);background:transparent;color:var(--ink);font-weight:600;text-decoration:none;transition:border-color .15s,color .15s,background-color .15s}
+.add-btn:hover,.add-btn:focus-visible{border-color:var(--ember);color:var(--ember-hi);background:var(--coal)}
+.add-btn:focus-visible{outline:2px solid var(--ember-hi);outline-offset:2px}

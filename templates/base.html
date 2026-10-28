@@ -37,8 +37,8 @@
 {% if forms %}
 <section class="add-block" aria-labelledby="add-h">
   <h2 id="add-h">Нет вашего номера или концерта?</h2>
-  <p>Добавьте его сами через форму Google (с телефона тоже). Если вы не редактор таблицы, заявку сначала проверит администратор, потом она появится на сайте.</p>
-  <div class="add-links">{% for f in forms %}<a class="btn{% if not loop.first %} btn-ghost{% endif %}" href="{{ f.url }}" rel="noopener" target="_blank">{{ f.label }}</a>{% endfor %}</div>
+  <p>Добавьте его сами через форму Google (с телефона тоже). Заявку сначала проверит администратор, потом она появится на сайте.</p>
+  <div class="add-links">{% for f in forms %}<a class="add-btn" href="{{ f.url }}" rel="noopener" target="_blank">{{ f.label }}</a>{% endfor %}</div>
 </section>
 {% endif %}
 <footer class="site-foot">
