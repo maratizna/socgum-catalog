@@ -503,7 +503,7 @@
     var canSeek = !!(stage && stage.dataset.oid);
     var comments = [], loaded = false, replyTo = null, noteData = null, fail = "";
     var myLikes = {}, openLikers = {};   // мои лайки на этой странице; комментарии с раскрытым списком лайкнувших
-    var ratings = [], ratingBy = {};     // оценки зрителей этого номера и они же по аккаунтам
+    var ratings = [], ratingBy = {}, firstTop = {};   // оценки зрителей этого номера; они же по аккаунтам; первый комментарий каждого автора (под ним показываем оценку)
     var sortMode = "old";
     try { var sv = store() && store().getItem("sg:sort"); if (sv === "new" || sv === "old" || sv === "top") sortMode = sv; } catch (e) { }
 
@@ -671,7 +671,7 @@
       if (!isReply && state.user) actions.append(el("button", { type: "button", class: "linkbtn", text: "Ответить", onclick: function () { replyTo = c; drawForm(); form.scrollIntoView({ block: "center" }); } }));
       if (state.admin) actions.append(el("button", { type: "button", class: "linkbtn", text: c.status === "hidden" ? "Показать" : "Скрыть", onclick: function () { act(fb.f.updateDoc(fdoc("comments/" + c.id), { status: c.status === "hidden" ? "visible" : "hidden" })); } }));
       if (mine || state.admin) actions.append(el("button", { type: "button", class: "linkbtn", text: "Удалить", onclick: function () { if (confirm("Удалить комментарий насовсем?")) act(deleteComment(c)); } }));
-      var rt = !isReply && ratingBy[c.uid], rline = null;
+      var rt = !isReply && firstTop[c.uid] === c.id && ratingBy[c.uid], rline = null;
       if (rt) {
         rline = el("p", { class: "c-rate" }, el("span", { class: "c-rate-label", text: "Оценка:" }));
         RATE.forEach(function (k) { if (rt[k[0]]) rline.append(el("span", { class: "c-rate-item" }, k[3] + " ", el("b", { text: String(rt[k[0]]) }))); });
@@ -733,6 +733,8 @@
       comments.forEach(function (c) { if (c.parentId) (byParent[c.parentId] = byParent[c.parentId] || []).push(c); });
       var ids = {}; comments.forEach(function (c) { ids[c.id] = 1; });
       comments.forEach(function (c) { if (c.parentId && !ids[c.parentId]) top.push(c); }); // ответ на удалённый
+      firstTop = {};
+      top.slice().sort(function (a, b) { return ms(a) - ms(b); }).forEach(function (c) { if (!firstTop[c.uid]) firstTop[c.uid] = c.id; });
       top.sort(cmpFor(sortMode));
       drawSort(top.length);
       if (!top.length) list.append(el("p", { class: "c-empty", text: "Пока нет комментариев. Напишите первым." }));
