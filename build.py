@@ -269,13 +269,17 @@ SPEC = {
         "old_url": ["старый адрес"],
     },
     "Люди": {"name": ["имя"], "about": ["о себе", "описание"], "link": ["ссылка"], "id": ["id"]},
+    "Формы": {"title": ["форма"], "url": ["ссылка для сотрудников", "ссылка"]},
 }
 REQUIRED = {
     "Концерты": ["name"], "Направления": ["name"],
-    "Номера": ["id", "concert", "title"], "Люди": ["name"],
+    "Номера": ["id", "concert", "title"], "Люди": ["name"], "Формы": ["title", "url"],
 }
-OPTIONAL_SHEETS = {"Люди"}
+OPTIONAL_SHEETS = {"Люди", "Формы"}
 RAW_COLS = {("Номера", "start"), ("Номера", "end")}  # время разбираем сами
+
+
+FORMS = []   # ссылки на формы из листа «Формы», попадают в подвал сайта
 
 
 def hnorm(s):
@@ -354,8 +358,29 @@ def read_sheet(wb, name, report):
 
 # ---------------------------------------------------------------- модель данных
 
+FORM_URL_RE = re.compile(r"^https://(docs\.google\.com/forms/|forms\.gle/)[^\s]+$")
+
+
+def form_links(rows):
+    """Лист «Формы» -> три кнопки для подвала: добавить концерт, добавить номер, дополнить номер."""
+    found = {}
+    for r in rows:
+        title, url = norm(r.get("title") or ""), (r.get("url") or "").strip()
+        if not FORM_URL_RE.match(url):
+            continue
+        if "дополн" in title:
+            found.setdefault("C", url)
+        elif "концерт" in title and "номер" not in title:
+            found.setdefault("A", url)
+        elif "номер" in title:
+            found.setdefault("B", url)
+    labels = {"A": "Добавить концерт", "B": "Добавить номер", "C": "Дополнить номер"}
+    return [{"label": labels[k], "url": found[k]} for k in ("A", "B", "C") if k in found]
+
+
 def build_model(wb, report):
     sheets = {n: read_sheet(wb, n, report) for n in SPEC}
+    FORMS[:] = form_links(sheets.get("Формы") or [])
     c_slug, _ = assign_slugs(sheets["Концерты"], "Концерты", report, "Концерты")
     d_slug, _ = assign_slugs(sheets["Направления"], "Направления", report, "Направления")
     p_slug, slugs_p = assign_slugs(sheets["Люди"], "Люди", report, "Люди")
@@ -667,7 +692,7 @@ def build_site(concerts, directions, numbers, people, report, demo, source):
     asset_v = hashlib.sha1(b"".join((ROOT / "assets" / f).read_bytes() for f in ("style.css", "app.js", "social.js"))).hexdigest()[:8]
     ctx_common = dict(firebase=firebase, asset_v=asset_v, site_title=cfg["site_title"], site_url=site_url, home_url=cfg.get("home_url", ""),
                       home_label=cfg.get("home_label", ""), demo=demo, brand_font=bool(brand_font),
-                      lead=cfg.get("lead", ""))
+                      lead=cfg.get("lead", ""), forms=list(FORMS))
 
     all_numbers = sorted(numbers.values(), key=lambda n: (
         -(n["concert"]["date"].toordinal() if n["concert"]["date"] else 0), n["position"]))

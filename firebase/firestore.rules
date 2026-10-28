@@ -117,6 +117,27 @@ service cloud.firestore {
       allow delete: if isAdmin() || (signedIn() && resource.data.uid == request.auth.uid);
     }
 
+    // Оценки номера: 1–5 по четырём критериям и общему впечатлению. Один документ на человека и номер
+    // (ключ «номер_аккаунт»), любое из пяти полей можно не заполнять, но хотя бы одно нужно.
+    // Читают все; создаёт и меняет только сам человек; убрать может он сам или администратор.
+    function okScore(d, k) { return !(k in d) || (d[k] is int && d[k] >= 1 && d[k] <= 5); }
+    match /ratings/{rid} {
+      allow read: if true;
+      allow create, update: if signedIn()
+        && request.resource.data.keys().hasOnly(['numberId', 'uid', 'idea', 'perf', 'stage', 'emo', 'overall', 'updatedAt'])
+        && request.resource.data.keys().hasAny(['idea', 'perf', 'stage', 'emo', 'overall'])
+        && request.resource.data.numberId is string && request.resource.data.numberId.size() <= 100
+        && request.resource.data.uid == request.auth.uid
+        && rid == request.resource.data.numberId + '_' + request.auth.uid
+        && request.resource.data.updatedAt == request.time
+        && okScore(request.resource.data, 'idea')
+        && okScore(request.resource.data, 'perf')
+        && okScore(request.resource.data, 'stage')
+        && okScore(request.resource.data, 'emo')
+        && okScore(request.resource.data, 'overall');
+      allow delete: if signedIn() && (resource.data.uid == request.auth.uid || isAdmin());
+    }
+
     // Лайки комментариям. Один лайк на человека (ключ «комментарий_аккаунт»). Список лайкнувших публичный.
     // Убрать лайк может сам автор лайка, автор комментария (при удалении комментария) и администратор.
     match /likes/{lid} {

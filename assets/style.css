@@ -232,3 +232,49 @@ a.btn{text-decoration:none;display:inline-block}
 .like-btn:hover{border-color:var(--ember);color:var(--ember-hi)}
 .like-btn.is-on{color:var(--ember);border-color:var(--ember)}
 .like-list{display:flex;flex-wrap:wrap;gap:8px 18px;padding:6px 0 0;font-size:.9rem}
+
+/* оценки номера */
+.rate-sum{background:var(--coal);border:1px solid var(--line);border-radius:var(--r);padding:16px 18px;margin-bottom:18px}
+.rate-sum h3{font-family:var(--font-display);font-size:1rem;margin:0 0 12px}
+.rate-sum-grid{display:grid;grid-template-columns:auto 1fr;gap:14px 32px;align-items:center}
+.rate-big{margin:0;display:grid;line-height:1.1}
+.rate-big strong{font-family:var(--font-display);font-size:clamp(2.2rem,6vw,3rem);color:var(--ember)}
+.rate-big span{color:var(--ash)}
+.rate-big small{color:var(--ash);font-size:.85rem;margin-top:6px}
+.rate-bars{display:grid;gap:8px;list-style:none;margin:0;padding:0}
+.rate-bars li{display:grid;grid-template-columns:minmax(0,13rem) 1fr 2.6rem;gap:12px;align-items:center;font-size:.95rem}
+.rate-bar-val{font-variant-numeric:tabular-nums;text-align:right}
+.rate-bar{display:block;height:8px;background:var(--night);border:1px solid var(--line);border-radius:999px;overflow:hidden}
+.rate-bar i{display:block;height:100%;background:var(--ember)}
+@media (max-width:640px){.rate-sum-grid{grid-template-columns:1fr}.rate-bars li{grid-template-columns:1fr 2.6rem;}.rate-bars .rate-bar{grid-column:1 / -1;grid-row:2}.rate-bar-name{grid-column:1}.rate-bar-val{grid-column:2;grid-row:1}}
+
+.rate-box{background:var(--coal);border:1px solid var(--line);border-radius:var(--r);padding:10px 14px}
+.rate-box summary{cursor:pointer;font-weight:600}
+.rate-box[open] summary{margin-bottom:8px}
+.rate-state{color:var(--ash);font-weight:400;font-size:.9rem;margin-left:6px}
+.rate-rows{display:grid;gap:10px;margin:10px 0 12px}
+.rate-row{display:flex;justify-content:space-between;align-items:center;gap:10px 18px;flex-wrap:wrap}
+.rate-name{display:grid;gap:1px}
+.rate-name small{color:var(--ash);font-size:.82rem}
+.rate-pills{display:inline-flex;gap:6px}
+.rate-in{position:absolute;opacity:0;width:1px;height:1px}
+.rate-pill{display:inline-block;min-width:42px;text-align:center;padding:7px 0;border:1px solid var(--line);border-radius:var(--r);cursor:pointer;color:var(--ink);font-variant-numeric:tabular-nums}
+.rate-pill:hover{border-color:var(--ember)}
+.rate-in:checked+.rate-pill{background:var(--ember);border-color:var(--ember);color:var(--night);font-weight:600}
+.rate-in:focus-visible+.rate-pill{outline:2px solid var(--ember-hi);outline-offset:2px}
+.c-rate{display:flex;flex-wrap:wrap;gap:4px 14px;margin:0;font-size:.88rem;color:var(--ash)}
+.c-rate-label{color:var(--ink)}
+.c-rate-item b{color:var(--ember-hi);font-weight:600}
+
+/* правило над полем комментария и сортировка */
+.c-rules{margin:0;padding:8px 12px;border-left:3px solid var(--ember);background:var(--coal);color:var(--ash);font-size:.92rem}
+.c-rules strong{color:var(--ink)}
+.c-sort{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-top:16px}
+.c-sort-label{color:var(--ash);font-size:.95rem;margin-right:2px}
+.c-sort+.c-list{margin-top:10px}
+
+/* добавить номер или концерт */
+.add-block{max-width:var(--wrap);width:100%;margin:40px auto 0;padding:22px var(--pad);border-top:1px solid var(--line);display:grid;gap:12px}
+.add-block h2{font-family:var(--font-display);font-size:1.05rem;margin:0}
+.add-block p{margin:0;color:var(--ash);max-width:62ch}
+.add-links{display:flex;gap:10px;flex-wrap:wrap}

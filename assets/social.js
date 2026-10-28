@@ -78,6 +78,67 @@
     return fetchFn().then(function (v) { cput(key, v); return v; });
   }
 
+  /* ------------------------------------------------------------ фильтр мата
+     Проверка в браузере до отправки комментария. Понимает замену букв латиницей и цифрами, повтор букв,
+     пробелы и знаки между буквами, звёздочки вместо букв. Корни ищутся с начала слова (с приставками),
+     чтобы не ловить обычные слова вроде «небо», «хлеб», «скипидар». Список правится только здесь. */
+  /* PROFANITY BEGIN */
+  var LATMAP = { a: "а", b: "в", c: "с", e: "е", h: "н", k: "к", m: "м", o: "о", p: "р", t: "т", x: "х", y: "у" };
+  var BAD_CYR = [
+    /^(?:[а-я]{0,2}|раз|рас|при|под|про|над|пере|недо)?ху(?:й|ю|я|е|ил)/,
+    /пизд/,
+    /^пид[оае]р|^пидр/,
+    /^(?:за|вы|на|по|до|про|у|раз|объ|подъ|отъ|съ|сь|недо|долбо|мудо|дебило)?[ъь]?еб(?:а|у|л|н|и|ы|ет|ешь|ем|ете|ут)/,
+    /^(?:долбо|мудо|дебило|у|за|на|вы|съ|сь)[ъь]?еб(?:ок|ки|ан|$)/,
+    /^бля$|бляд|блят/,
+    /^сук(?:а|и|у|е|ой|ам|ами)$|^сучар/,
+    /мудак|мудил|мудозв|мудох/,
+    /залуп/,
+    /^г[ао]ндон/,
+    /^шлюх|^шлюшк/,
+    /^хули$/
+  ];
+  var BAD_LAT = /^(?:[xh]u[yij]|xy[ijyu]|pizd|pezd|ebat|ebal|eban|ebu|blya|blyat|blyad|pidor|pidar|pidr|mudak|gandon|zalup)/;
+  var ABC = "абвгдежзийклмнопрстуфхцчшщъыьэюя".split("").concat([""]);
+  function badCyr(w) { for (var i = 0; i < BAD_CYR.length; i++) if (BAD_CYR[i].test(w)) return true; return false; }
+  function badWord(raw) {
+    var w = raw.toLowerCase().replace(/ё/g, "е");
+    var cyr = /[а-я]/.test(w);
+    if (cyr) w = w.replace(/[a-z]/g, function (c) { return LATMAP[c] || c; }).replace(/0/g, "о").replace(/3/g, "з").replace(/6/g, "б").replace(/4/g, "ч");
+    w = w.replace(/[^а-яa-z*#@%$&]/g, "").replace(/(.)\1+/g, "$1");
+    if (w.length < 2) return false;
+    if (!cyr) return BAD_LAT.test(w);
+    var masks = w.match(/[*#@%$&]/g);
+    if (!masks) return badCyr(w);
+    if (masks.length > 2 || w.length > 14) return false;
+    var p = w.split(/[*#@%$&]/), i, j;
+    if (masks.length === 1) { for (i = 0; i < ABC.length; i++) if (badCyr(p[0] + ABC[i] + p[1])) return true; return false; }
+    for (i = 0; i < ABC.length; i++) for (j = 0; j < ABC.length; j++) if (badCyr(p[0] + ABC[i] + p[1] + ABC[j] + p[2])) return true;
+    return false;
+  }
+  /* Возвращает найденное слово (как написал человек) или "" */
+  function findProfanity(text) {
+    var toks = String(text || "").split(/[\s.,;:!?()\[\]{}"«»…\/\\|<>=+~^_—–]+/).filter(Boolean), i, k;
+    for (i = 0; i < toks.length; i++) {
+      var t = toks[i];
+      if (badWord(t)) return t;
+      if (t.indexOf("-") !== -1) {
+        var ps = t.split(/-+/);
+        for (k = 0; k < ps.length; k++) if (ps[k] && badWord(ps[k])) return t;
+      }
+    }
+    // буквы по одной: «х у й», «х.у.й»
+    var run = [];
+    for (i = 0; i <= toks.length; i++) {
+      var s = toks[i];
+      if (s && /^[A-Za-zА-Яа-яЁё]$/.test(s)) { run.push(s); continue; }
+      if (run.length >= 3 && badWord(run.join(""))) return run.join(" ");
+      run = [];
+    }
+    return "";
+  }
+  /* PROFANITY END */
+
   /* ------------------------------------------------------------ метки времени в тексте */
   var TC = /(^|[^\d:])((?:\d{1,2}:)?[0-5]?\d:[0-5]\d)(?![\d:])/g;
   function tcSeconds(s) {
@@ -417,7 +478,22 @@
     return (e && e.message) || "Что-то пошло не так.";
   }
 
-  /* ------------------------------------------------------------ страница номера: комментарии */
+  /* ------------------------------------------------------------ страница номера: оценки и комментарии */
+  /* Критерии оценки 1–5: ключ в базе, название, подсказка, короткое название для строки под комментарием */
+  var RATE = [
+    ["idea", "Замысел", "идея, мысль, история номера", "замысел"],
+    ["perf", "Исполнение", "техника, синхронность, чистота", "исполнение"],
+    ["stage", "Сценическое воплощение", "свет, костюмы, видео, декорации", "сцена"],
+    ["emo", "Эмоциональный отклик", "что вы почувствовали", "отклик"],
+    ["overall", "Общее впечатление", "", "впечатление"]
+  ];
+  var SORTS = [["old", "Старые сверху"], ["new", "Новые сверху"], ["top", "Популярные"]];
+  function fmt1(x) { return (Math.round(x * 10) / 10).toFixed(1).replace(".", ","); }
+  function plRate(n) {
+    var m = n % 100, d = n % 10;
+    return n + " " + (m > 10 && m < 20 ? "оценок" : d === 1 ? "оценка" : d > 1 && d < 5 ? "оценки" : "оценок");
+  }
+
   function initNumber() {
     var root = document.getElementById("comments");
     if (!root) return;
@@ -427,12 +503,17 @@
     var canSeek = !!(stage && stage.dataset.oid);
     var comments = [], loaded = false, replyTo = null, noteData = null, fail = "";
     var myLikes = {}, openLikers = {};   // мои лайки на этой странице; комментарии с раскрытым списком лайкнувших
+    var ratings = [], ratingBy = {};     // оценки зрителей этого номера и они же по аккаунтам
+    var sortMode = "old";
+    try { var sv = store() && store().getItem("sg:sort"); if (sv === "new" || sv === "old" || sv === "top") sortMode = sv; } catch (e) { }
 
+    var sumBox = el("div", { class: "rate-sum", hidden: true });
+    var sortBar = el("div", { class: "c-sort", hidden: true });
     var list = el("div", { class: "c-list" });
     var form = el("div", { class: "c-form" });
     var moments = el("details", { class: "moments", open: true });
     var noteBox = document.getElementById("director-note");
-    root.append(moments, list, form);
+    root.append(sumBox, moments, sortBar, list, form);
 
     function loadComments(fresh) {
       var q = state.admin
@@ -444,7 +525,7 @@
         comments = list;
         comments.sort(function (a, b) { return ms(a) - ms(b); });
         loaded = true; fail = "";
-        return loadAvatars(comments.map(function (c) { return c.uid; })).then(function () { return loadMyLikes(fresh); });
+        return Promise.all([loadAvatars(comments.map(function (c) { return c.uid; })), loadMyLikes(fresh), loadRatings(fresh)]);
       }, function (e) { loaded = true; fail = errText(e); });
     }
     /* Лайки читаются только мои (чтобы закрасить сердечко); число лайков приходит вместе с комментарием.
@@ -459,7 +540,22 @@
         });
       }).then(function (ids) { (ids || []).forEach(function (id) { myLikes[id] = true; }); }, function () { });
     }
-    function dropComments() { cdrop("comments:" + nid); cdrop("likes:" + nid); }
+    /* Оценки: по одному документу на человека и номер (ratings/номер_аккаунт). Читаются списком, до 500 штук. */
+    function loadRatings(fresh) {
+      return cached("ratings:" + nid, TTL.comments, fresh, function () {
+        return fb.f.getDocs(fb.f.query(fcol("ratings"), fb.f.where("numberId", "==", nid), fb.f.limit(500))).then(function (s) {
+          return s.docs.map(function (d) {
+            var x = d.data(), o = { uid: x.uid };
+            RATE.forEach(function (r) { if (typeof x[r[0]] === "number") o[r[0]] = x[r[0]]; });
+            return o;
+          });
+        });
+      }).then(function (arr) {
+        ratings = arr || []; ratingBy = {};
+        ratings.forEach(function (r) { ratingBy[r.uid] = r; });
+      }, function () { ratings = []; ratingBy = {}; });
+    }
+    function dropComments() { cdrop("comments:" + nid); cdrop("likes:" + nid); cdrop("ratings:" + nid); }
     function plural(n) {
       var m = n % 100, d = n % 10;
       return n + " " + (m > 10 && m < 20 ? "лайков" : d === 1 ? "лайк" : d > 1 && d < 5 ? "лайка" : "лайков");
@@ -575,21 +671,70 @@
       if (!isReply && state.user) actions.append(el("button", { type: "button", class: "linkbtn", text: "Ответить", onclick: function () { replyTo = c; drawForm(); form.scrollIntoView({ block: "center" }); } }));
       if (state.admin) actions.append(el("button", { type: "button", class: "linkbtn", text: c.status === "hidden" ? "Показать" : "Скрыть", onclick: function () { act(fb.f.updateDoc(fdoc("comments/" + c.id), { status: c.status === "hidden" ? "visible" : "hidden" })); } }));
       if (mine || state.admin) actions.append(el("button", { type: "button", class: "linkbtn", text: "Удалить", onclick: function () { if (confirm("Удалить комментарий насовсем?")) act(deleteComment(c)); } }));
+      var rt = !isReply && ratingBy[c.uid], rline = null;
+      if (rt) {
+        rline = el("p", { class: "c-rate" }, el("span", { class: "c-rate-label", text: "Оценка:" }));
+        RATE.forEach(function (k) { if (rt[k[0]]) rline.append(el("span", { class: "c-rate-item" }, k[3] + " ", el("b", { text: String(rt[k[0]]) }))); });
+      }
       return el("article", { class: "comment" + (isReply ? " reply" : "") + (c.status === "hidden" ? " is-hidden" : ""), id: "c-" + c.id },
-        head, el("p", { class: "c-text" }, richText(c.text, canSeek)), actions, n > 0 && openLikers[c.id] ? likersBox(c) : null);
+        head, el("p", { class: "c-text" }, richText(c.text, canSeek)), rline, actions, n > 0 && openLikers[c.id] ? likersBox(c) : null);
     }
     function act(p) { return p.then(function () { dropComments(); return loadComments(true); }).then(draw, function (e) { toast(errText(e)); }); }
 
+    /* Средние оценки зрителей: общее впечатление крупно, четыре критерия полосками */
+    function drawSummary() {
+      clear(sumBox);
+      if (!ratings.length) { sumBox.hidden = true; return; }
+      var sum = {}, cnt = {};
+      ratings.forEach(function (r) { RATE.forEach(function (k) { if (r[k[0]]) { sum[k[0]] = (sum[k[0]] || 0) + r[k[0]]; cnt[k[0]] = (cnt[k[0]] || 0) + 1; } }); });
+      var avg = function (key) { return cnt[key] ? sum[key] / cnt[key] : null; };
+      var head = avg("overall");
+      if (head === null) { var parts = RATE.slice(0, 4).map(function (k) { return avg(k[0]); }).filter(function (v) { return v !== null; }); head = parts.reduce(function (a, b) { return a + b; }, 0) / parts.length; }
+      var bars = el("ul", { class: "rate-bars" });
+      RATE.slice(0, 4).forEach(function (k) {
+        var v = avg(k[0]);
+        bars.append(el("li", null, el("span", { class: "rate-bar-name", text: k[1] }),
+          el("span", { class: "rate-bar", role: "img", "aria-label": v === null ? "нет оценок" : fmt1(v) + " из 5" }, el("i", { style: "width:" + (v === null ? 0 : Math.round(v / 5 * 100)) + "%" })),
+          el("span", { class: "rate-bar-val", text: v === null ? "–" : fmt1(v) })));
+      });
+      sumBox.append(el("h3", { text: "Оценки зрителей" }),
+        el("div", { class: "rate-sum-grid" },
+          el("p", { class: "rate-big" }, el("strong", { text: fmt1(head) }), el("span", { text: " из 5" }),
+            el("small", { text: (cnt.overall ? "общее впечатление, " : "по критериям, ") + plRate(ratings.length) })),
+          bars));
+      sumBox.hidden = false;
+    }
+    function drawSort(topCount) {
+      clear(sortBar);
+      sortBar.hidden = topCount < 2;
+      if (topCount < 2) return;
+      sortBar.append(el("span", { class: "c-sort-label", text: "Порядок:" }));
+      SORTS.forEach(function (s) {
+        sortBar.append(el("button", { type: "button", class: "chip", "aria-pressed": sortMode === s[0] ? "true" : "false", text: s[1],
+          onclick: function () {
+            sortMode = s[0];
+            try { store() && store().setItem("sg:sort", sortMode); } catch (e) { }
+            drawList();
+          } }));
+      });
+    }
+    function cmpFor(mode) {
+      if (mode === "new") return function (a, b) { return ms(b) - ms(a); };
+      if (mode === "top") return function (a, b) { return (b.likeCount || 0) - (a.likeCount || 0) || ms(a) - ms(b); };
+      return function (a, b) { return ms(a) - ms(b); };
+    }
+
     function drawList() {
       clear(list);
-      if (!loaded) { list.append(el("p", { class: "c-empty", text: "Загружаем комментарии…" })); return; }
-      if (fail) { list.append(el("p", { class: "msg msg-err", text: "Комментарии не загрузились: " + fail })); return; }
+      if (!loaded) { sortBar.hidden = true; list.append(el("p", { class: "c-empty", text: "Загружаем комментарии…" })); return; }
+      if (fail) { sortBar.hidden = true; list.append(el("p", { class: "msg msg-err", text: "Комментарии не загрузились: " + fail })); return; }
       var top = comments.filter(function (c) { return !c.parentId; });
       var byParent = {};
       comments.forEach(function (c) { if (c.parentId) (byParent[c.parentId] = byParent[c.parentId] || []).push(c); });
       var ids = {}; comments.forEach(function (c) { ids[c.id] = 1; });
       comments.forEach(function (c) { if (c.parentId && !ids[c.parentId]) top.push(c); }); // ответ на удалённый
-      top.sort(function (a, b) { return ms(a) - ms(b); });
+      top.sort(cmpFor(sortMode));
+      drawSort(top.length);
       if (!top.length) list.append(el("p", { class: "c-empty", text: "Пока нет комментариев. Напишите первым." }));
       top.forEach(function (c) {
         list.append(commentNode(c, false));
@@ -597,32 +742,105 @@
       });
     }
 
+    /* Форма: правило, необязательные оценки (выпадающий блок), текст комментария */
     function drawForm() {
       clear(form);
       if (!state.ready) return;
       if (!state.user) {
-        form.append(el("p", { class: "c-hint", text: "Чтобы написать комментарий, войдите через Google." }),
-          el("button", { type: "button", class: "btn", text: "Войти через Google", onclick: signIn }));
+        form.append(el("p", { class: "c-hint", text: "Чтобы написать комментарий или поставить оценку, войдите." }),
+          el("button", { type: "button", class: "btn", text: "Войти", onclick: signIn }));
         return;
       }
+      var uid = state.user.uid;
+      var prev = ratingBy[uid] || null;                // уже сохранённая оценка этого человека
+      var draft = {}; RATE.forEach(function (k) { if (prev && prev[k[0]]) draft[k[0]] = prev[k[0]]; });
+      var cleared = false;                              // человек нажал «Убрать оценку»
+
       var ta = el("textarea", { class: "c-input", rows: "3", maxlength: "2000", placeholder: canSeek ? "Ваш комментарий. Время вида 1:23:45 станет ссылкой на этот момент записи." : "Ваш комментарий", "aria-label": "Комментарий" });
       var send = el("button", { type: "submit", class: "btn", text: "Отправить" });
+
+      function same() {
+        var keys = RATE.map(function (k) { return k[0]; });
+        return keys.every(function (k) { return (draft[k] || 0) === ((prev && prev[k]) || 0); });
+      }
+      function rateChanged() { return !same(); }
+      function syncSend() {
+        var hasText = !!ta.value.trim(), rc = rateChanged() && Object.keys(draft).length > 0;
+        send.textContent = hasText ? (rc ? "Отправить с оценкой" : "Отправить") : (rc ? "Сохранить оценку" : (cleared ? "Убрать оценку" : "Отправить"));
+      }
+
+      /* оценки: пять строк по пять кнопок 1–5, ничего не обязательно */
+      var rateBox = null;
+      if (!replyTo) {
+        var rows = el("div", { class: "rate-rows" });
+        var sumLine = el("span", { class: "rate-state" });
+        var pills = {};
+        var showState = function () {
+          var n = Object.keys(draft).length;
+          sumLine.textContent = cleared ? "оценку уберём" : prev && same() ? "ваша оценка сохранена" : n ? "выбрано: " + n + " из " + RATE.length : "необязательно";
+        };
+        RATE.forEach(function (k) {
+          var group = el("span", { class: "rate-pills", role: "radiogroup", "aria-label": k[1] });
+          pills[k[0]] = [];
+          for (var v = 1; v <= 5; v++) (function (v) {
+            var id = "rt-" + k[0] + "-" + v;
+            var inp = el("input", { type: "radio", class: "rate-in", name: "rt-" + k[0], id: id, value: String(v) });
+            if (draft[k[0]] === v) inp.checked = true;
+            inp.addEventListener("change", function () { draft[k[0]] = v; cleared = false; showState(); syncSend(); });
+            pills[k[0]].push(inp);
+            group.append(inp, el("label", { class: "rate-pill", for: id, text: String(v) }));
+          })(v);
+          rows.append(el("div", { class: "rate-row" },
+            el("span", { class: "rate-name" }, k[1], k[2] ? el("small", { text: k[2] }) : null), group));
+        });
+        var reset = el("button", { type: "button", class: "linkbtn", text: prev ? "Убрать мою оценку" : "Сбросить", onclick: function () {
+          draft = {}; cleared = !!prev;
+          Object.keys(pills).forEach(function (key) { pills[key].forEach(function (i) { i.checked = false; }); });
+          showState(); syncSend();
+        } });
+        rateBox = el("details", { class: "rate-box" },
+          el("summary", null, el("span", { text: prev ? "Ваша оценка номера" : "Оценить номер" }), " ", sumLine),
+          el("p", { class: "c-hint", text: "От 1 до 5. Можно поставить только общее впечатление. Если оценка не нужна, оставьте блок закрытым." }),
+          rows, el("div", { class: "c-row" }, reset));
+        showState();
+      }
+
+      var rules = el("p", { class: "c-rules" },
+        el("strong", { text: "Мат не проходит. " }),
+        "Комментарий с нецензурными словами не отправится: перепишите его. Пишите о номере и по делу, без оскорблений.");
+
+      ta.addEventListener("input", syncSend);
       var f = el("form", { onsubmit: function (ev) {
         ev.preventDefault();
-        var text = ta.value.trim();
-        if (!text) { note(form, "Напишите текст комментария.", "err"); return; }
+        var text = ta.value.trim(), wantRate = Object.keys(draft).length > 0 && rateChanged(), wantClear = cleared && !!prev && !wantRate;
+        if (!text && !wantRate && !wantClear) { note(form, replyTo ? "Напишите текст ответа." : "Напишите комментарий или поставьте оценку.", "err"); return; }
+        if (text) {
+          var bad = findProfanity(text);
+          if (bad) { note(form, "Мат не проходит: слово «" + bad + "». Уберите его и отправьте снова.", "err"); ta.focus(); return; }
+        }
         send.disabled = true;
-        var data = { numberId: nid, uid: state.user.uid, authorName: state.user.displayName || "Без имени", text: text, createdAt: fb.f.serverTimestamp(), status: "visible" };
-        if (replyTo) data.parentId = replyTo.id;
-        var pid = myDirectorPerson();
-        if (pid) data.authorPersonId = pid;
-        fb.f.addDoc(fcol("comments"), data).then(function () { replyTo = null; dropComments(); return loadComments(true); }).then(draw, function (e) { send.disabled = false; note(form, errText(e), "err"); });
+        var b = fb.f.writeBatch(fb.db);
+        if (text) {
+          var data = { numberId: nid, uid: uid, authorName: state.user.displayName || "Без имени", text: text, createdAt: fb.f.serverTimestamp(), status: "visible" };
+          if (replyTo) data.parentId = replyTo.id;
+          var pid = myDirectorPerson();
+          if (pid) data.authorPersonId = pid;
+          b.set(fb.f.doc(fcol("comments")), data);
+        }
+        var rref = fdoc("ratings/" + nid + "_" + uid);
+        if (wantRate) {
+          var rd = { numberId: nid, uid: uid, updatedAt: fb.f.serverTimestamp() };
+          RATE.forEach(function (k) { if (draft[k[0]]) rd[k[0]] = draft[k[0]]; });
+          b.set(rref, rd);
+        } else if (wantClear) b.delete(rref);
+        b.commit().then(function () { replyTo = null; dropComments(); return loadComments(true); }).then(draw, function (e) { send.disabled = false; note(form, errText(e), "err"); });
       } },
         replyTo && el("p", { class: "c-replyto" }, "Ответ для " + replyTo.authorName + " ",
           el("button", { type: "button", class: "linkbtn", text: "отменить", onclick: function () { replyTo = null; drawForm(); } })),
-        ta, el("div", { class: "c-row" }, send,
+        rateBox, rules, ta, el("div", { class: "c-row" }, send,
           el("span", { class: "c-hint", text: "Вы пишете как " + (state.user.displayName || "Без имени") + (myDirectorPerson() ? ", постановщик" : "") })));
       form.append(f);
+      syncSend();
       note(form, "");
     }
 
@@ -655,7 +873,7 @@
       noteBox.hidden = !noteBox.firstChild;
     }
 
-    function draw() { drawMoments(); drawList(); drawForm(); drawNote(); }
+    function draw() { drawSummary(); drawMoments(); drawList(); drawForm(); drawNote(); }
     views.push(function () { loaded = false; replyTo = null; draw(); Promise.all([loadComments(), loadNote()]).then(draw); });
   }
 
