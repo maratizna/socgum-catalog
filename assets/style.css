@@ -568,3 +568,9 @@ html[data-signed="1"] .head-ph{display:inline-block}
 .sg-kind{flex:none;min-width:5.6em;color:var(--ash);font-size:.8rem}
 .sg-text{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:600}
 .sg-item.is-on .sg-text{color:var(--ember-hi)}
+
+/* работа без сети */
+.net-bar{position:fixed;left:50%;bottom:14px;transform:translateX(-50%);z-index:80;margin:0;max-width:min(92vw,520px);padding:10px 16px;border:1px solid var(--ember);border-radius:999px;background:var(--coal);color:var(--ink);font-size:.9rem;text-align:center;box-shadow:0 10px 30px rgba(0,0,0,.5)}
+.net-bar[hidden]{display:none}
+.foot-app{margin:0;color:var(--ash);font-size:.85rem;max-width:62ch}
+.foot-app:empty{display:none}

@@ -14,6 +14,9 @@
 <meta name="theme-color" content="#090500">
 <link rel="preload" href="{{ root }}assets/fonts/unbounded-cyrillic-700-normal.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="preload" href="{{ root }}assets/fonts/golos-text-cyrillic-400-normal.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="manifest" href="{{ root }}manifest.webmanifest">
+<link rel="icon" type="image/png" sizes="192x192" href="{{ root }}assets/icons/icon-192.png">
+<link rel="apple-touch-icon" href="{{ root }}assets/icons/apple-touch-icon.png">
 <link rel="stylesheet" href="{{ root }}assets/style.css?v={{ asset_v }}">
 {% if firebase %}<link rel="preconnect" href="https://www.gstatic.com" crossorigin><link rel="preconnect" href="https://firestore.googleapis.com" crossorigin>
 <script>try{if(localStorage.getItem("sg:signed")==="1")document.documentElement.setAttribute("data-signed","1")}catch(e){}</script>{% endif %}
@@ -45,8 +48,10 @@
 {% endif %}
 <footer class="site-foot">
   <p>{{ site_title }}</p>
+  <p class="foot-app"><span id="offline-status"></span> <button type="button" id="pwa-install" class="linkbtn" hidden>Установить на телефон</button></p>
   {% if home_url %}<p><a href="{{ home_url }}">{{ home_label }}</a></p>{% endif %}
 </footer>
+<p id="net-bar" class="net-bar" role="status" hidden>Нет соединения. Показано то, что сохранено на устройстве.</p>
 <script>
 /* шапка прячется при прокрутке вниз и возвращается при прокрутке вверх */
 (function () {
@@ -61,6 +66,37 @@
   }
   window.addEventListener("scroll", function () { if (!busy) { busy = true; requestAnimationFrame(upd); } }, { passive: true });
   h.addEventListener("focusin", function () { h.classList.remove("is-hidden"); });
+})();
+</script>
+<script>
+/* работа без сети: сервис-воркер, сохранение каталога, значок «нет соединения», установка на телефон */
+(function () {
+  var root = document.documentElement.dataset.root || "", bar = document.getElementById("net-bar"), st = document.getElementById("offline-status"), ib = document.getElementById("pwa-install");
+  function net() { if (bar) bar.hidden = navigator.onLine !== false; }
+  window.addEventListener("online", net); window.addEventListener("offline", net); net();
+  function warmInfo() { try { return JSON.parse(localStorage.getItem("sg:warm") || "null"); } catch (e) { return null; } }
+  function showWarm() { var w = warmInfo(); if (st && w) st.textContent = "Каталог сохранён на устройстве: можно открывать без сети (" + w.n + " стр.)."; }
+  showWarm();
+  var standalone = (window.matchMedia && matchMedia("(display-mode: standalone)").matches) || navigator.standalone;
+  var deferred = null;
+  window.addEventListener("beforeinstallprompt", function (e) { e.preventDefault(); deferred = e; if (ib && !standalone) ib.hidden = false; });
+  if (ib) ib.addEventListener("click", function () {
+    if (deferred) { deferred.prompt(); deferred = null; ib.hidden = true; }
+    else if (st) st.textContent = "На iPhone: кнопка «Поделиться», затем «На экран Домой».";
+  });
+  if (!standalone && /iphone|ipad/i.test(navigator.userAgent) && ib) { ib.hidden = false; }
+  if (!("serviceWorker" in navigator)) return;
+  navigator.serviceWorker.addEventListener("message", function (e) {
+    if (e.data && e.data.type === "warm-done") { try { localStorage.setItem("sg:warm", JSON.stringify({ t: Date.now(), n: e.data.done })); } catch (x) { } showWarm(); }
+  });
+  window.addEventListener("load", function () {
+    navigator.serviceWorker.register(new URL(root + "sw.js", location.href).href).then(function () { return navigator.serviceWorker.ready; }).then(function (reg) {
+      var w = warmInfo(), c = navigator.connection || {};
+      if ((w && Date.now() - w.t < 3 * 86400e3) || c.saveData || /2g/.test(c.effectiveType || "")) return;
+      var images = !c.effectiveType || c.effectiveType === "4g";
+      setTimeout(function () { if (reg.active) reg.active.postMessage({ type: "warm", images: images }); }, 4000);
+    }).catch(function () { });
+  });
 })();
 </script>
 {% block scripts %}{% endblock %}

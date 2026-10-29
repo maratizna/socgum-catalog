@@ -76,7 +76,12 @@
   /* прочитать через кеш: fetchFn возвращает обещание значения */
   function cached(key, ttl, fresh, fetchFn) {
     if (!fresh) { var hit = cget(key, ttl); if (hit) return Promise.resolve(hit.v); }
-    return fetchFn().then(function (v) { cput(key, v); return v; });
+    return fetchFn().then(function (v) { cput(key, v); return v; }, function (e) {
+      /* нет сети или сервис не отвечает: показываем сохранённое раньше, каким бы старым оно ни было */
+      var old = cget(key, Infinity);
+      if (old) return old.v;
+      throw e;
+    });
   }
 
   /* ------------------------------------------------------------ фильтр мата

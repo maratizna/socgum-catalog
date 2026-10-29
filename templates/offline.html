@@ -1,0 +1,10 @@
+{% extends "base.html" %}
+{% block body_class %}page-offline{% endblock %}
+{% block head_extra %}<meta name="robots" content="noindex">{% endblock %}
+{% block main %}
+<section class="intro">
+  <h1>Нет соединения</h1>
+  <p class="lead">Этой страницы ещё нет в памяти устройства. Страницы, которые вы уже открывали, и весь каталог после первого захода с интернетом доступны без сети.</p>
+  <p><a class="btn" href="{{ root }}">Открыть каталог</a></p>
+</section>
+{% endblock %}

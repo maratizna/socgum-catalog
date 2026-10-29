@@ -978,6 +978,27 @@ def build_site(concerts, directions, numbers, people, report, demo, source):
         write(TMP / "u" / "index.html", env.get_template("user.html").render(
             root="../", page_title=f"Пользователь: {cfg['site_title']}", canonical="", og_image="", description="", **ctx_common))
 
+    # работа без сети: манифест приложения, страница «нет соединения», сервис-воркер
+    write(TMP / "manifest.webmanifest", json.dumps({
+        "name": cfg["site_title"], "short_name": "СоцГум", "description": cfg.get("lead", ""), "lang": "ru",
+        "start_url": "./", "scope": "./", "display": "standalone", "background_color": "#090500", "theme_color": "#090500",
+        "icons": [{"src": "assets/icons/icon-192.png", "sizes": "192x192", "type": "image/png"},
+                  {"src": "assets/icons/icon-512.png", "sizes": "512x512", "type": "image/png"},
+                  {"src": "assets/icons/icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable"}]},
+        ensure_ascii=False, indent=1))
+    write(TMP / "offline.html", env.get_template("offline.html").render(
+        root=base_path, page_title=f"Нет соединения: {cfg['site_title']}", canonical="", og_image="", description="", **{**ctx_common, "firebase": None}))
+    core = ["./", "offline.html", "catalog.json", "rate.json", "manifest.webmanifest",
+            f"assets/style.css?v={asset_v}", f"assets/app.js?v={asset_v}"]
+    if firebase:
+        core.append(f"assets/social.js?v={asset_v}")
+    if brand_font:
+        core += ["assets/brand.css", f"assets/fonts/brand.{brand_font}"]
+    core += sorted(f"assets/fonts/{p.name}" for p in (ROOT / "assets" / "fonts").glob("*.woff2") if not p.name.startswith("brand."))
+    core += sorted(f"assets/icons/{p.name}" for p in (ROOT / "assets" / "icons").glob("*.png"))
+    write(TMP / "sw.js", (ROOT / "templates" / "sw.js.tpl").read_text(encoding="utf-8")
+          .replace("__V__", asset_v).replace("__CORE__", json.dumps(core, ensure_ascii=False)))
+
     write(TMP / "404.html", env.get_template("404.html").render(
         root=base_path, page_title=f"Страница не найдена: {cfg['site_title']}", canonical="", og_image="",
         description="", **ctx_common))
