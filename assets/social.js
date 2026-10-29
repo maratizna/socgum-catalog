@@ -413,14 +413,17 @@
     var wrap;
     var file = el("input", { type: "file", accept: "image/*", "aria-label": "Фото", hidden: true, onchange: function () {
       var f = file.files[0]; if (!f) return;
-      if (own) {
-        note(wrap, "Загружаем…");
-        setMyAvatar(f).then(function (big) { avatar = big; prev.src = big; prev.hidden = false; note(wrap, "Фото сохранено.", "ok"); done && done(); },
-          function (e) { note(wrap, e && e.code ? errText(e) : e.message, "err"); });
-      } else {
-        shrink(f).then(function (data) { avatar = data; prev.src = data; prev.hidden = false; }, function (e) { note(wrap, e.message, "err"); });
-      }
       file.value = "";
+      cropDialog(f).then(function (blob) {
+        if (own) {
+          note(wrap, "Загружаем…");
+          return setMyAvatar(blob).then(function (big) { avatar = big; prev.src = big; prev.hidden = false; note(wrap, "Фото сохранено.", "ok"); done && done(); });
+        }
+        return shrink(blob).then(function (data) { avatar = data; prev.src = data; prev.hidden = false; });
+      }).catch(function (e) {
+        if (e && e.cancelled) return;
+        note(wrap, e && e.code ? errText(e) : (e && e.message) || "Не удалось загрузить фото.", "err");
+      });
     } });
     var removeBtn = el("button", { type: "button", class: "linkbtn", text: "Убрать фото", onclick: function () {
       if (own) {
@@ -495,12 +498,13 @@
   }
 
   /* Сумма пяти оценок: четыре критерия плюс общее впечатление ×1,2 (от 5,2 до 26). Считается только если поставлены все пять. */
-  function ratingTotal(r) {
+  function ratingTotal(r, K) {
+    K = K || RATE;
     var t = 0;
-    for (var i = 0; i < RATE.length; i++) {
-      var v = r && r[RATE[i][0]];
+    for (var i = 0; i < K.length; i++) {
+      var v = r && r[K[i][0]];
       if (!v) return null;
-      t += RATE[i][0] === "overall" ? v * OVERALL_W : v;
+      t += K[i][0] === "overall" ? v * OVERALL_W : v;
     }
     return Math.round(t * 10) / 10;
   }
@@ -508,12 +512,13 @@
   function closeTips(except) { Array.prototype.forEach.call(document.querySelectorAll(".rt-chip.is-open,.rt-total.is-open"), function (n) { if (n !== except) n.classList.remove("is-open"); }); }
   document.addEventListener("click", function (e) { if (!e.target.closest || !e.target.closest(".rt-chip,.rt-total")) closeTips(); });
   /* Компактная строка оценки у комментария: сумма и пять цифр, подсказка по наведению или нажатию */
-  function ratingNode(r) {
+  function ratingNode(r, K) {
+    K = K || RATE;
     var wrap = el("div", { class: "rt", role: "group", "aria-label": "Оценка" });
-    var tot = ratingTotal(r);
+    var tot = ratingTotal(r, K);
     var toggle = function (ev) { var b = ev.currentTarget; closeTips(b); b.classList.toggle("is-open"); };
     if (tot !== null) wrap.append(el("button", { type: "button", class: "rt-total", "data-tip": "Сумма: четыре критерия и общее впечатление ×1,2. " + fmtT(tot) + " из " + TOTAL_MAX, "aria-label": "Сумма оценок: " + fmtT(tot) + " из " + TOTAL_MAX, onclick: toggle }, el("b", { text: fmtT(tot) }), "/" + TOTAL_MAX));
-    RATE.forEach(function (k) {
+    K.forEach(function (k) {
       var v = r[k[0]];
       if (!v) return;
       wrap.append(el("button", { type: "button", class: "rt-chip v" + v + (k[0] === "overall" ? " vibe" : ""), "data-tip": tipText(k, v), "aria-label": tipText(k, v), onclick: toggle, text: String(v) }));
@@ -536,6 +541,8 @@
     var stage = document.getElementById("stage");
     var canSeek = !!(stage && stage.dataset.oid);
     var comments = [], loaded = false, replyTo = null, noteData = null, fail = "";
+    var editing = {}, editSess = {}, editDraft = {};   // правка комментария: открыта сейчас / начата на этой странице (после обновления страницы сбрасывается) / несохранённый текст
+    var EDIT_MIN = 15;                                  // сколько минут после отправки можно начать правку
     var myLikes = {}, openLikers = {};   // мои лайки на этой странице; комментарии с раскрытым списком лайкнувших
     var ratings = [], ratingBy = {}, firstTop = {};   // оценки зрителей этого номера; они же по аккаунтам; первый комментарий каждого автора (под ним показываем оценку)
     var sortMode = "old";
@@ -580,6 +587,7 @@
         return fb.f.getDocs(fb.f.query(fcol("ratings"), fb.f.where("numberId", "==", nid), fb.f.limit(500))).then(function (s) {
           return s.docs.map(function (d) {
             var x = d.data(), o = { uid: x.uid };
+            if (x.ctx) o.ctx = x.ctx;
             RATE.forEach(function (r) { if (typeof x[r[0]] === "number") o[r[0]] = x[r[0]]; });
             return o;
           });
@@ -686,6 +694,39 @@
       moments.append(ul);
     }
 
+    function canEdit(c) {
+      if (!state.user || c.uid !== state.user.uid || c.status === "hidden") return false;
+      return !!editSess[c.id] || Date.now() - ms(c) < EDIT_MIN * 60e3;
+    }
+    /* Первая правка записывает «окно» (editUntil) — оно нужно правилам базы, чтобы пустить сохранение и после 15 минут.
+       Кнопка «Править» после обновления страницы пропадает, когда 15 минут уже прошли. */
+    function startEdit(c) {
+      if (editSess[c.id]) { editing[c.id] = true; drawList(); return; }
+      fb.f.updateDoc(fdoc("comments/" + c.id), { editUntil: new Date(Date.now() + 5 * 3600e3) }).then(function () {
+        editSess[c.id] = true; editing[c.id] = true; drawList();
+      }, function (e) { toast(errText(e)); });
+    }
+    function editBox(c) {
+      var ta = el("textarea", { class: "c-input", rows: "3", maxlength: "2000", "aria-label": "Текст комментария" });
+      ta.value = editDraft[c.id] != null ? editDraft[c.id] : c.text;
+      ta.addEventListener("input", function () { editDraft[c.id] = ta.value; });
+      var msg = el("p", { class: "msg msg-err", hidden: true });
+      var save = el("button", { type: "button", class: "btn btn-s", text: "Сохранить" });
+      var fail = function (t) { msg.textContent = t; msg.hidden = false; };
+      save.addEventListener("click", function () {
+        var t = ta.value.trim();
+        if (!t) { fail("Комментарий не может быть пустым. Чтобы убрать его, нажмите «Удалить»."); return; }
+        var bad = findProfanity(t);
+        if (bad) { fail("Мат не проходит: слово «" + bad + "». Уберите его и сохраните снова."); return; }
+        if (t === c.text) { editing[c.id] = false; delete editDraft[c.id]; drawList(); return; }
+        save.disabled = true;
+        fb.f.updateDoc(fdoc("comments/" + c.id), { text: t, editedAt: fb.f.serverTimestamp() }).then(function () {
+          editing[c.id] = false; delete editDraft[c.id]; dropComments(); return loadComments(true);
+        }).then(draw, function (e) { save.disabled = false; fail(errText(e)); });
+      });
+      return el("div", { class: "c-edit" }, ta, msg, el("div", { class: "c-row" }, save,
+        el("button", { type: "button", class: "linkbtn", text: "Отмена", onclick: function () { editing[c.id] = false; delete editDraft[c.id]; drawList(); } })));
+    }
     function commentNode(c, isReply) {
       var isDir = c.authorPersonId && directors.indexOf(c.authorPersonId) !== -1;
       var mine = state.user && c.uid === state.user.uid;
@@ -694,7 +735,8 @@
           avatarNode(c.uid, c.authorName, "xs"), el("strong", { text: c.authorName || "Без имени" })),
         isDir && el("span", { class: "badge", text: "Постановщик" }),
         c.status === "hidden" && el("span", { class: "badge badge-off", text: "Скрыт" }),
-        el("a", { class: "c-date", href: "#c-" + c.id, text: when(c) }));
+        el("a", { class: "c-date", href: "#c-" + c.id, text: when(c) }),
+        c.editedAt && el("span", { class: "c-date", text: "изменён" }));
       var actions = el("p", { class: "c-actions" });
       var n = c.likeCount || 0, liked = !!myLikes[c.id];
       if (c.status !== "hidden") actions.append(el("button", { type: "button", class: "like-btn" + (liked ? " is-on" : ""), "aria-pressed": liked ? "true" : "false",
@@ -704,10 +746,11 @@
         onclick: function () { openLikers[c.id] = !openLikers[c.id]; drawList(); } }));
       if (!isReply && state.user) actions.append(el("button", { type: "button", class: "linkbtn", text: "Ответить", onclick: function () { replyTo = c; drawForm(); form.scrollIntoView({ block: "center" }); } }));
       if (state.admin) actions.append(el("button", { type: "button", class: "linkbtn", text: c.status === "hidden" ? "Показать" : "Скрыть", onclick: function () { act(fb.f.updateDoc(fdoc("comments/" + c.id), { status: c.status === "hidden" ? "visible" : "hidden" })); } }));
+      if (canEdit(c) && !editing[c.id]) actions.append(el("button", { type: "button", class: "linkbtn", text: "Править", onclick: function () { startEdit(c); } }));
       if (mine || state.admin) actions.append(el("button", { type: "button", class: "linkbtn", text: "Удалить", onclick: function () { if (confirm("Удалить комментарий насовсем?")) act(deleteComment(c)); } }));
       var rt = !isReply && firstTop[c.uid] === c.id && ratingBy[c.uid], rline = rt ? ratingNode(rt) : null;
       return el("article", { class: "comment" + (isReply ? " reply" : "") + (c.status === "hidden" ? " is-hidden" : ""), id: "c-" + c.id },
-        head, el("p", { class: "c-text" }, richText(c.text, canSeek)), rline, actions, n > 0 && openLikers[c.id] ? likersBox(c) : null);
+        head, editing[c.id] ? editBox(c) : el("p", { class: "c-text" }, richText(c.text, canSeek)), rline, actions, n > 0 && openLikers[c.id] ? likersBox(c) : null);
     }
     function act(p) { return p.then(function () { dropComments(); return loadComments(true); }).then(draw, function (e) { toast(errText(e)); }); }
 
@@ -837,8 +880,8 @@
         grpVibe.append(el("p", { class: "rate-feel", text: OFFSTAGE ? "Общее впечатление: ощущение от работы направления в целом. В сумме оно весит больше остальных (×1,2). Своими словами расскажите об этом в комментарии ниже." : "Эмоциональный отклик: что вы почувствовали? Этот пункт про ощущение от номера в целом, и в сумме он весит больше остальных (×1,2). Своими словами расскажите об этом в комментарии ниже." }));
         var ctxSel = null, ctxBox = null;
         if (OFFSTAGE) {
-          ctxSel = el("select", { class: "rate-ctx-sel", "aria-label": "Откуда вы знаете работу направления" },
-            [el("option", { value: "", text: "Выберите…" })].concat(CTX.map(function (c) { return el("option", { value: c[0], text: c[1] }); })));
+          ctxSel = el.apply(null, ["select", { class: "rate-ctx-sel", "aria-label": "Откуда вы знаете работу направления" }, el("option", { value: "", text: "Выберите…" })]
+            .concat(CTX.map(function (c) { return el("option", { value: c[0], text: c[1] }); })));
           ctxSel.value = ctxv;
           ctxSel.addEventListener("change", function () { ctxv = ctxSel.value; cleared = false; showState(); syncSend(); });
           ctxBox = el("label", { class: "rate-ctx" }, el("span", { text: "Откуда вы знаете работу направления?" }), ctxSel);
@@ -995,6 +1038,8 @@
       applyProfile();
       box.hidden = false;
       var u = state.user;
+      var tabsHost = document.getElementById("p-tabs");
+      if (tabsHost) { if (approved()) mountTabs(tabsHost, { uid: claim.uid, name: pname, self: mine() }); else unmountTabs(tabsHost); }
       if (approved()) box.append(el("p", { class: "c-hint", text: "Страница подтверждена владельцем." }));
       if (!u) {
         if (!claim) box.append(el("p", { class: "c-hint", text: "Это вы? Войдите через Google, чтобы вести эту страницу." }), el("button", { type: "button", class: "btn", text: "Войти через Google", onclick: signIn }));
@@ -1023,6 +1068,241 @@
     views.push(function () { draw(); loadPublic().then(draw); });
   }
 
+  /* ------------------------------------------------------------ вкладки профиля
+     Номера (у людей со страницей), комментарии с оценками внутри, все оценки, плейлисты.
+     Данные читаются лениво: вкладка загружается, когда её открыли. */
+  var catP = null;
+  function catalogInfo() {
+    if (!catP) catP = Promise.all([
+      fetch(ROOT + "catalog.json").then(function (r) { return r.json(); }).catch(function () { return {}; }),
+      fetch(ROOT + "rate.json").then(function (r) { return r.json(); }).catch(function () { return {}; })
+    ]).then(function (r) {
+      var titles = {}; ((r[0] && r[0].numbers) || []).forEach(function (n) { titles[n.id] = n.title; });
+      return { titles: titles, rate: r[1] || {} };
+    });
+    return catP;
+  }
+  function numLink(info, id, cls) { return el("a", { class: cls || null, href: ROOT + "n/" + encodeURIComponent(id) + "/", text: info.titles[id] || "Номер" }); }
+  function tsMs(t) { return t && t.toMillis ? t.toMillis() : 0; }
+  function tsText(t) {
+    return t && t.toDate ? t.toDate().toLocaleString("ru-RU", { day: "numeric", month: "long", year: "numeric", hour: "2-digit", minute: "2-digit" }) : "";
+  }
+  function critOf(info, nid) { var r = info.rate[nid]; return r && r.k && r.k.length === 5 ? r.k : RATE_DEFAULT; }
+  function loadUserComments(uid, fresh) {
+    return cached("user:comments2:" + uid, TTL.pub, fresh === true, function () {
+      return fb.f.getDocs(fb.f.query(fcol("comments"), fb.f.where("uid", "==", uid), fb.f.where("status", "==", "visible"), fb.f.limit(200))).then(function (s) {
+        return s.docs.map(function (d) {
+          var x = d.data();
+          return { id: d.id, numberId: x.numberId, text: x.text, authorName: x.authorName, createdAt: x.createdAt, likeCount: x.likeCount || 0, parentId: x.parentId || "" };
+        });
+      });
+    });
+  }
+  function loadUserRatings(uid, fresh) {
+    return cached("user:ratings:" + uid, TTL.pub, fresh === true, function () {
+      return fb.f.getDocs(fb.f.query(fcol("ratings"), fb.f.where("uid", "==", uid), fb.f.limit(300))).then(function (s) {
+        return s.docs.map(function (d) {
+          var x = d.data(), o = { numberId: x.numberId, updatedAt: x.updatedAt };
+          if (x.ctx) o.ctx = x.ctx;
+          RATE_DEFAULT.forEach(function (k) { if (typeof x[k[0]] === "number") o[k[0]] = x[k[0]]; });
+          return o;
+        });
+      });
+    });
+  }
+  function loadUserPlaylists(uid, fresh) {
+    return cached("user:pl:" + uid, TTL.comments, fresh === true, function () {
+      return fb.f.getDocs(fb.f.query(fcol("playlists"), fb.f.where("uid", "==", uid), fb.f.limit(60))).then(function (s) {
+        return s.docs.map(function (d) { var x = d.data(); return { id: d.id, name: x.name, numberIds: x.numberIds || [], createdAt: x.createdAt }; });
+      });
+    });
+  }
+  function dropPlaylists() { cdrop("user:pl:"); }
+  var PL_MAX = 30, PL_ITEMS = 200;
+  function plCreate(name, ids) {
+    return fb.f.addDoc(fcol("playlists"), {
+      uid: state.user.uid, ownerName: state.user.displayName || "Без имени", name: name, numberIds: ids || [],
+      createdAt: fb.f.serverTimestamp(), updatedAt: fb.f.serverTimestamp()
+    }).then(function (r) { dropPlaylists(); return r; });
+  }
+  function plSetItems(p, ids) {
+    return fb.f.updateDoc(fdoc("playlists/" + p.id), { numberIds: ids, updatedAt: fb.f.serverTimestamp() }).then(function () { dropPlaylists(); p.numberIds = ids; });
+  }
+  function plNameError(v) {
+    v = (v || "").trim();
+    if (!v) return "Введите название плейлиста.";
+    var bad = findProfanity(v);
+    return bad ? "Мат не проходит: слово «" + bad + "»." : "";
+  }
+
+  function panelComments(panel, uid, info) {
+    return Promise.all([loadUserComments(uid), loadUserRatings(uid).catch(function () { return []; })]).then(function (r) {
+      var list = (r[0] || []).slice().sort(function (a, b) { return tsMs(b.createdAt) - tsMs(a.createdAt); });
+      var rbn = {}; (r[1] || []).forEach(function (x) { rbn[x.numberId] = x; });
+      var first = {};   // оценка показывается под самым первым комментарием человека к номеру
+      list.slice().sort(function (a, b) { return tsMs(a.createdAt) - tsMs(b.createdAt); }).forEach(function (c) { if (!c.parentId && !first[c.numberId]) first[c.numberId] = c.id; });
+      clear(panel);
+      if (!list.length) { panel.append(el("p", { class: "c-empty", text: "Комментариев пока нет." })); return; }
+      var ul = el("div", { class: "c-list" });
+      list.forEach(function (c) {
+        var rt = first[c.numberId] === c.id && rbn[c.numberId];
+        ul.append(el("article", { class: "comment user-comment" },
+          el("p", { class: "c-head" }, numLink(info, c.numberId),
+            el("a", { class: "c-date", href: ROOT + "n/" + encodeURIComponent(c.numberId) + "/#c-" + c.id, text: tsText(c.createdAt) }),
+            c.likeCount ? el("span", { class: "c-date", text: "♥ " + c.likeCount }) : null),
+          el("p", { class: "c-text", text: c.text }),
+          rt ? ratingNode(rt, critOf(info, c.numberId)) : null));
+      });
+      panel.append(ul);
+    });
+  }
+  function panelRatings(panel, uid, info) {
+    return loadUserRatings(uid).then(function (arr) {
+      var list = (arr || []).slice().sort(function (a, b) { return tsMs(b.updatedAt) - tsMs(a.updatedAt); });
+      clear(panel);
+      if (!list.length) { panel.append(el("p", { class: "c-empty", text: "Оценок пока нет." })); return; }
+      var ul = el("div", { class: "c-list" });
+      list.forEach(function (x) {
+        ul.append(el("article", { class: "comment user-comment" },
+          el("p", { class: "c-head" }, numLink(info, x.numberId), el("span", { class: "c-date", text: tsText(x.updatedAt) })),
+          ratingNode(x, critOf(info, x.numberId))));
+      });
+      panel.append(ul);
+    }, function (e) { clear(panel).append(el("p", { class: "msg msg-err", text: "Оценки не загрузились: " + errText(e) })); });
+  }
+  function panelPlaylists(panel, uid, self, info) {
+    function draw(list) {
+      clear(panel);
+      list = (list || []).slice().sort(function (a, b) { return tsMs(b.createdAt) - tsMs(a.createdAt); });
+      if (self) {
+        var inp = el("input", { class: "c-input", type: "text", maxlength: "80", placeholder: "Название нового плейлиста", "aria-label": "Название плейлиста" });
+        var msg = el("p", { class: "msg msg-err", hidden: true });
+        var go = el("button", { type: "submit", class: "btn btn-s", text: "Создать" });
+        panel.append(el("form", { class: "pl-new", onsubmit: function (ev) {
+          ev.preventDefault();
+          var er = plNameError(inp.value);
+          if (!er && list.length >= PL_MAX) er = "Можно создать до " + PL_MAX + " плейлистов.";
+          if (er) { msg.textContent = er; msg.hidden = false; return; }
+          go.disabled = true;
+          plCreate(inp.value.trim(), []).then(function () { return loadUserPlaylists(uid, true); }).then(draw, function (e) { go.disabled = false; msg.textContent = errText(e); msg.hidden = false; });
+        } }, el("div", { class: "c-row" }, inp, go), msg));
+      }
+      if (!list.length) { panel.append(el("p", { class: "c-empty", text: self ? "Плейлистов пока нет. Создайте первый, а номера добавляйте кнопкой «В плейлист» на странице номера." : "Плейлистов пока нет." })); return; }
+      list.forEach(function (p) {
+        var items = el("ol", { class: "pl-items" });
+        (p.numberIds || []).forEach(function (id) {
+          items.append(el("li", null, numLink(info, id),
+            self ? el("button", { type: "button", class: "linkbtn", text: "убрать", "aria-label": "Убрать из плейлиста", onclick: function () {
+              plSetItems(p, p.numberIds.filter(function (x) { return x !== id; })).then(function () { draw(list); }, function (e) { toast(errText(e)); });
+            } }) : null));
+        });
+        panel.append(el("details", { class: "pl" },
+          el("summary", null, el("span", { class: "pl-name", text: p.name }), " ", el("span", { class: "people-n", text: String((p.numberIds || []).length) })),
+          (p.numberIds || []).length ? items : el("p", { class: "c-hint", text: "В плейлисте пока нет номеров." }),
+          self ? el("button", { type: "button", class: "linkbtn", text: "Удалить плейлист", onclick: function () {
+            if (!confirm("Удалить плейлист «" + p.name + "»?")) return;
+            fb.f.deleteDoc(fdoc("playlists/" + p.id)).then(function () { dropPlaylists(); return loadUserPlaylists(uid, true); }).then(draw, function (e) { toast(errText(e)); });
+          } }) : null));
+      });
+    }
+    return loadUserPlaylists(uid).then(draw, function (e) { clear(panel).append(el("p", { class: "msg msg-err", text: "Плейлисты не загрузились: " + errText(e) })); });
+  }
+
+  /* host — блок страницы. Если внутри уже лежит панель «Номера» (#p-nums), она становится первой вкладкой. */
+  function unmountTabs(host) {
+    if (!host._st) return;
+    host._st.nodes.forEach(function (n) { n.remove(); });
+    var nums = host.querySelector("#p-nums"); if (nums) nums.hidden = false;
+    host._st = null;
+  }
+  function mountTabs(host, o) {
+    var st = host._st;
+    if (st && st.uid === o.uid) { st.self = !!o.self; if (st.loaded.playlists) st.show("playlists", true); return; }
+    unmountTabs(host);
+    var nums = host.querySelector("#p-nums");
+    st = host._st = { uid: o.uid, self: !!o.self, loaded: {}, nodes: [], cur: "" };
+    var defs = [];
+    if (nums) defs.push({ id: "nums", label: "Номера", panel: nums });
+    defs.push({ id: "comments", label: "Комментарии" }, { id: "ratings", label: "Оценки" }, { id: "playlists", label: "Плейлисты" });
+    var bar = el("div", { class: "ptabs-bar", role: "tablist" });
+    host.insertBefore(bar, host.firstChild); st.nodes.push(bar);
+    defs.forEach(function (d) {
+      if (!d.panel) { d.panel = el("div", { class: "ptabs-panel", id: "pt-" + d.id, role: "tabpanel", hidden: true }); host.append(d.panel); st.nodes.push(d.panel); }
+      d.btn = el("button", { type: "button", class: "ptab", role: "tab", "aria-selected": "false", text: d.label, onclick: function () { st.show(d.id); } });
+      bar.append(d.btn);
+    });
+    st.show = function (id, force) {
+      if (!force) st.cur = id;
+      defs.forEach(function (d) {
+        var on = d.id === st.cur;
+        d.btn.setAttribute("aria-selected", on ? "true" : "false");
+        d.btn.classList.toggle("is-on", on);
+        d.panel.hidden = !on;
+      });
+      var d = defs.filter(function (x) { return x.id === id; })[0];
+      if (!d || d.id === "nums" || (st.loaded[id] && !force)) return;
+      st.loaded[id] = true;
+      clear(d.panel).append(el("p", { class: "c-hint", text: "Загрузка…" }));
+      catalogInfo().then(function (info) {
+        if (id === "comments") return panelComments(d.panel, st.uid, info);
+        if (id === "ratings") return panelRatings(d.panel, st.uid, info);
+        return panelPlaylists(d.panel, st.uid, st.self, info);
+      }).catch(function (e) { clear(d.panel).append(el("p", { class: "msg msg-err", text: "Не загрузилось: " + errText(e) })); st.loaded[id] = false; });
+    };
+    var h = (location.hash || "").replace("#", ""), start = defs[0].id;
+    defs.forEach(function (d) { if (d.id === h) start = d.id; });
+    st.show(start);
+  }
+
+  /* Кнопка «В плейлист» на странице номера */
+  function initPlaylistAdd() {
+    var host = document.getElementById("pl-add");
+    if (!host) return;
+    var nid = host.dataset.number, open = false, lists = null, busy = false;
+    function draw() {
+      clear(host);
+      var btn = el("button", { type: "button", class: "add-btn add-btn-s", "aria-expanded": open ? "true" : "false", text: "В плейлист", onclick: function () {
+        if (!state.user) { toast("Войдите, чтобы собирать плейлисты."); return; }
+        open = !open;
+        if (open && !lists) { loadUserPlaylists(state.user.uid, true).then(function (l) { lists = l; draw(); }, function (e) { open = false; toast(errText(e)); draw(); }); }
+        draw();
+      } });
+      host.append(btn);
+      if (!open || !state.user) return;
+      var box = el("div", { class: "pl-pop" });
+      if (!lists) { box.append(el("p", { class: "c-hint", text: "Загрузка…" })); host.append(box); return; }
+      lists.forEach(function (p) {
+        var has = (p.numberIds || []).indexOf(nid) !== -1;
+        var cb = el("input", { type: "checkbox" }); cb.checked = has;
+        cb.addEventListener("change", function () {
+          if (busy) { cb.checked = !cb.checked; return; }
+          var ids = (p.numberIds || []).filter(function (x) { return x !== nid; });
+          if (cb.checked) { if (ids.length >= PL_ITEMS) { cb.checked = false; toast("В плейлисте может быть до " + PL_ITEMS + " номеров."); return; } ids.push(nid); }
+          busy = true;
+          plSetItems(p, ids).then(function () { busy = false; draw(); }, function (e) { busy = false; cb.checked = !cb.checked; toast(errText(e)); });
+        });
+        box.append(el("label", { class: "pl-row" }, cb, el("span", { text: p.name })));
+      });
+      if (!lists.length) box.append(el("p", { class: "c-hint", text: "У вас пока нет плейлистов. Создайте первый:" }));
+      var inp = el("input", { class: "c-input", type: "text", maxlength: "80", placeholder: "Новый плейлист", "aria-label": "Название нового плейлиста" });
+      var msg = el("p", { class: "msg msg-err", hidden: true });
+      var go = el("button", { type: "submit", class: "btn btn-s", text: "Создать и добавить" });
+      box.append(el("form", { class: "pl-new", onsubmit: function (ev) {
+        ev.preventDefault();
+        var er = plNameError(inp.value);
+        if (!er && lists.length >= PL_MAX) er = "Можно создать до " + PL_MAX + " плейлистов.";
+        if (er) { msg.textContent = er; msg.hidden = false; return; }
+        go.disabled = true;
+        plCreate(inp.value.trim(), [nid]).then(function () { return loadUserPlaylists(state.user.uid, true); }).then(function (l) { lists = l; draw(); },
+          function (e) { go.disabled = false; msg.textContent = errText(e); msg.hidden = false; });
+      } }, el("div", { class: "c-row" }, inp, go), msg),
+        el("p", { class: "c-hint" }, "Плейлисты видны всем на вашей странице."));
+      host.append(box);
+    }
+    views.push(function () { if (!state.user) { open = false; lists = null; } draw(); });
+    draw();
+  }
+
   /* ------------------------------------------------------------ страница пользователя
      Создаётся сама для каждого, кто оставил комментарий: имя, фото и его комментарии.
      Если аккаунт подтверждён владельцем страницы человека, ссылка ведёт сразу на ту страницу. */
@@ -1040,13 +1320,7 @@
             var o = {}; s.forEach(function (d) { o[d.id] = d.data(); }); return o;
           });
         }).catch(function () { return {}; }),
-        cached("user:comments:" + uid, TTL.pub, false, function () {
-          return fb.f.getDocs(fb.f.query(fcol("comments"), fb.f.where("uid", "==", uid), fb.f.where("status", "==", "visible"), fb.f.limit(100))).then(function (s) {
-            var a = [];
-            s.forEach(function (d) { var x = d.data(); a.push({ id: d.id, numberId: x.numberId, text: x.text, authorName: x.authorName, createdAt: x.createdAt, likeCount: x.likeCount || 0 }); });
-            return a;
-          });
-        }).catch(function () { return null; }),
+        loadUserComments(uid).catch(function () { return null; }),
         loadAvatars([uid]),
         fetch(ROOT + "catalog.json").then(function (r) { return r.json(); }).then(function (j) {
           (j.numbers || []).forEach(function (n) { titles[n.id] = n.title; });
@@ -1075,20 +1349,99 @@
         el("div", null, el("h1", { text: name }),
           el("p", { class: "c-hint", text: data === null ? "Комментарии не загрузились." : "Комментариев: " + list.length }))));
       if (self) box.append(el("div", { class: "c-row" }, shareButton("", name, location.href), el("a", { class: "btn btn-s btn-ghost", href: ROOT + "account/", text: "Мой кабинет" })));
-      if (data && !list.length) box.append(el("p", { class: "c-empty", text: "Пока нет комментариев." }));
-      var ul = el("div", { class: "c-list" });
-      list.forEach(function (c) {
-        ul.append(el("article", { class: "comment user-comment" },
-          el("p", { class: "c-head" },
-            el("a", { href: ROOT + "n/" + c.numberId + "/#c-" + c.id, text: titles[c.numberId] || "Номер" }),
-            el("span", { class: "c-date", text: when(c) }),
-            c.likeCount ? el("span", { class: "c-date", text: "♥ " + c.likeCount }) : null),
-          el("p", { class: "c-text", text: c.text })));
-      });
-      box.append(ul);
+      var tabs = box._tabsHost;
+      if (!tabs) { tabs = box._tabsHost = el("div", { class: "ptabs" }); }
+      box.append(tabs);
+      mountTabs(tabs, { uid: uid, name: name, self: self });
     }
     views.push(draw);
     load().then(draw);
+  }
+
+  /* Окно обрезки фото: двигать пальцем или мышью, менять размер ползунком, колесом или щипком. Результат — квадрат 512 px. */
+  function cropDialog(file) {
+    return new Promise(function (ok, bad) {
+      var url = URL.createObjectURL(file), img = new Image();
+      var cancel = function () { var e = new Error("cancel"); e.cancelled = true; bad(e); };
+      img.onerror = function () { URL.revokeObjectURL(url); bad(new Error("Не удалось открыть изображение.")); };
+      img.onload = function () {
+        var W = img.naturalWidth, H = img.naturalHeight;
+        var S = Math.max(220, Math.min(320, Math.floor(Math.min(window.innerWidth, window.innerHeight) * 0.78)));
+        var base = S / Math.min(W, H), zoom = 1, x = 0, y = 0;
+        var pic = el("img", { class: "crop-img", alt: "", draggable: "false", src: url, style: "width:" + W + "px;height:" + H + "px" });
+        var frame = el("div", { class: "crop-frame" });
+        var stage = el("div", { class: "crop-stage", style: "width:" + S + "px;height:" + S + "px", tabindex: "0", "aria-label": "Область фото: перетащите, чтобы сдвинуть" }, pic, frame);
+        var range = el("input", { type: "range", class: "crop-zoom", min: "1", max: "4", step: "0.01", value: "1", "aria-label": "Масштаб" });
+        var okBtn = el("button", { type: "button", class: "btn", text: "Готово" });
+        var noBtn = el("button", { type: "button", class: "btn btn-ghost", text: "Отмена" });
+        var ov = el("div", { class: "crop-ov", role: "dialog", "aria-modal": "true", "aria-label": "Настройка фото" },
+          el("div", { class: "crop-box" }, el("h2", { text: "Фото профиля" }),
+            el("p", { class: "c-hint", text: "Подвиньте фото и выберите размер. В круге останется то, что будет видно." }),
+            stage, el("div", { class: "crop-zoom-row" }, el("span", { "aria-hidden": "true", text: "−" }), range, el("span", { "aria-hidden": "true", text: "+" })),
+            el("div", { class: "c-row" }, okBtn, noBtn)));
+        function clamp() {
+          var sc = base * zoom;
+          x = Math.min(0, Math.max(S - W * sc, x));
+          y = Math.min(0, Math.max(S - H * sc, y));
+        }
+        function paint() { clamp(); pic.style.transform = "translate(" + x + "px," + y + "px) scale(" + (base * zoom) + ")"; range.value = String(zoom); }
+        function setZoom(z, px, py) {   // масштаб вокруг точки (px, py) внутри окна
+          z = Math.min(4, Math.max(1, z));
+          var o = base * zoom, n = base * z;
+          x = px - (px - x) * n / o; y = py - (py - y) * n / o;
+          zoom = z; paint();
+        }
+        x = (S - W * base) / 2; y = (S - H * base) / 2; paint();
+        var ptr = {}, last = null;
+        function dist() { var k = Object.keys(ptr); return Math.hypot(ptr[k[0]].x - ptr[k[1]].x, ptr[k[0]].y - ptr[k[1]].y); }
+        stage.addEventListener("pointerdown", function (e) {
+          try { stage.setPointerCapture(e.pointerId); } catch (er) { }
+          ptr[e.pointerId] = { x: e.clientX, y: e.clientY };
+          last = Object.keys(ptr).length === 2 ? { d: dist(), z: zoom } : null;
+          stage.classList.add("is-drag");
+        });
+        stage.addEventListener("pointermove", function (e) {
+          var p = ptr[e.pointerId]; if (!p) return;
+          var n = Object.keys(ptr).length;
+          if (n === 1) { x += e.clientX - p.x; y += e.clientY - p.y; p.x = e.clientX; p.y = e.clientY; paint(); }
+          else if (n === 2) {
+            p.x = e.clientX; p.y = e.clientY;
+            if (last && last.d > 0) setZoom(last.z * dist() / last.d, S / 2, S / 2);
+          }
+        });
+        function up(e) { delete ptr[e.pointerId]; last = null; if (!Object.keys(ptr).length) stage.classList.remove("is-drag"); }
+        stage.addEventListener("pointerup", up); stage.addEventListener("pointercancel", up);
+        stage.addEventListener("wheel", function (e) { e.preventDefault(); setZoom(zoom * (e.deltaY < 0 ? 1.08 : 1 / 1.08), S / 2, S / 2); }, { passive: false });
+        stage.addEventListener("keydown", function (e) {
+          var st = 12, k = e.key;
+          if (k === "ArrowLeft") x += st; else if (k === "ArrowRight") x -= st; else if (k === "ArrowUp") y += st; else if (k === "ArrowDown") y -= st;
+          else if (k === "+" || k === "=") { setZoom(zoom * 1.1, S / 2, S / 2); e.preventDefault(); return; }
+          else if (k === "-") { setZoom(zoom / 1.1, S / 2, S / 2); e.preventDefault(); return; }
+          else return;
+          e.preventDefault(); paint();
+        });
+        range.addEventListener("input", function () { setZoom(Number(range.value), S / 2, S / 2); });
+        var prevFocus = document.activeElement, prevOverflow = document.body.style.overflow;
+        function close() { document.removeEventListener("keydown", onKey, true); ov.remove(); document.body.style.overflow = prevOverflow; URL.revokeObjectURL(url); try { prevFocus && prevFocus.focus(); } catch (er) { } }
+        function onKey(e) { if (e.key === "Escape") { e.stopPropagation(); close(); cancel(); } }
+        noBtn.addEventListener("click", function () { close(); cancel(); });
+        ov.addEventListener("pointerdown", function (e) { if (e.target === ov) { close(); cancel(); } });
+        okBtn.addEventListener("click", function () {
+          var sc = base * zoom, c = document.createElement("canvas"); c.width = c.height = 512;
+          var g = c.getContext("2d"); g.fillStyle = "#fff"; g.fillRect(0, 0, 512, 512);
+          g.drawImage(img, -x / sc, -y / sc, S / sc, S / sc, 0, 0, 512, 512);
+          c.toBlob(function (b) {
+            close();
+            if (b) ok(b); else bad(new Error("Не удалось обработать фото."));
+          }, "image/jpeg", 0.92);
+        });
+        document.addEventListener("keydown", onKey, true);
+        document.body.style.overflow = "hidden";
+        document.body.append(ov);
+        okBtn.focus();
+      };
+      img.src = url;
+    });
   }
 
   /* уменьшаем фото до 192 px: Storage не нужен, картинка хранится строкой в профиле */
@@ -1285,7 +1638,7 @@
   /* ------------------------------------------------------------ запуск */
   var slot = document.getElementById("auth-slot");
   load().then(function () {
-    initNumber(); initPerson(); initAccount(); initUserPage();
+    initNumber(); initPlaylistAdd(); initPerson(); initAccount(); initUserPage();
     views.unshift(drawAuth);
     fb.a.onAuthStateChanged(fb.auth, function (user) { loadMe(user).then(refreshViews); });
   }, function (e) {

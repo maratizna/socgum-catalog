@@ -112,7 +112,21 @@ service cloud.firestore {
             || (request.resource.data.likeCount == resource.data.get('likeCount', 0) - 1
                 && request.resource.data.likeCount >= 0
                 && exists(/databases/$(database)/documents/likes/$(cid + '_' + request.auth.uid))
-                && !existsAfter(/databases/$(database)/documents/likes/$(cid + '_' + request.auth.uid)))));
+                && !existsAfter(/databases/$(database)/documents/likes/$(cid + '_' + request.auth.uid)))))
+        // правка своего комментария: начать можно в первые 15 минут (записывается «окно» editUntil на несколько часов),
+        // сохранить текст можно, пока идут 15 минут или открыто «окно»
+        || (signedIn() && resource.data.uid == request.auth.uid && resource.data.status == 'visible'
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['editUntil'])
+          && request.time < resource.data.createdAt + duration.value(15, 'm')
+          && request.resource.data.editUntil is timestamp
+          && request.resource.data.editUntil <= request.time + duration.value(6, 'h'))
+        || (signedIn() && resource.data.uid == request.auth.uid && resource.data.status == 'visible'
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['text', 'editedAt'])
+          && request.resource.data.text is string
+          && request.resource.data.text.size() >= 1 && request.resource.data.text.size() <= 2000
+          && request.resource.data.editedAt == request.time
+          && (request.time < resource.data.createdAt + duration.value(15, 'm')
+              || ('editUntil' in resource.data && resource.data.editUntil > request.time)));
       allow delete: if isAdmin() || (signedIn() && resource.data.uid == request.auth.uid);
     }
 
@@ -135,6 +149,27 @@ service cloud.firestore {
         && okScore(request.resource.data, 'stage')
         && okScore(request.resource.data, 'overall')
         && request.resource.data.get('ctx', 'team') in ['team', 'hall', 'absent'];
+      allow delete: if signedIn() && (resource.data.uid == request.auth.uid || isAdmin());
+    }
+
+    // Плейлисты: список номеров с названием. Читают все, создаёт и меняет только владелец (до 200 номеров в списке).
+    match /playlists/{pid} {
+      allow read: if true;
+      allow create: if signedIn()
+        && request.resource.data.keys().hasOnly(['uid', 'ownerName', 'name', 'numberIds', 'createdAt', 'updatedAt'])
+        && request.resource.data.uid == request.auth.uid
+        && request.resource.data.ownerName is string && request.resource.data.ownerName.size() <= 100
+        && request.resource.data.name is string && request.resource.data.name.size() >= 1 && request.resource.data.name.size() <= 80
+        && request.resource.data.numberIds is list && request.resource.data.numberIds.size() <= 200
+        && request.resource.data.createdAt == request.time
+        && request.resource.data.updatedAt == request.time;
+      allow update: if signedIn() && resource.data.uid == request.auth.uid
+        && request.resource.data.keys().hasOnly(['uid', 'ownerName', 'name', 'numberIds', 'createdAt', 'updatedAt'])
+        && request.resource.data.uid == resource.data.uid
+        && request.resource.data.createdAt == resource.data.createdAt
+        && request.resource.data.name is string && request.resource.data.name.size() >= 1 && request.resource.data.name.size() <= 80
+        && request.resource.data.numberIds is list && request.resource.data.numberIds.size() <= 200
+        && request.resource.data.updatedAt == request.time;
       allow delete: if signedIn() && (resource.data.uid == request.auth.uid || isAdmin());
     }
 

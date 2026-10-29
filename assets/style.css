@@ -359,3 +359,37 @@ a.btn{text-decoration:none;display:inline-block}
 .rate-ctx-sel option{color:#0b0a08}
 .rt-ctx{font-size:.78rem;opacity:.7;align-self:center}
 .rate-ctx-note{margin:8px 0 0;font-size:.85rem;opacity:.75}
+
+/* Окно настройки фото */
+.crop-ov{position:fixed;inset:0;z-index:200;display:flex;align-items:center;justify-content:center;padding:16px;background:rgba(5,4,3,.82);overflow:auto}
+.crop-box{background:var(--coal,#14110d);border:1px solid var(--line);border-radius:18px;padding:20px;max-width:100%;display:grid;gap:14px;justify-items:center;text-align:center}
+.crop-box h2{margin:0;font-size:1.25rem}
+.crop-box .c-hint{margin:0;max-width:34ch}
+.crop-stage{position:relative;overflow:hidden;border-radius:12px;background:#000;cursor:grab;touch-action:none;user-select:none;-webkit-user-select:none}
+.crop-stage.is-drag{cursor:grabbing}
+.crop-stage:focus-visible{outline:2px solid var(--ember,#ff8a2b);outline-offset:3px}
+.crop-img{position:absolute;left:0;top:0;max-width:none;transform-origin:0 0;pointer-events:none}
+.crop-frame{position:absolute;inset:0;border-radius:50%;box-shadow:0 0 0 999px rgba(5,4,3,.62);border:2px solid #fff;pointer-events:none}
+.crop-zoom-row{display:flex;align-items:center;gap:12px;width:100%;max-width:320px}
+.crop-zoom{flex:1;min-width:0}
+
+/* Вкладки профиля и плейлисты */
+.ptabs-bar{display:flex;gap:6px;flex-wrap:wrap;margin:26px 0 18px;border-bottom:1px solid var(--line)}
+.ptab{appearance:none;background:none;border:0;border-bottom:3px solid transparent;color:var(--ash);font:inherit;font-weight:600;padding:10px 14px;cursor:pointer;margin-bottom:-1px}
+.ptab:hover{color:#fff}
+.ptab.is-on{color:var(--ember);border-bottom-color:var(--ember)}
+.ptab:focus-visible{outline:2px solid var(--ember);outline-offset:2px}
+.ptabs-panel[hidden]{display:none}
+.pl-new{margin:0 0 18px}
+.pl-new .c-row{display:flex;gap:10px;flex-wrap:wrap}
+.pl-new .c-input{flex:1;min-width:180px}
+.pl{border:1px solid var(--line);border-radius:12px;padding:12px 16px;margin:0 0 10px}
+.pl summary{cursor:pointer;font-weight:600}
+.pl-items{margin:12px 0;padding-left:1.3em;display:grid;gap:6px}
+.pl-items .linkbtn{margin-left:10px}
+.pl-add{margin:14px 0 0;position:relative}
+.pl-pop{margin-top:10px;padding:14px;border:1px solid var(--line);border-radius:12px;background:var(--coal-2);display:grid;gap:10px;max-width:420px}
+.pl-row{display:flex;gap:10px;align-items:center;cursor:pointer}
+.pl-pop .pl-new{margin:6px 0 0}
+.c-edit{display:grid;gap:10px;margin:8px 0}
+.c-edit .c-row{display:flex;gap:12px;align-items:center}

@@ -28,6 +28,7 @@
       <p class="social-links">{% for s in n.social %}<a class="add-btn add-btn-s soc soc-{{ s.kind }}" href="{{ s.url }}" rel="noopener" target="_blank">{% include "_soc_icon.html" %}<span>{{ 'Группа во ВКонтакте' if s.kind == 'vk' else ('Канал в Telegram' if s.kind == 'tg' else s.label) }}</span></a>{% endfor %}</p>
       {% endif %}
       {% if firebase %}
+      <div id="pl-add" class="pl-add" data-number="{{ n.id }}"></div>
       <div id="director-note" class="director-note" hidden></div>
       {% endif %}
     </div>

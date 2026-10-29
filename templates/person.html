@@ -12,12 +12,16 @@
     </div>
   </div>
   {% if firebase %}<div id="claim" class="claim" data-person="{{ p.slug }}" data-name="{{ p.name }}" data-director="{{ 1 if p.is_director else 0 }}" hidden></div>{% endif %}
-  <p class="count">Номеров: {{ p.numbers|length }}</p>
-  <ul class="grid">
-    {% for e in p.numbers %}
-    {% set n = e.number %}
-    <li class="card">{% with roles = e.roles %}{% include "_card.html" %}{% endwith %}</li>
-    {% endfor %}
-  </ul>
+  <div id="p-tabs" class="ptabs">
+    <div id="p-nums" class="ptabs-panel" role="tabpanel">
+      <p class="count">Номеров: {{ p.numbers|length }}</p>
+      <ul class="grid">
+        {% for e in p.numbers %}
+        {% set n = e.number %}
+        <li class="card">{% with roles = e.roles %}{% include "_card.html" %}{% endwith %}</li>
+        {% endfor %}
+      </ul>
+    </div>
+  </div>
 </section>
 {% endblock %}

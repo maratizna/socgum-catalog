@@ -934,6 +934,11 @@ def build_site(concerts, directions, numbers, people, report, demo, source):
     write(TMP / "catalog.json", json.dumps({"generated": today, "sync_hash": sync_hash, "people": people_feed, "numbers": feed},
                                            ensure_ascii=False, indent=1))
 
+    # названия критериев оценки для страниц людей (где оценки разных номеров показываются списком)
+    rate_feed = {n["id"]: {"off": 1 if n["offstage"] else 0, "k": [list(c) for c in n["rate_dir"]["criteria"]]}
+                 for n in all_numbers if n.get("rate_dir") and n["rate_dir"].get("criteria")}
+    write(TMP / "rate.json", json.dumps(rate_feed, ensure_ascii=False, separators=(",", ":")))
+
     if site_url:
         urls = [f"{site_url}/"] + [f"{site_url}/n/{n['id']}/" for n in numbers.values()] + [f"{site_url}/p/{p['slug']}/" for p in people.values()]
         write(TMP / "sitemap.xml", '<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n'
