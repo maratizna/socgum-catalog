@@ -320,6 +320,8 @@
 
   function loadMe(user, fresh) {
     state.user = user; state.admin = false; state.claims = {};
+    /* запоминаем, что человек входил: при следующем заходе кружок аватарки виден сразу, ещё до ответа сервиса */
+    try { if (user) { window.localStorage.setItem("sg:signed", "1"); document.documentElement.setAttribute("data-signed", "1"); } else { window.localStorage.removeItem("sg:signed"); document.documentElement.removeAttribute("data-signed"); } } catch (e) { }
     if (!user) { state.ready = true; return Promise.resolve(); }
     var uid = user.uid;
     return Promise.all([
@@ -591,8 +593,8 @@
   function drawAuth() {
     var slot = document.getElementById("auth-slot");
     if (!slot) return;
+    if (!state.ready) return;   // до ответа сервиса остаётся кружок из страницы
     clear(slot);
-    if (!state.ready) return;
     if (!state.user) {
       menuOpen = false;
       slot.append(el("button", { type: "button", class: "head-link head-btn", text: "Войти", onclick: signIn }));
@@ -1974,6 +1976,7 @@
       var u = state.user, c = card("Фото", "Фото можно менять " + LIM.avatars + " раза в месяц. Оно сразу появится рядом с вашими комментариями и на вашей странице. Подойдёт любая картинка: окно поможет выбрать, что войдёт в круг.");
       var l = left("m", "avatars", LIM.avatars);
       if (l !== null) c.append(el("p", { class: "c-hint", text: "Осталось смен в этом месяце: " + l + " из " + LIM.avatars + "." }));
+      c.append(el("p", { class: "c-hint", text: "На другом устройстве фото в вашем аккаунте может поменяться не сразу, а через какое-то время (до двух недель). Чтобы увидеть новое фото быстрее, выйдите из профиля и войдите снова." }));
       var file = el("input", { type: "file", accept: "image/*", "aria-label": "Выбрать фото", hidden: true, onchange: function () {
         var f = file.files[0]; if (!f) return;
         file.value = "";

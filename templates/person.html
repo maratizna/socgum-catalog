@@ -34,10 +34,14 @@
       </ul>
       <ul class="p-concerts" id="pv-cons" hidden>
         {% for g in p.concerts %}
+        {% set fb_img = root + "img/" + g.numbers[0].number.id + "/card.webp" %}
         <li class="p-concert">
+          <div class="p-concert-img"><img src="{{ g.concert.cover_url or fb_img }}" alt="" width="160" height="160" loading="lazy" decoding="async" referrerpolicy="no-referrer"{% if g.concert.cover_url %} onerror="this.onerror=null;this.src='{{ fb_img }}'"{% endif %}></div>
+          <div class="p-concert-body">
           <h3><a href="{{ root or './' }}?c={{ g.concert.slug }}">{{ g.concert.name }}</a></h3>
           <p class="c-hint">{% if g.concert.date %}{{ g.concert.date|ru_date }}{% elif g.concert.season %}{{ g.concert.season }}{% endif %} · {{ g.numbers|length }} {{ g.numbers|length|plural("номер", "номера", "номеров") }}</p>
           <ul class="p-concert-nums">{% for e in g.numbers %}<li><a href="{{ root }}n/{{ e.number.id }}/">{{ e.number.title }}</a>{% if e.roles %} <span class="c-hint">({{ e.roles|join(", ") }})</span>{% endif %}</li>{% endfor %}</ul>
+          </div>
         </li>
         {% endfor %}
       </ul>
