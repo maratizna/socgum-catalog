@@ -15,7 +15,8 @@
 <link rel="preload" href="{{ root }}assets/fonts/unbounded-cyrillic-700-normal.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="preload" href="{{ root }}assets/fonts/golos-text-cyrillic-400-normal.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="stylesheet" href="{{ root }}assets/style.css?v={{ asset_v }}">
-{% if firebase %}<script>try{if(localStorage.getItem("sg:signed")==="1")document.documentElement.setAttribute("data-signed","1")}catch(e){}</script>{% endif %}
+{% if firebase %}<link rel="preconnect" href="https://www.gstatic.com" crossorigin><link rel="preconnect" href="https://firestore.googleapis.com" crossorigin>
+<script>try{if(localStorage.getItem("sg:signed")==="1")document.documentElement.setAttribute("data-signed","1")}catch(e){}</script>{% endif %}
 {% if brand_font %}<link rel="stylesheet" href="{{ root }}assets/brand.css">{% endif %}
 {% block head_extra %}{% endblock %}
 {% if firebase %}<script type="application/json" id="fb-config">{{ firebase|tojson }}</script>{% endif %}

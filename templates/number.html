@@ -12,7 +12,7 @@
         {% if can_play %}data-oid="{{ video.oid }}" data-vid="{{ video.id }}" data-hash="{{ video.hash }}" data-host="{{ video.host }}"
         data-start="{{ n.start if n.start is not none else 0 }}"{% endif %}>
         <img class="stage-blur" src="{{ root }}img/{{ n.id }}/cover.webp" alt="" aria-hidden="true">
-        <img class="stage-poster" src="{{ root }}img/{{ n.id }}/cover.webp" width="{{ n.cover_size[0] }}" height="{{ n.cover_size[1] }}"
+        <img class="stage-poster" fetchpriority="high" decoding="async" src="{{ root }}img/{{ n.id }}/cover.webp" width="{{ n.cover_size[0] }}" height="{{ n.cover_size[1] }}"
              alt="{% if n.has_cover %}Обложка номера «{{ n.title }}»{% endif %}">
         {% if can_play %}
         <button class="play" type="button" data-t="{{ n.start if n.start is not none else 0 }}">

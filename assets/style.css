@@ -515,3 +515,39 @@ html[data-signed="1"] .head-ph{display:inline-block}
 .p-concert-img img{display:block;width:100%;height:100%;object-fit:cover}
 .p-concert-body{min-width:0}
 @media (max-width:480px){.p-concert{grid-template-columns:88px 1fr;gap:12px;padding:14px}.p-concert-img{width:88px;height:88px}}
+
+/* ------------------------------------------------------------ единый вид карточек
+   Все блоки-«карточки» (комментарии, оценки, концерты, настройки, плейлисты, пустые и ошибочные состояния)
+   берут рамку, радиус и отступы отсюда. Картинки номеров и мелкие вставки внутри карточек скругляются меньше. */
+:root{--card-r:14px;--card-r-in:10px;--card-pad:16px 18px;--card-bg:var(--coal);--card-line:var(--line)}
+.comment,.rate-box,.rate-sum,.my-page,.concert-panel,.set-card,.p-concert,.pl,.pl-pop,.match-card,.director-note,
+.empty-state,.error-state,.login-card,.rate-thanks{border-radius:var(--card-r)}
+.comment,.rate-box,.rate-sum,.my-page,.concert-panel,.set-card,.p-concert,.pl,.empty-state,.error-state,.login-card,.rate-thanks{
+  background:var(--card-bg);border:1px solid var(--card-line);padding:var(--card-pad)}
+.comment.reply,.pl-pop{background:var(--coal-2)}
+.pl-pop{padding:14px}
+.director-note{border-left-width:3px}
+.rate-grp,.pcard-cover,.p-concert-img,.crop-stage{border-radius:var(--card-r-in)}
+.card-cover{border-radius:var(--card-r-in);transition:box-shadow .15s}
+.card-link:hover .card-cover,.card-link:focus-visible .card-cover{box-shadow:0 0 0 2px var(--ember)}
+.card-link:focus-visible{outline:none}
+.set-card{padding:22px clamp(16px,3vw,28px)}
+@media (max-width:480px){:root{--card-pad:14px}.set-card{padding:18px 14px}}
+
+/* пусто, ошибка, нужен вход */
+.empty-state,.error-state,.login-card{display:grid;gap:8px;justify-items:start;margin:14px 0}
+.empty-state{border-style:dashed}
+.error-state{border-color:#ff9d8a}
+.login-card{border-color:var(--ember)}
+.empty-title{margin:0;font-weight:600;font-size:1.05rem;color:var(--ink)}
+.empty-state .c-hint,.error-state .c-hint,.login-card .c-hint{margin:0;max-width:60ch}
+
+/* итог после отправки оценки */
+.rate-thanks{border-color:var(--ember);display:grid;gap:6px;margin:0 0 14px}
+.rate-thanks-big{margin:0;font-family:var(--font-display);color:var(--ember-hi);line-height:1.1}
+.rate-thanks-big b{font-size:2.4rem;color:var(--ink)}
+.rate-thanks-big span{font-size:1rem;color:var(--ash)}
+.rate-thanks .c-hint{margin:0}
+
+/* длинные сетки отрисовываются по мере прокрутки */
+.grid>.card{content-visibility:auto;contain-intrinsic-size:auto 340px}

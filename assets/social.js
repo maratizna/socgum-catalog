@@ -597,7 +597,7 @@
     clear(slot);
     if (!state.user) {
       menuOpen = false;
-      slot.append(el("button", { type: "button", class: "head-link head-btn", text: "Войти", onclick: signIn }));
+      slot.append(el("button", { type: "button", class: "head-link head-btn", text: "Войти", title: "Войти, чтобы писать комментарии и ставить оценки", onclick: signIn }));
       return;
     }
     var uid = state.user.uid, nm = myName();
@@ -654,6 +654,22 @@
   /* Вес общего впечатления в сумме: четыре критерия по 1, общее впечатление ×1,2. Каждая оценка по-прежнему от 1 до 5. */
   var OVERALL_W = 1.2;
   var TOTAL_MAX = 4 * 5 + 5 * OVERALL_W;   // 26
+  /* ------------------------------------------------------------ состояния: пусто, ошибка, нужен вход */
+  function emptyState(title, text, action) {
+    return el("div", { class: "empty-state" }, el("p", { class: "empty-title", text: title }), text ? el("p", { class: "c-hint", text: text }) : null, action || null);
+  }
+  function errorState(text, retry) {
+    var offline = typeof navigator !== "undefined" && navigator.onLine === false;
+    var box = el("div", { class: "error-state", role: "alert" }, el("p", { class: "empty-title", text: "Не получилось загрузить" }),
+      el("p", { class: "c-hint", text: offline ? "Нет соединения с интернетом. Проверьте сеть и повторите." : text }));
+    if (retry) box.append(el("button", { type: "button", class: "btn btn-s", text: "Повторить", onclick: function (ev) { ev.target.disabled = true; ev.target.textContent = "Загружаем…"; retry(); } }));
+    return box;
+  }
+  function signInPrompt(title, text) {
+    return el("div", { class: "login-card" }, el("p", { class: "empty-title", text: title }),
+      el("p", { class: "c-hint", text: text || "Войдите через Google или по e-mail. Так мы знаем, кто пишет: можно оставлять комментарии и оценки, ставить лайки, собирать плейлисты и вести свою страницу. Читать каталог можно и без входа." }),
+      el("button", { type: "button", class: "btn", text: "Войти", onclick: signIn }));
+  }
   function fmtT(x) { var s = fmt1(x); return s.slice(-2) === ",0" ? s.slice(0, -2) : s; }
   var SORTS = [["old", "Сначала старые"], ["new", "Сначала новые"], ["top", "Популярные"]];
   function fmt1(x) { return (Math.round(x * 10) / 10).toFixed(1).replace(".", ","); }
@@ -705,7 +721,7 @@
     var directors = (root.dataset.directors || "").split(" ").filter(Boolean);
     var stage = document.getElementById("stage");
     var canSeek = !!(stage && stage.dataset.oid);
-    var comments = [], loaded = false, replyTo = null, noteData = null, fail = "";
+    var comments = [], loaded = false, replyTo = null, noteData = null, fail = "", justDone = null;
     var editing = {}, editSess = {}, editDraft = {};   // правка комментария: открыта сейчас / начата на этой странице (после обновления страницы сбрасывается) / несохранённый текст
     var EDIT_MIN = 15;                                  // сколько минут после отправки можно начать правку
     var myLikes = {}, openLikers = {};   // мои лайки на этой странице; комментарии с раскрытым списком лайкнувших
@@ -948,7 +964,7 @@
           tcnt ? el("p", { class: "rate-big" }, el("strong", { text: fmtT(tsum / tcnt) }), el("span", { text: " из " + TOTAL_MAX }),
             el("small", { text: "средняя сумма, " + plRate(tcnt) })) : el("p", { class: "rate-big" }, el("small", { text: plRate(ratings.length) + ", полных нет" })),
           bars),
-        OFFSTAGE && absentN ? el("p", { class: "rate-ctx-note", text: "Не были на концерте: " + absentN + " из " + ratings.length }) : null);
+        OFFSTAGE && absentN ? el("p", { class: "rate-ctx-note", text: "Не были на концерте: " + absentN + " из " + ratings.length }) : "");
       sumBox.hidden = false;
     }
     function drawSort(topCount) {
@@ -974,7 +990,7 @@
     function drawList() {
       clear(list);
       if (!loaded) { sortBar.hidden = true; list.append(el("p", { class: "c-empty", text: "Загружаем комментарии…" })); return; }
-      if (fail) { sortBar.hidden = true; list.append(el("p", { class: "msg msg-err", text: "Комментарии не загрузились: " + fail })); return; }
+      if (fail) { sortBar.hidden = true; list.append(errorState(fail, function () { loadComments(true).then(draw); })); return; }
       var top = comments.filter(function (c) { return !c.parentId; });
       var byParent = {};
       comments.forEach(function (c) { if (c.parentId) (byParent[c.parentId] = byParent[c.parentId] || []).push(c); });
@@ -984,11 +1000,29 @@
       top.slice().sort(function (a, b) { return ms(a) - ms(b); }).forEach(function (c) { if (!firstTop[c.uid]) firstTop[c.uid] = c.id; });
       top.sort(cmpFor(sortMode));
       drawSort(top.length);
-      if (!top.length) list.append(el("p", { class: "c-empty", text: "Пока нет комментариев. Напишите первым." }));
+      if (!top.length) list.append(emptyState("Пока нет комментариев", "Напишите первым: что запомнилось в номере, что понравилось, кому спасибо."));
       top.forEach(function (c) {
         list.append(commentNode(c, false));
         (byParent[c.id] || []).forEach(function (r) { list.append(commentNode(r, true)); });
       });
+    }
+
+    /* Итог после отправки: крупная сумма и «Спасибо», исчезает через 20 секунд */
+    function thanksNode() {
+      var d = justDone;
+      if (!d || Date.now() - d.t > 20000) return null;
+      var n = el("div", { class: "rate-thanks", role: "status" });
+      if (d.rate) {
+        n.append(el("p", { class: "rate-thanks-big" }, el("b", { text: d.tot !== null ? fmtT(d.tot) : "✓" }), d.tot !== null ? el("span", { text: " из " + TOTAL_MAX }) : null),
+          el("p", { class: "empty-title", text: "Спасибо, оценка учтена" }),
+          el("p", { class: "c-hint", text: (d.text ? "Комментарий опубликован. " : "") + "Оценку можно изменить в любой момент: откройте блок «Ваша оценка»." }));
+      } else if (d.clear) {
+        n.append(el("p", { class: "empty-title", text: "Оценка убрана" }), el("p", { class: "c-hint", text: d.text ? "Комментарий опубликован." : "Поставить новую можно в любой момент." }));
+      } else {
+        n.append(el("p", { class: "empty-title", text: "Комментарий опубликован" }));
+      }
+      setTimeout(function () { if (n.parentNode) n.remove(); }, Math.max(1000, 20000 - (Date.now() - d.t)));
+      return n;
     }
 
     /* Форма: необязательные оценки (ползунки, выпадающий блок), потом комментарий */
@@ -996,11 +1030,12 @@
       clear(form);
       if (!state.ready) return;
       if (!state.user) {
-        form.append(el("p", { class: "c-hint", text: "Чтобы поставить оценку или написать комментарий, войдите." }),
-          el("button", { type: "button", class: "btn", text: "Войти", onclick: signIn }));
+        form.append(signInPrompt("Хотите оценить номер или написать комментарий?"));
         return;
       }
       var uid = state.user.uid;
+      var thanks = thanksNode();
+      if (thanks) form.append(thanks);
       var prev = ratingBy[uid] || null;                // уже сохранённая оценка этого человека
       var draft = {}; RATE.forEach(function (k) { if (prev && prev[k[0]]) draft[k[0]] = prev[k[0]]; });
       var cleared = false;                              // человек нажал «Убрать оценку»
@@ -1087,6 +1122,8 @@
           var bad = findProfanity(text);
           if (bad) { note(form, "Мат не проходит: слово «" + bad + "». Уберите его и отправьте снова.", "err"); ta.focus(); return; }
         }
+        var doneInfo = { rate: wantRate, clear: wantClear, text: !!text, tot: wantRate ? ratingTotal(draft) : null };
+        justDone = null;
         send.disabled = true;
         (text ? readUsage("d") : Promise.resolve({})).then(function (cur) {
           var n = (cur.comments || 0) + 1;
@@ -1118,7 +1155,7 @@
             if (wantRate && OFFSTAGE && e && e.code === "permission-denied") return go(false);
             throw e;
           });
-        }).then(function () { replyTo = null; dropComments(); return loadComments(true); }).then(draw, function (e) { send.disabled = false; note(form, errText(e), "err"); });
+        }).then(function () { replyTo = null; justDone = { k: 1, t: Date.now(), rate: doneInfo.rate, clear: doneInfo.clear, text: doneInfo.text, tot: doneInfo.tot }; dropComments(); return loadComments(true); }).then(draw, function (e) { send.disabled = false; note(form, errText(e), "err"); });
       } },
         replyTo && el("p", { class: "c-replyto" }, "Ответ для " + replyTo.authorName + " ",
           el("button", { type: "button", class: "linkbtn", text: "отменить", onclick: function () { replyTo = null; drawForm(); } })),
@@ -1237,7 +1274,7 @@
       if (tabsHost) { if (approved()) mountTabs(tabsHost, { uid: claim.uid, name: pname, self: mine() }); else unmountTabs(tabsHost); }
       if (approved()) box.append(el("p", { class: "c-hint", text: "Страница подтверждена владельцем." }));
       if (!u) {
-        if (!claim) box.append(el("p", { class: "c-hint", text: "Это вы? Войдите через Google, чтобы вести эту страницу." }), el("button", { type: "button", class: "btn", text: "Войти через Google", onclick: signIn }));
+        if (!claim) box.append(signInPrompt("Это ваша страница?", "Войдите, чтобы вести эту страницу: добавить фото и ссылки, писать комментарии под своим именем. Заявку проверит администратор."));
       } else if (!claim) {
         box.append(el("button", { type: "button", class: "btn", text: "Это моя страница", onclick: claimPerson }),
           el("p", { class: "c-hint", text: "Заявку проверит и подтвердит администратор." }));
@@ -1337,14 +1374,14 @@
     return bad ? "Мат не проходит: слово «" + bad + "»." : "";
   }
 
-  function panelComments(panel, uid, info) {
+  function panelComments(panel, uid, info, self) {
     return Promise.all([loadUserComments(uid), loadUserRatings(uid).catch(function () { return []; })]).then(function (r) {
       var list = (r[0] || []).slice().sort(function (a, b) { return tsMs(b.createdAt) - tsMs(a.createdAt); });
       var rbn = {}; (r[1] || []).forEach(function (x) { rbn[x.numberId] = x; });
       var first = {};   // оценка показывается под самым первым комментарием человека к номеру
       list.slice().sort(function (a, b) { return tsMs(a.createdAt) - tsMs(b.createdAt); }).forEach(function (c) { if (!c.parentId && !first[c.numberId]) first[c.numberId] = c.id; });
       clear(panel);
-      if (!list.length) { panel.append(el("p", { class: "c-empty", text: "Комментариев пока нет." })); return; }
+      if (!list.length) { panel.append(self ? emptyState("Вы пока ничего не писали", "Откройте номер и напишите первый комментарий.", el("a", { class: "btn btn-s", href: ROOT || "./", text: "Выбрать номер" })) : emptyState("Комментариев пока нет")); return; }
       var ul = el("div", { class: "c-list" });
       list.forEach(function (c) {
         var rt = first[c.numberId] === c.id && rbn[c.numberId];
@@ -1358,11 +1395,11 @@
       panel.append(ul);
     });
   }
-  function panelRatings(panel, uid, info) {
+  function panelRatings(panel, uid, info, self) {
     return loadUserRatings(uid).then(function (arr) {
       var list = (arr || []).slice().sort(function (a, b) { return tsMs(b.updatedAt) - tsMs(a.updatedAt); });
       clear(panel);
-      if (!list.length) { panel.append(el("p", { class: "c-empty", text: "Оценок пока нет." })); return; }
+      if (!list.length) { panel.append(self ? emptyState("Вы пока ничего не оценили", "Откройте номер и нажмите «Оценить».", el("a", { class: "btn btn-s", href: ROOT || "./", text: "Выбрать номер" })) : emptyState("Оценок пока нет")); return; }
       var ul = el("div", { class: "c-list" });
       list.forEach(function (x) {
         ul.append(pcard(x.numberId, [
@@ -1389,7 +1426,7 @@
           plCreate(inp.value.trim(), []).then(function () { return loadUserPlaylists(uid, true); }).then(draw, function (e) { go.disabled = false; msg.textContent = errText(e); msg.hidden = false; });
         } }, el("div", { class: "c-row" }, inp, go), msg));
       }
-      if (!list.length) { panel.append(el("p", { class: "c-empty", text: self ? "Плейлистов пока нет. Создайте первый, а номера добавляйте кнопкой «В плейлист» на странице номера." : "Плейлистов пока нет." })); return; }
+      if (!list.length) { panel.append(self ? emptyState("Плейлистов пока нет", "Создайте первый, а номера добавляйте кнопкой «В плейлист» на странице номера.") : emptyState("Плейлистов пока нет")); return; }
       list.forEach(function (p) {
         var items = el("ol", { class: "pl-items" });
         (p.numberIds || []).forEach(function (id) {
@@ -1419,7 +1456,12 @@
   }
   function mountTabs(host, o) {
     var st = host._st;
-    if (st && st.uid === o.uid) { st.self = !!o.self; if (st.loaded.playlists) st.show("playlists", true); return; }
+    if (st && st.uid === o.uid) {
+      var was = st.self; st.self = !!o.self;
+      /* человек вошёл уже после открытия страницы: уже загруженные вкладки перерисовываем с подсказками для владельца */
+      ["comments", "ratings", "playlists"].forEach(function (id) { if (st.loaded[id] && (was !== st.self || id === "playlists")) st.show(id, true); });
+      return;
+    }
     unmountTabs(host);
     var nums = host.querySelector("#p-nums");
     st = host._st = { uid: o.uid, self: !!o.self, loaded: {}, nodes: [], cur: "" };
@@ -1446,10 +1488,10 @@
       st.loaded[id] = true;
       clear(d.panel).append(el("p", { class: "c-hint", text: "Загрузка…" }));
       catalogInfo().then(function (info) {
-        if (id === "comments") return panelComments(d.panel, st.uid, info);
-        if (id === "ratings") return panelRatings(d.panel, st.uid, info);
+        if (id === "comments") return panelComments(d.panel, st.uid, info, st.self);
+        if (id === "ratings") return panelRatings(d.panel, st.uid, info, st.self);
         return panelPlaylists(d.panel, st.uid, st.self, info);
-      }).catch(function (e) { clear(d.panel).append(el("p", { class: "msg msg-err", text: "Не загрузилось: " + errText(e) })); st.loaded[id] = false; });
+      }).catch(function (e) { st.loaded[id] = false; clear(d.panel).append(errorState(errText(e), function () { st.show(id, true); })); });
     };
     var h = (location.hash || "").replace("#", ""), start = defs[0].id;
     defs.forEach(function (d) { if (d.id === h) start = d.id; });
@@ -1858,8 +1900,7 @@
       clear(box);
       if (!state.ready) { box.append(el("p", { class: "c-hint", text: "Загрузка…" })); return; }
       if (!state.user) {
-        box.append(el("p", { class: "lead", text: "Войдите через Google, чтобы вести свою страницу постановщика и писать комментарии." }),
-          el("button", { type: "button", class: "btn", text: "Войти через Google", onclick: signIn }));
+        box.append(signInPrompt("Войдите, чтобы вести свою страницу"));
         return;
       }
       box.append(el("p", { class: "lead", text: myName() + (state.admin ? ". Вы администратор." : "") }));
@@ -2094,8 +2135,7 @@
       clear(box);
       if (!state.ready) { box.append(el("p", { class: "c-hint", text: "Загрузка…" })); return; }
       if (!state.user) {
-        box.append(el("p", { class: "lead", text: "Войдите, чтобы открыть настройки профиля." }),
-          el("button", { type: "button", class: "btn", text: "Войти", onclick: signIn }));
+        box.append(signInPrompt("Войдите, чтобы открыть настройки профиля", "Здесь фото, ник, соцсети и лимиты вашего профиля. Войти можно через Google или по e-mail."));
         return;
       }
       if (!started) { started = true; catalogInfo().then(draw, function () { }); reloadAll(); }
@@ -2122,6 +2162,6 @@
     var acc = document.getElementById("account");
     if (acc) acc.textContent = "Сервис входа сейчас недоступен. Попробуйте позже.";
     var cm = document.getElementById("comments");
-    if (cm) cm.append(el("p", { class: "msg msg-err", text: "Комментарии сейчас недоступны." }));
+    if (cm) cm.append(errorState("Сервис комментариев сейчас недоступен.", function () { location.reload(); }));
   });
 })();

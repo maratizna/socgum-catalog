@@ -1,7 +1,7 @@
 {# Карточка номера. Параметры: n, root, roles (необязательно) #}
 <a class="card-link" href="{{ root }}n/{{ n.id }}/">
   <span class="card-cover">
-    <img src="{{ root }}img/{{ n.id }}/card.webp" width="640" height="480" alt="" loading="lazy" decoding="async">
+    <img src="{{ root }}img/{{ n.id }}/card.webp" width="640" height="480" alt="" {% if loop is defined and loop.index <= 4 %}fetchpriority="high"{% else %}loading="lazy"{% endif %} decoding="async">
   </span>
   <span class="card-title">{{ n.title }}</span>
 </a>
