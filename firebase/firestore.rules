@@ -123,7 +123,7 @@ service cloud.firestore {
     match /ratings/{rid} {
       allow read: if true;
       allow create, update: if signedIn()
-        && request.resource.data.keys().hasOnly(['numberId', 'uid', 'idea', 'comp', 'perf', 'stage', 'overall', 'updatedAt'])
+        && request.resource.data.keys().hasOnly(['numberId', 'uid', 'idea', 'comp', 'perf', 'stage', 'overall', 'updatedAt', 'ctx'])
         && request.resource.data.keys().hasAll(['numberId', 'uid', 'idea', 'comp', 'perf', 'stage', 'overall', 'updatedAt'])
         && request.resource.data.numberId is string && request.resource.data.numberId.size() <= 100
         && request.resource.data.uid == request.auth.uid
@@ -133,7 +133,8 @@ service cloud.firestore {
         && okScore(request.resource.data, 'comp')
         && okScore(request.resource.data, 'perf')
         && okScore(request.resource.data, 'stage')
-        && okScore(request.resource.data, 'overall');
+        && okScore(request.resource.data, 'overall')
+        && request.resource.data.get('ctx', 'team') in ['team', 'hall', 'absent'];
       allow delete: if signedIn() && (resource.data.uid == request.auth.uid || isAdmin());
     }
 

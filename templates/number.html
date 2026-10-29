@@ -55,7 +55,7 @@
     {% if firebase %}
     <section class="comments" aria-labelledby="cm-h">
       <h2 id="cm-h">Комментарии</h2>
-      <div id="comments" data-number="{{ n.id }}" data-directors="{% for p in n.people.choreographers %}{{ p.slug }}{% if not loop.last %} {% endif %}{% endfor %}"></div>
+      <div id="comments" data-number="{{ n.id }}"{% if n.offstage %} data-offstage="1"{% endif %}{% if n.rate_dir and n.rate_dir.criteria %} data-rate='{{ n.rate_dir.criteria|tojson }}'{% endif %}{% if n.offstage and n.rate_dir and n.rate_dir.rate_note %} data-rate-note="{{ n.rate_dir.rate_note }}"{% elif n.offstage %} data-rate-note="Работу направления лучше всего видно тем, кто участвовал в концерте. Если вас не было на концерте, оценивайте то, что знаете, и отметьте это ниже."{% endif %} data-directors="{% for p in n.people.choreographers %}{{ p.slug }}{% if not loop.last %} {% endif %}{% endfor %}"></div>
     </section>
     {% endif %}
   </div>

@@ -351,3 +351,11 @@ a.btn{text-decoration:none;display:inline-block}
 .social-links{display:flex;flex-wrap:wrap;gap:8px;margin:14px 0 0}
 .soc{display:inline-flex;align-items:center;gap:8px}
 .soc-i{width:1.15em;height:1.15em;flex:none;color:var(--ember)}
+
+/* Оценка направлений вне сцены: откуда человек знает работу, пометки */
+.rate-note{margin:0 0 10px}
+.rate-ctx{display:grid;gap:6px;margin:0 0 14px;font-size:.9rem}
+.rate-ctx-sel{width:100%;max-width:100%;padding:9px 10px;border-radius:10px;border:1px solid var(--line,rgba(255,255,255,.25));background:transparent;color:inherit;font:inherit}
+.rate-ctx-sel option{color:#0b0a08}
+.rt-ctx{font-size:.78rem;opacity:.7;align-self:center}
+.rate-ctx-note{margin:8px 0 0;font-size:.85rem;opacity:.75}

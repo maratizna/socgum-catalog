@@ -473,13 +473,16 @@
 
   /* ------------------------------------------------------------ страница номера: оценки и комментарии */
   /* Критерии оценки 1–5: ключ в базе, название, подсказка, короткое название для строки под комментарием */
-  var RATE = [
+  var RATE_DEFAULT = [
     ["idea", "Замысел", "идея, образы, история номера", "замысел"],
     ["comp", "Постановка", "что придумал постановщик: рисунок, переходы, ритм, музыка", "постановка"],
     ["perf", "Исполнение", "как выступили артисты: техника, синхронность, игра", "исполнение"],
     ["stage", "Сценическое воплощение", "свет, костюмы, видео, реквизит", "сцена"],
     ["overall", "Общее впечатление", "эмоции, атмосфера, вайб", "впечатление"]
   ];
+  var RATE = RATE_DEFAULT;   // на странице направления вне сцены заменяется критериями из листа «Направления»
+  var OFFSTAGE = false;
+  var CTX = [["team", "Я участвовал(а) в концерте или в команде"], ["hall", "Я был(а) на концерте зрителем"], ["absent", "Меня не было на концерте, сужу по тому, что видел(а) со стороны"]];
   /* Вес общего впечатления в сумме: четыре критерия по 1, общее впечатление ×1,2. Каждая оценка по-прежнему от 1 до 5. */
   var OVERALL_W = 1.2;
   var TOTAL_MAX = 4 * 5 + 5 * OVERALL_W;   // 26
@@ -506,7 +509,7 @@
   document.addEventListener("click", function (e) { if (!e.target.closest || !e.target.closest(".rt-chip,.rt-total")) closeTips(); });
   /* Компактная строка оценки у комментария: сумма и пять цифр, подсказка по наведению или нажатию */
   function ratingNode(r) {
-    var wrap = el("div", { class: "rt", role: "group", "aria-label": "Оценка номера" });
+    var wrap = el("div", { class: "rt", role: "group", "aria-label": "Оценка" });
     var tot = ratingTotal(r);
     var toggle = function (ev) { var b = ev.currentTarget; closeTips(b); b.classList.toggle("is-open"); };
     if (tot !== null) wrap.append(el("button", { type: "button", class: "rt-total", "data-tip": "Сумма: четыре критерия и общее впечатление ×1,2. " + fmtT(tot) + " из " + TOTAL_MAX, "aria-label": "Сумма оценок: " + fmtT(tot) + " из " + TOTAL_MAX, onclick: toggle }, el("b", { text: fmtT(tot) }), "/" + TOTAL_MAX));
@@ -515,6 +518,7 @@
       if (!v) return;
       wrap.append(el("button", { type: "button", class: "rt-chip v" + v + (k[0] === "overall" ? " vibe" : ""), "data-tip": tipText(k, v), "aria-label": tipText(k, v), onclick: toggle, text: String(v) }));
     });
+    if (r.ctx === "absent") wrap.append(el("span", { class: "rt-ctx", text: "не был(а) на концерте" }));
     return wrap;
   }
 
@@ -522,6 +526,12 @@
     var root = document.getElementById("comments");
     if (!root) return;
     var nid = root.dataset.number;
+    OFFSTAGE = !!root.dataset.offstage;
+    RATE = RATE_DEFAULT;
+    if (root.dataset.rate) {
+      try { var pr = JSON.parse(root.dataset.rate); if (Array.isArray(pr) && pr.length === 5) RATE = pr; } catch (e) { }
+    }
+    var rateNote = root.dataset.rateNote || "";
     var directors = (root.dataset.directors || "").split(" ").filter(Boolean);
     var stage = document.getElementById("stage");
     var canSeek = !!(stage && stage.dataset.oid);
@@ -705,8 +715,9 @@
     function drawSummary() {
       clear(sumBox);
       if (!ratings.length) { sumBox.hidden = true; return; }
-      var sum = {}, cnt = {}, tsum = 0, tcnt = 0;
+      var sum = {}, cnt = {}, tsum = 0, tcnt = 0, absentN = 0;
       ratings.forEach(function (r) {
+        if (r.ctx === "absent") absentN++;
         RATE.forEach(function (k) { if (r[k[0]]) { sum[k[0]] = (sum[k[0]] || 0) + r[k[0]]; cnt[k[0]] = (cnt[k[0]] || 0) + 1; } });
         var t = ratingTotal(r); if (t !== null) { tsum += t; tcnt++; }
       });
@@ -718,11 +729,12 @@
           el("span", { class: "rate-bar", role: "img", "aria-label": v === null ? "нет оценок" : fmt1(v) + " из 5" }, el("i", { style: "width:" + (v === null ? 0 : Math.round(v / 5 * 100)) + "%" })),
           el("span", { class: "rate-bar-val", text: v === null ? "–" : fmt1(v) })));
       });
-      sumBox.append(el("h3", { text: "Оценки зрителей" }),
+      sumBox.append(el("h3", { text: OFFSTAGE ? "Оценки" : "Оценки зрителей" }),
         el("div", { class: "rate-sum-grid" },
           tcnt ? el("p", { class: "rate-big" }, el("strong", { text: fmtT(tsum / tcnt) }), el("span", { text: " из " + TOTAL_MAX }),
             el("small", { text: "средняя сумма, " + plRate(tcnt) })) : el("p", { class: "rate-big" }, el("small", { text: plRate(ratings.length) + ", полных нет" })),
-          bars));
+          bars),
+        OFFSTAGE && absentN ? el("p", { class: "rate-ctx-note", text: "Не были на концерте: " + absentN + " из " + ratings.length }) : null);
       sumBox.hidden = false;
     }
     function drawSort(topCount) {
@@ -778,12 +790,13 @@
       var prev = ratingBy[uid] || null;                // уже сохранённая оценка этого человека
       var draft = {}; RATE.forEach(function (k) { if (prev && prev[k[0]]) draft[k[0]] = prev[k[0]]; });
       var cleared = false;                              // человек нажал «Убрать оценку»
+      var ctxv = (prev && prev.ctx) || "";              // откуда человек знает работу направления (только вне сцены)
 
       var ta = el("textarea", { class: "c-input", rows: "3", maxlength: "2000", placeholder: canSeek ? "Ваш комментарий. Время вида 1:23:45 станет ссылкой на этот момент записи." : "Ваш комментарий", "aria-label": "Комментарий" });
       var send = el("button", { type: "submit", class: "btn", text: "Отправить" });
 
       function setCount() { return Object.keys(draft).length; }
-      function same() { return RATE.every(function (k) { return (draft[k[0]] || 0) === ((prev && prev[k[0]]) || 0); }); }
+      function same() { return RATE.every(function (k) { return (draft[k[0]] || 0) === ((prev && prev[k[0]]) || 0); }) && (!OFFSTAGE || ctxv === ((prev && prev.ctx) || "")); }
       function rateChanged() { return !same(); }
       function syncSend() {
         var hasText = !!ta.value.trim(), rc = rateChanged() && setCount() > 0;
@@ -821,15 +834,25 @@
         };
         var grpCrit = el("div", { class: "rate-grp" }), grpVibe = el("div", { class: "rate-grp rate-vibe" });
         RATE.forEach(function (k) { (k[0] === "overall" ? grpVibe : grpCrit).append(sliderRow(k)); });
-        grpVibe.append(el("p", { class: "rate-feel", text: "Эмоциональный отклик: что вы почувствовали? Этот пункт про ощущение от номера в целом, и в сумме он весит больше остальных (×1,2). Своими словами расскажите об этом в комментарии ниже." }));
+        grpVibe.append(el("p", { class: "rate-feel", text: OFFSTAGE ? "Общее впечатление: ощущение от работы направления в целом. В сумме оно весит больше остальных (×1,2). Своими словами расскажите об этом в комментарии ниже." : "Эмоциональный отклик: что вы почувствовали? Этот пункт про ощущение от номера в целом, и в сумме он весит больше остальных (×1,2). Своими словами расскажите об этом в комментарии ниже." }));
+        var ctxSel = null, ctxBox = null;
+        if (OFFSTAGE) {
+          ctxSel = el("select", { class: "rate-ctx-sel", "aria-label": "Откуда вы знаете работу направления" },
+            [el("option", { value: "", text: "Выберите…" })].concat(CTX.map(function (c) { return el("option", { value: c[0], text: c[1] }); })));
+          ctxSel.value = ctxv;
+          ctxSel.addEventListener("change", function () { ctxv = ctxSel.value; cleared = false; showState(); syncSend(); });
+          ctxBox = el("label", { class: "rate-ctx" }, el("span", { text: "Откуда вы знаете работу направления?" }), ctxSel);
+        }
         var reset = el("button", { type: "button", class: "linkbtn", text: prev ? "Убрать мою оценку" : "Сбросить", onclick: function () {
-          draft = {}; cleared = !!prev;
+          draft = {}; cleared = !!prev; ctxv = "";
+          if (ctxSel) ctxSel.value = "";
           painters.forEach(function (f) { f(); });
           showState(); syncSend();
         } });
         rateBox = el("details", { class: "rate-box" },
-          el("summary", null, el("span", { text: prev ? "Ваша оценка номера" : "Оценить номер" }), " ", sumLine),
+          el("summary", null, el("span", { text: prev ? "Ваша оценка" : "Оценить" }), " ", sumLine),
           el("p", { class: "c-hint", text: "От 1 до 5, ползунком. Нужны все пять пунктов, сумма считается по ним. Если оценка не нужна, оставьте блок закрытым." }),
+          OFFSTAGE && rateNote ? el("p", { class: "c-hint rate-note", text: rateNote }) : null, ctxBox,
           grpCrit, grpVibe, totalLine, el("div", { class: "c-row" }, reset));
         showState();
       }
@@ -843,6 +866,7 @@
         ev.preventDefault();
         var text = ta.value.trim(), full = setCount() === RATE.length;
         if (setCount() && !full && rateChanged()) { note(form, "Оцените все пять пунктов или нажмите «Сбросить».", "err"); return; }
+        if (OFFSTAGE && full && rateChanged() && !ctxv) { note(form, "Выберите, откуда вы знаете работу направления.", "err"); return; }
         var wantRate = full && rateChanged(), wantClear = cleared && !!prev && !wantRate;
         if (!text && !wantRate && !wantClear) { note(form, replyTo ? "Напишите текст ответа." : "Напишите комментарий или поставьте оценку.", "err"); return; }
         if (text) {
@@ -850,21 +874,33 @@
           if (bad) { note(form, "Мат не проходит: слово «" + bad + "». Уберите его и отправьте снова.", "err"); ta.focus(); return; }
         }
         send.disabled = true;
-        var b = fb.f.writeBatch(fb.db);
+        var cid = text ? fcol("comments") : null;
+        var cdata = null;
         if (text) {
-          var data = { numberId: nid, uid: uid, authorName: state.user.displayName || "Без имени", text: text, createdAt: fb.f.serverTimestamp(), status: "visible" };
-          if (replyTo) data.parentId = replyTo.id;
+          cdata = { numberId: nid, uid: uid, authorName: state.user.displayName || "Без имени", text: text, createdAt: fb.f.serverTimestamp(), status: "visible" };
+          if (replyTo) cdata.parentId = replyTo.id;
           var pid = myDirectorPerson();
-          if (pid) data.authorPersonId = pid;
-          b.set(fb.f.doc(fcol("comments")), data);
+          if (pid) cdata.authorPersonId = pid;
         }
+        var cref = text ? fb.f.doc(cid) : null;
         var rref = fdoc("ratings/" + nid + "_" + uid);
-        if (wantRate) {
-          var rd = { numberId: nid, uid: uid, updatedAt: fb.f.serverTimestamp() };
-          RATE.forEach(function (k) { rd[k[0]] = draft[k[0]]; });
-          b.set(rref, rd);
-        } else if (wantClear) b.delete(rref);
-        b.commit().then(function () { replyTo = null; dropComments(); return loadComments(true); }).then(draw, function (e) { send.disabled = false; note(form, errText(e), "err"); });
+        /* Один пакет: комментарий и оценка вместе. withCtx — с пометкой «откуда знаю работу» (для направлений вне сцены) */
+        var go = function (withCtx) {
+          var b = fb.f.writeBatch(fb.db);
+          if (text) b.set(cref, cdata);
+          if (wantRate) {
+            var rd = { numberId: nid, uid: uid, updatedAt: fb.f.serverTimestamp() };
+            RATE.forEach(function (k) { rd[k[0]] = draft[k[0]]; });
+            if (withCtx && OFFSTAGE && ctxv) rd.ctx = ctxv;
+            b.set(rref, rd);
+          } else if (wantClear) b.delete(rref);
+          return b.commit();
+        };
+        go(true).catch(function (e) {
+          /* пока правила базы не обновлены, поле ctx отклоняется: сохраняем оценку без него */
+          if (wantRate && OFFSTAGE && e && e.code === "permission-denied") return go(false);
+          throw e;
+        }).then(function () { replyTo = null; dropComments(); return loadComments(true); }).then(draw, function (e) { send.disabled = false; note(form, errText(e), "err"); });
       } },
         replyTo && el("p", { class: "c-replyto" }, "Ответ для " + replyTo.authorName + " ",
           el("button", { type: "button", class: "linkbtn", text: "отменить", onclick: function () { replyTo = null; drawForm(); } })),
