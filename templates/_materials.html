@@ -1,0 +1,27 @@
+{# Доп. материалы: фото-галерея (листается свайпом) и ссылки. Нужны: m, root; необязательно: mat_title #}
+{% if m and (m.photos or m.links) %}
+<section class="materials" aria-label="{{ mat_title or 'Доп. материалы' }}">
+  <h2 class="mat-h">{{ mat_title or 'Доп. материалы' }}</h2>
+  {% if m.photos %}
+  <div class="gal" data-gal>
+    <div class="gal-track" tabindex="0" role="group" aria-label="Фотографии, листайте вбок">
+      {% for p in m.photos %}
+      <figure class="gal-item">
+        <img src="{{ p.src if p.ext else root ~ p.src }}" {% if not p.ext %}width="{{ p.w }}" height="{{ p.h }}"{% endif %} loading="lazy" decoding="async"
+             alt="{{ p.caption or 'Фото ' ~ loop.index }}"{% if p.ext %} referrerpolicy="no-referrer"{% endif %}>
+        {% if p.caption %}<figcaption>{{ p.caption }}</figcaption>{% endif %}
+      </figure>
+      {% endfor %}
+    </div>
+    {% if m.photos|length > 1 %}
+    <button class="gal-nav gal-prev" type="button" aria-label="Предыдущее фото" hidden>&#8249;</button>
+    <button class="gal-nav gal-next" type="button" aria-label="Следующее фото">&#8250;</button>
+    <p class="gal-count" aria-live="polite">1 / {{ m.photos|length }}</p>
+    {% endif %}
+  </div>
+  {% endif %}
+  {% if m.links %}
+  <p class="social-links mat-links">{% for l in m.links %}<a class="add-btn add-btn-s" href="{{ l.url }}" rel="noopener" target="_blank">{{ l.label }}</a> {% endfor %}</p>
+  {% endif %}
+</section>
+{% endif %}

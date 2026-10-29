@@ -41,6 +41,7 @@ ROOT = Path(__file__).resolve().parent
 OUT = ROOT / "site"
 TMP = ROOT / "site.tmp"
 COVERS = ROOT / "covers"
+MATERIALS = ROOT / "materials"   # свои файлы для листа «Доп. материалы»
 Image.MAX_IMAGE_PIXELS = 200_000_000
 
 # ---------------------------------------------------------------- вспомогательное
@@ -363,12 +364,14 @@ SPEC = {
     },
     "Люди": {"name": ["имя"], "about": ["о себе", "описание"], "link": ["ссылка"], "id": ["id"]},
     "Формы": {"title": ["форма"], "url": ["ссылка для сотрудников", "ссылка"]},
+    "Доп. материалы": {"scope": ["относится к", "привязка"], "target": ["что", "к чему", "объект"], "mtype": ["тип"],
+                       "url": ["ссылка", "ссылки", "фото"], "caption": ["подпись"], "other": ["связанный номер", "другой номер"]},
 }
 REQUIRED = {
     "Концерты": ["name"], "Направления": ["name"],
-    "Номера": ["id", "concert", "title"], "Люди": ["name"], "Формы": ["title", "url"],
+    "Номера": ["id", "concert", "title"], "Люди": ["name"], "Формы": ["title", "url"], "Доп. материалы": ["target"],
 }
-OPTIONAL_SHEETS = {"Люди", "Формы"}
+OPTIONAL_SHEETS = {"Люди", "Формы", "Доп. материалы"}
 RAW_COLS = {("Номера", "start"), ("Номера", "end")}  # время разбираем сами
 
 
@@ -578,6 +581,78 @@ def rate_criteria(r, offstage):
 
 
 
+IMG_EXT_RE = re.compile(r"\.(jpe?g|png|webp|gif)(\?|$)", re.I)
+
+
+def parse_materials(rows, concerts, directions, numbers, report):
+    """Лист «Доп. материалы»: фото, ссылки и связки номеров с другими концертами."""
+    S = "Доп. материалы"
+    pools = {"n": numbers, "c": concerts, "d": directions}
+
+    def find(scope, target):
+        if scope == "n":
+            return numbers.get(target.strip().casefold())
+        return pools[scope].get(norm(target))
+
+    for r in rows:
+        row, target = r["_row"], (r.get("target") or "").strip()
+        if not target:
+            report.warn(S, row, "Не заполнено, к чему относится строка (столбец «Что»). Строка пропущена.")
+            continue
+        sc = norm(r.get("scope"))
+        scope = "n" if sc.startswith("ном") else "c" if sc.startswith("конц") else "d" if sc.startswith("напр") else None
+        if sc and not scope:
+            report.warn(S, row, f"«Относится к» = «{r['scope']}» не понято. Выберите из списка: Номер, Концерт или Направление. Строка пропущена.")
+            continue
+        if not scope:  # не указали: ищем по всем трём
+            scope = next((k for k in ("n", "c", "d") if find(k, target)), None)
+        obj = find(scope, target) if scope else None
+        if not obj:
+            report.warn(S, row, f"Не найдено «{target}» среди номеров, концертов и направлений. Строка пропущена.")
+            continue
+        raw_url = (r.get("url") or "").strip()
+        other = (r.get("other") or "").strip()
+        caption = (r.get("caption") or "").strip()
+        t = norm(r.get("mtype"))
+        kind = ("related" if t.startswith(("связ", "тот же", "друг", "номер")) else "photo" if t.startswith("фото") else
+                "link" if t.startswith("ссыл") else None)
+        if not kind:
+            kind = "related" if other else ("photo" if raw_url and IMG_EXT_RE.search(raw_url) else "link" if raw_url else None)
+        if not kind:
+            report.warn(S, row, "Нет ни ссылки, ни связанного номера. Строка пропущена.")
+            continue
+        if kind == "related":
+            if scope != "n":
+                report.warn(S, row, "Связка с другим концертом возможна только для номера. Строка пропущена.")
+                continue
+            tid = other or raw_url
+            o = numbers.get(tid.casefold())
+            if not o:
+                report.warn(S, row, f"Связанный номер «{tid}» не найден (нужен ID с листа «Номера»). Строка пропущена.")
+                continue
+            if o is obj:
+                report.warn(S, row, "Номер связан сам с собой. Строка пропущена.")
+                continue
+            if o["concert"] is obj["concert"]:
+                report.warn(S, row, f"Номера «{obj['title']}» и «{o['title']}» из одного концерта. Связка нужна для исполнения на разных концертах.")
+            for a, b in ((obj, o), (o, obj)):
+                if not any(x["n"] is b for x in a["related"]):
+                    a["related"].append({"n": b, "caption": caption})
+            continue
+        urls = [u for u in re.split(r"[\s;,]+", raw_url) if u]
+        if not urls:
+            report.warn(S, row, "Не заполнена ссылка. Строка пропущена.")
+            continue
+        for u in urls:
+            if kind == "link":
+                if not re.match(r"^https?://\S+$", u):
+                    report.warn(S, row, f"«{u}» не похоже на ссылку (нужно начало https://). Пропущено.")
+                    continue
+                obj["materials"]["links"].append({"url": u, "label": caption or re.sub(r"^https?://(www\.)?", "", u).split("/")[0]})
+            else:
+                obj["materials"]["photos"].append({"url": u, "caption": caption, "row": row})
+
+
 def build_model(wb, report):
     sheets = {n: read_sheet(wb, n, report) for n in SPEC}
     FORMS[:] = form_links(sheets.get("Формы") or [])
@@ -706,6 +781,13 @@ def build_model(wb, report):
         for i, n in enumerate(c["numbers"], start=1):
             n["position"] = i
 
+    # Доп. материалы
+    for obj in list(concerts.values()) + list(directions.values()) + list(numbers.values()):
+        obj["materials"] = {"photos": [], "links": []}
+    for n in numbers.values():
+        n["related"] = []
+    parse_materials(sheets["Доп. материалы"], concerts, directions, numbers, report)
+
     # Люди
     people = OrderedDict()
     extra = {norm(r["name"]): r for r in sheets["Люди"] if r.get("name")}
@@ -794,16 +876,16 @@ def download_cover(url, report, n):
             data = r.read(COVER_MAX_BYTES + 1)
             ctype = r.headers.get("Content-Type", "")
         if len(data) > COVER_MAX_BYTES:
-            report.warn("Номера", n["row"], f"Обложка по ссылке больше 8 МБ, не взята. Сожмите фото. Показана заглушка.")
+            report.warn(n.get("sheet", "Номера"), n["row"], f"Файл по ссылке больше 8 МБ, не взят. Сожмите фото. {n.get('tail', 'Показана заглушка.')}")
         elif "image" not in ctype and not data[:4] in (b"\xff\xd8\xff\xe0", b"\xff\xd8\xff\xe1", b"\x89PNG", b"RIFF"):
-            report.warn("Номера", n["row"], "По ссылке на обложку не картинка (проверьте, что файл открыт «всем, у кого есть ссылка»). Показана заглушка.")
+            report.warn(n.get("sheet", "Номера"), n["row"], f"По ссылке не картинка, а веб-страница (для ВК это страница фото, а не файл). Дайте прямую ссылку на файл или ссылку Google Диска «всем, у кого есть ссылка» либо положите файл в папку materials. {n.get('tail', 'Показана заглушка.')}")
         else:
             dl = Path(tempfile.gettempdir()) / "socgum-covers"
             dl.mkdir(parents=True, exist_ok=True)
             path = dl / (hashlib.sha1(url.encode()).hexdigest() + ".bin")
             path.write_bytes(data)
     except Exception as e:  # noqa: BLE001
-        report.warn("Номера", n["row"], f"Не удалось скачать обложку по ссылке: {e}. Показана заглушка.")
+        report.warn(n.get("sheet", "Номера"), n["row"], f"Не удалось скачать файл по ссылке: {e}. {n.get('tail', 'Показана заглушка.')}")
     _DL_CACHE[url] = path
     return path
 
@@ -920,6 +1002,39 @@ def build_site(concerts, directions, numbers, people, report, demo, source):
             else:
                 report.warn("Номера", n["row"], f"У номера «{n['title']}» нет обложки (положите в covers файл {n['id']}.jpg). Показана заглушка.")
         n["cover_size"] = size
+    # фото из «Доп. материалов»: скачиваем и храним свои копии (ссылки ВК со временем «протухают»)
+    made, mdir = {}, TMP / "img" / "m"
+    for obj in list(concerts.values()) + list(directions.values()) + list(numbers.values()):
+        keep = []
+        for ph in obj["materials"]["photos"]:
+            url = ph["url"]
+            if url not in made:
+                made[url] = None
+                if re.match(r"https?://", url, re.I):
+                    src = download_cover(url, report, {"row": ph["row"], "sheet": "Доп. материалы", "tail": "Фото не показано."})
+                else:
+                    f = MATERIALS / url
+                    src = f if f.is_file() else None
+                    if not src:
+                        report.warn("Доп. материалы", ph["row"], f"Файл «{url}» не найден в папке materials. Фото не показано.")
+                if src:
+                    try:
+                        with Image.open(src) as im:
+                            im.load()
+                            im = ImageOps.exif_transpose(im).convert("RGB")
+                            if max(im.size) > 1280:
+                                im.thumbnail((1280, 1280), Image.LANCZOS)
+                            name = hashlib.sha1(url.encode()).hexdigest()[:12] + ".webp"
+                            mdir.mkdir(parents=True, exist_ok=True)
+                            im.save(mdir / name, "WEBP", quality=80, method=4)
+                            made[url] = {"src": "img/m/" + name, "w": im.width, "h": im.height, "ext": False}
+                    except Exception as e:  # noqa: BLE001
+                        report.warn("Доп. материалы", ph["row"], f"Не удалось открыть фото «{url}»: {e}. Фото не показано.")
+                if not made[url] and re.match(r"https?://\S+$", url) and IMG_EXT_RE.search(url):
+                    made[url] = {"src": url, "w": 4, "h": 3, "ext": True}  # запасной вариант: показываем по ссылке
+            if made[url]:
+                keep.append({**made[url], "caption": ph["caption"]})
+        obj["materials"]["photos"] = keep
     if report.errors:
         return None
 

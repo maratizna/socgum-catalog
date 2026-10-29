@@ -30,6 +30,24 @@
       {% if n.tracks %}
       <p class="social-links track-links">{% for t in n.tracks %}<a class="add-btn add-btn-s soc soc-track" href="{{ t.url }}" rel="noopener" target="_blank"><svg class="soc-i" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 18V6l11-2v12" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/><circle cx="6.5" cy="18" r="2.8" fill="currentColor"/><circle cx="17.5" cy="16" r="2.8" fill="currentColor"/></svg><span>Слушать трек{% if n.tracks|length > 1 %}: {{ t.label }}{% endif %}</span></a>{% endfor %}</p>
       {% endif %}
+      {% set m = n.materials %}{% include "_materials.html" %}
+      {% if n.related %}
+      <section class="related" aria-labelledby="rel-h">
+        <h2 class="mat-h" id="rel-h">{{ 'Этот номер на другом концерте' if n.related|length == 1 else 'Этот номер на других концертах' }}</h2>
+        <p class="rel-note">Это отдельный номер: состав участников может отличаться.</p>
+        <ul class="rel-list">
+          {% for x in n.related %}
+          <li><a class="rel-card" href="{{ root }}n/{{ x.n.id }}/">
+            <img src="{{ root }}img/{{ x.n.id }}/card.webp" width="96" height="72" alt="" loading="lazy" decoding="async">
+            <span class="rel-t"><b>{{ x.n.title }}</b>
+              <small>{{ x.n.concert.name }}{% if x.n.concert.date %}, {{ x.n.concert.date|ru_date }}{% endif %}</small>
+              {% if x.n.performers %}<small>Участников: {{ x.n.performers|length }}</small>{% endif %}
+              {% if x.caption %}<small>{{ x.caption }}</small>{% endif %}</span>
+          </a></li>
+          {% endfor %}
+        </ul>
+      </section>
+      {% endif %}
       {% if firebase %}
       <div id="pl-add" class="pl-add" data-number="{{ n.id }}"></div>
       <div id="director-note" class="director-note" hidden></div>

@@ -166,7 +166,9 @@
       grid.hidden = visible === 0;
 
       /* Карточка выбранного концерта: обложка, тема, ссылка на запись */
-      panels.forEach(function (p) { p.hidden = !(state.c && p.dataset.concert === state.c); });
+      panels.forEach(function (p) {
+        p.hidden = p.dataset.concert ? !(state.c && p.dataset.concert === state.c) : !(state.d && p.dataset.direction === state.d);
+      });
 
       if (selType) selType.value = state.t;
       if (selSeason) selSeason.value = state.y;
@@ -396,4 +398,57 @@
     if ((m = v.match(/^(?:(\d+)h)?(?:(\d+)m)?(?:(\d+)s)?$/)) && (m[1] || m[2] || m[3])) return (+m[1] || 0) * 3600 + (+m[2] || 0) * 60 + (+m[3] || 0);
     return null;
   }
+})();
+
+/* Доп. материалы: фото-галерея (листается свайпом, кнопками и стрелками) и просмотр на весь экран */
+(function () {
+  function init(g) {
+    var track = g.querySelector(".gal-track");
+    if (!track || g.dataset.ready) return;
+    g.dataset.ready = "1";
+    var items = track.querySelectorAll(".gal-item");
+    var prev = g.querySelector(".gal-prev"), next = g.querySelector(".gal-next"), cnt = g.querySelector(".gal-count");
+    function cur() { var w = track.clientWidth || 1; return Math.max(0, Math.min(items.length - 1, Math.round(track.scrollLeft / w))); }
+    function show() {
+      var i = cur();
+      if (cnt) cnt.textContent = (i + 1) + " / " + items.length;
+      if (prev) prev.hidden = i === 0;
+      if (next) next.hidden = i >= items.length - 1;
+    }
+    function go(d) { track.scrollTo({ left: (cur() + d) * track.clientWidth, behavior: "smooth" }); }
+    var raf;
+    track.addEventListener("scroll", function () { cancelAnimationFrame(raf); raf = requestAnimationFrame(show); }, { passive: true });
+    if (prev) prev.addEventListener("click", function () { go(-1); });
+    if (next) next.addEventListener("click", function () { go(1); });
+    track.addEventListener("keydown", function (e) {
+      if (e.key === "ArrowLeft") { go(-1); e.preventDefault(); }
+      if (e.key === "ArrowRight") { go(1); e.preventDefault(); }
+    });
+    track.addEventListener("click", function (e) {
+      var img = e.target.closest && e.target.closest("img");
+      if (img) big(img);
+    });
+    window.addEventListener("resize", show);
+    show();
+  }
+  function big(img) {
+    var box = document.createElement("div");
+    box.className = "lightbox";
+    box.setAttribute("role", "dialog");
+    box.setAttribute("aria-label", "Фото на весь экран");
+    var im = document.createElement("img");
+    im.src = img.currentSrc || img.src;
+    im.alt = img.alt;
+    var x = document.createElement("button");
+    x.type = "button"; x.className = "lightbox-x"; x.setAttribute("aria-label", "Закрыть"); x.textContent = "\u00d7";
+    box.appendChild(im); box.appendChild(x);
+    function close() { box.remove(); document.removeEventListener("keydown", key); }
+    function key(e) { if (e.key === "Escape") close(); }
+    box.addEventListener("click", close);
+    document.addEventListener("keydown", key);
+    document.body.appendChild(box);
+    x.focus();
+  }
+  function all() { document.querySelectorAll("[data-gal]").forEach(init); }
+  if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", all); else all();
 })();
