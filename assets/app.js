@@ -20,6 +20,7 @@
     var cards = Array.prototype.slice.call(grid.children);
     var qInput = document.getElementById("q");
     var sortSel = document.getElementById("sort");
+    var selType = document.getElementById("f-type");
     var selSeason = document.getElementById("f-season");
     var selConcert = document.getElementById("f-concert");
     var selDir = document.getElementById("f-direction");
@@ -29,26 +30,56 @@
     var panels = Array.prototype.slice.call(document.querySelectorAll(".concert-panel"));
     var total = cards.length;
     var params = new URLSearchParams(location.search);
-    var state = { q: params.get("q") || "", y: params.get("y") || "", c: params.get("c") || "", d: params.get("d") || "", s: params.get("s") || "new" };
+    var state = { q: params.get("q") || "", t: params.get("t") || "", y: params.get("y") || "", c: params.get("c") || "", d: params.get("d") || "", s: params.get("s") || "new" };
     if (!/^(new|concert|title|collective)$/.test(state.s)) state.s = "new";
     var shown = PAGE;
 
     cards.forEach(function (c) { c._search = norm(c.dataset.search); c._dirs = (c.dataset.direction || "").split(" "); });
 
-    /* Концерты в списке показываем только выбранного учебного года */
+    /* Группа «Фильтры»: открыта или свёрнута — запоминается в браузере */
+    var group = document.getElementById("filter-group");
+    var KEY = "sg:filters-open";
+    if (group) {
+      var saved = null;
+      try { saved = window.localStorage.getItem(KEY); } catch (e) { }
+      if (saved === "1") group.open = true;
+      group.addEventListener("toggle", function () { try { window.localStorage.setItem(KEY, group.open ? "1" : "0"); } catch (e) { } });
+    }
+
+    /* Концерты в списке: только выбранного типа и учебного года */
     var concertOpts = selConcert ? Array.prototype.slice.call(selConcert.options).slice(1) : [];
     function syncConcertList() {
       if (!selConcert) return;
       concertOpts.forEach(function (o) {
-        var okSeason = !state.y || o.dataset.season === state.y;
-        o.hidden = !okSeason; o.disabled = !okSeason;
+        var ok = (!state.y || o.dataset.season === state.y) && (!state.t || o.dataset.type === state.t);
+        o.hidden = !ok; o.disabled = !ok;
       });
       var cur = concertOpts.filter(function (o) { return o.value === state.c; })[0];
       if (state.c && (!cur || cur.disabled)) state.c = "";
       selConcert.value = state.c;
     }
 
+    /* Направления: только те, что есть в выбранных типе, годе и концерте */
+    var dirOpts = selDir ? Array.prototype.slice.call(selDir.querySelectorAll("option")).slice(1) : [];
+    function syncDirList() {
+      if (!selDir) return;
+      var have = {};
+      cards.forEach(function (card) {
+        if (state.t && card.dataset.type !== state.t) return;
+        if (state.y && card.dataset.season !== state.y) return;
+        if (state.c && card.dataset.concert !== state.c) return;
+        card._dirs.forEach(function (d) { have[d] = true; });
+      });
+      dirOpts.forEach(function (o) { var ok = !!have[o.value]; o.hidden = !ok; o.disabled = !ok; });
+      Array.prototype.forEach.call(selDir.querySelectorAll("optgroup"), function (g) {
+        g.hidden = !Array.prototype.some.call(g.querySelectorAll("option"), function (o) { return !o.disabled; });
+      });
+      if (state.d && !have[state.d]) state.d = "";
+      selDir.value = state.d;
+    }
+
     function matches(card) {
+      if (state.t && card.dataset.type !== state.t) return false;
       if (state.y && card.dataset.season !== state.y) return false;
       if (state.c && card.dataset.concert !== state.c) return false;
       if (state.d && card._dirs.indexOf(state.d) === -1) return false;
@@ -68,6 +99,7 @@
     function apply(pushUrl, keepShown) {
       if (!keepShown) shown = PAGE;
       syncConcertList();
+      syncDirList();
       var ordered = cards.slice().sort(function (a, b) {
         if (state.s === "new") return (+b.dataset.row) - (+a.dataset.row);   // чем ниже строка в таблице, тем новее номер
         var ka = sortKey(a), kb = sortKey(b);
@@ -84,7 +116,10 @@
         grid.appendChild(card);
       });
 
-      var filtered = state.q || state.y || state.c || state.d;
+      var nSel = (state.t ? 1 : 0) + (state.y ? 1 : 0) + (state.c ? 1 : 0) + (state.d ? 1 : 0);
+      var filtered = state.q || nSel;
+      var badge = document.getElementById("filter-n");
+      if (badge) { badge.hidden = !nSel; badge.textContent = nSel ? String(nSel) : ""; }
       count.textContent = filtered ? "Найдено: " + visible + " из " + total : "Номеров: " + total;
       var left = visible - drawn;
       if (more) {
@@ -99,11 +134,13 @@
       /* Карточка выбранного концерта: обложка, тема, ссылка на запись */
       panels.forEach(function (p) { p.hidden = !(state.c && p.dataset.concert === state.c); });
 
+      if (selType) selType.value = state.t;
       if (selSeason) selSeason.value = state.y;
       if (selDir) selDir.value = state.d;
       if (pushUrl) {
         var p = new URLSearchParams();
         if (state.q) p.set("q", state.q);
+        if (state.t) p.set("t", state.t);
         if (state.y) p.set("y", state.y);
         if (state.c) p.set("c", state.c);
         if (state.d) p.set("d", state.d);
@@ -121,6 +158,7 @@
       timer = setTimeout(function () { state.q = qInput.value; apply(true); }, 120);
     });
     sortSel.addEventListener("change", function () { state.s = sortSel.value; apply(true); });
+    if (selType) selType.addEventListener("change", function () { state.t = selType.value; apply(true); });
     if (selSeason) selSeason.addEventListener("change", function () { state.y = selSeason.value; apply(true); });
     if (selConcert) selConcert.addEventListener("change", function () {
       state.c = selConcert.value;
@@ -130,11 +168,20 @@
     if (more) more.addEventListener("click", function () { shown += PAGE; apply(false, true); });
     document.querySelectorAll("[data-reset]").forEach(function (btn) {
       btn.addEventListener("click", function () {
-        state.q = ""; state.y = ""; state.c = ""; state.d = "";
+        state.q = ""; state.t = ""; state.y = ""; state.c = ""; state.d = "";
         qInput.value = "";
         apply(true);
       });
     });
+
+    /* Значок поиска в шапке: на главной переводит в поле поиска, на других страницах ведёт на главную */
+    function focusSearch() {
+      qInput.scrollIntoView({ block: "center", behavior: reduceMotion ? "auto" : "smooth" });
+      setTimeout(function () { try { qInput.focus({ preventScroll: true }); } catch (e) { qInput.focus(); } }, reduceMotion ? 0 : 250);
+    }
+    var sBtn = document.querySelector(".head-search");
+    if (sBtn) sBtn.addEventListener("click", function (e) { e.preventDefault(); focusSearch(); });
+    if (location.hash === "#search") { try { history.replaceState(null, "", location.pathname + location.search); } catch (e) { } focusSearch(); }
 
     apply(false);
   }

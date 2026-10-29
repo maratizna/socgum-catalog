@@ -455,8 +455,8 @@
       slot.append(el("button", { type: "button", class: "head-link head-btn", text: "Войти", onclick: signIn }));
     } else {
       var first = (state.user.displayName || "Аккаунт").split(" ")[0];
-      slot.append(el("a", { class: "head-link head-me", href: ROOT + "account/", title: "Личный кабинет" },
-        avatarNode(state.user.uid, state.user.displayName, "xs"), el("span", { text: first + (state.admin ? " (админ)" : "") })));
+      slot.append(el("a", { class: "head-link head-me", href: ROOT + "account/", title: "Личный кабинет: " + first + (state.admin ? " (админ)" : ""), "aria-label": "Личный кабинет: " + first },
+        avatarNode(state.user.uid, state.user.displayName, "s")));
     }
   }
 
@@ -1082,6 +1082,13 @@
     });
     return catP;
   }
+  /* Обложка номера, как на главной (card.webp), с отложенной загрузкой */
+  function numCover(id) {
+    var img = el("img", { src: ROOT + "img/" + encodeURIComponent(id) + "/card.webp", alt: "", width: "640", height: "480", loading: "lazy", decoding: "async" });
+    img.addEventListener("error", function () { img.style.visibility = "hidden"; });
+    return el("a", { class: "pcard-cover", href: ROOT + "n/" + encodeURIComponent(id) + "/", tabindex: "-1", "aria-hidden": "true" }, img);
+  }
+  function pcard(id, body) { return el("article", { class: "comment user-comment pcard" }, numCover(id), el.apply(null, ["div", { class: "pcard-body" }].concat(body))); }
   function numLink(info, id, cls) { return el("a", { class: cls || null, href: ROOT + "n/" + encodeURIComponent(id) + "/", text: info.titles[id] || "Номер" }); }
   function tsMs(t) { return t && t.toMillis ? t.toMillis() : 0; }
   function tsText(t) {
@@ -1146,12 +1153,12 @@
       var ul = el("div", { class: "c-list" });
       list.forEach(function (c) {
         var rt = first[c.numberId] === c.id && rbn[c.numberId];
-        ul.append(el("article", { class: "comment user-comment" },
+        ul.append(pcard(c.numberId, [
           el("p", { class: "c-head" }, numLink(info, c.numberId),
             el("a", { class: "c-date", href: ROOT + "n/" + encodeURIComponent(c.numberId) + "/#c-" + c.id, text: tsText(c.createdAt) }),
             c.likeCount ? el("span", { class: "c-date", text: "♥ " + c.likeCount }) : null),
           el("p", { class: "c-text", text: c.text }),
-          rt ? ratingNode(rt, critOf(info, c.numberId)) : null));
+          rt ? ratingNode(rt, critOf(info, c.numberId)) : null]));
       });
       panel.append(ul);
     });
@@ -1163,9 +1170,9 @@
       if (!list.length) { panel.append(el("p", { class: "c-empty", text: "Оценок пока нет." })); return; }
       var ul = el("div", { class: "c-list" });
       list.forEach(function (x) {
-        ul.append(el("article", { class: "comment user-comment" },
+        ul.append(pcard(x.numberId, [
           el("p", { class: "c-head" }, numLink(info, x.numberId), el("span", { class: "c-date", text: tsText(x.updatedAt) })),
-          ratingNode(x, critOf(info, x.numberId))));
+          ratingNode(x, critOf(info, x.numberId))]));
       });
       panel.append(ul);
     }, function (e) { clear(panel).append(el("p", { class: "msg msg-err", text: "Оценки не загрузились: " + errText(e) })); });

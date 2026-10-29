@@ -11,41 +11,52 @@
     <input type="search" id="q" class="search" placeholder="Название, коллектив, участник, постановщик" list="people-list" autocomplete="off" aria-label="Поиск по каталогу">
     <datalist id="people-list">{% for p in people %}<option value="{{ p.name }}">{% endfor %}</datalist>
   </div>
-  <div class="filter-row filter-selects">
-    {% if seasons %}
-    <label class="sel">Учебный год
-      <select id="f-season">
-        <option value="">Все годы</option>
-        {% for s in seasons %}<option value="{{ s }}">{{ s }}</option>{% endfor %}
-      </select>
-    </label>
-    {% endif %}
-    {% if concerts|length > 1 %}
-    <label class="sel">Концерт
-      <select id="f-concert">
-        <option value="">Все концерты</option>
-        {% for c in concerts %}<option value="{{ c.slug }}" data-season="{{ c.season }}">{{ c.name }}{% if c.numbers|length %} ({{ c.numbers|length }}){% endif %}</option>{% endfor %}
-      </select>
-    </label>
-    {% endif %}
-    {% if dirs_on or dirs_off %}
-    <label class="sel">Направление
-      <select id="f-direction">
-        <option value="">Все направления</option>
-        {% if dirs_on %}<optgroup label="На сцене">{% for d in dirs_on %}<option value="{{ d.slug }}">{{ d.name }}</option>{% endfor %}</optgroup>{% endif %}
-        {% if dirs_off %}<optgroup label="Вне сцены">{% for d in dirs_off %}<option value="{{ d.slug }}">{{ d.name }}</option>{% endfor %}</optgroup>{% endif %}
-      </select>
-    </label>
-    {% endif %}
-    <label class="sel">Порядок
-      <select id="sort">
-        <option value="new">Недавно добавленные</option>
-        <option value="concert">Как в концерте</option>
-        <option value="title">По названию</option>
-        <option value="collective">По коллективу</option>
-      </select>
-    </label>
-  </div>
+  <details class="filter-group" id="filter-group">
+    <summary><span>Фильтры</span> <span class="filter-n" id="filter-n" hidden></span></summary>
+    <div class="filter-row filter-selects">
+      {% if ctypes|length > 1 %}
+      <label class="sel">Тип концерта
+        <select id="f-type">
+          <option value="">Все типы</option>
+          {% for t in ctypes %}<option value="{{ t.key }}">{{ t.label }}</option>{% endfor %}
+        </select>
+      </label>
+      {% endif %}
+      {% if seasons %}
+      <label class="sel">Учебный год
+        <select id="f-season">
+          <option value="">Все годы</option>
+          {% for s in seasons %}<option value="{{ s }}">{{ s }}</option>{% endfor %}
+        </select>
+      </label>
+      {% endif %}
+      {% if concerts|length > 1 %}
+      <label class="sel">Концерт
+        <select id="f-concert">
+          <option value="">Все концерты</option>
+          {% for c in concerts %}<option value="{{ c.slug }}" data-season="{{ c.season }}" data-type="{{ c.ctype }}">{{ c.name }}{% if c.numbers|length %} ({{ c.numbers|length }}){% endif %}</option>{% endfor %}
+        </select>
+      </label>
+      {% endif %}
+      {% if dirs_on or dirs_off %}
+      <label class="sel">Направление
+        <select id="f-direction">
+          <option value="">Все направления</option>
+          {% if dirs_on %}<optgroup label="На сцене">{% for d in dirs_on %}<option value="{{ d.slug }}">{{ d.name }}</option>{% endfor %}</optgroup>{% endif %}
+          {% if dirs_off %}<optgroup label="Вне сцены">{% for d in dirs_off %}<option value="{{ d.slug }}">{{ d.name }}</option>{% endfor %}</optgroup>{% endif %}
+        </select>
+      </label>
+      {% endif %}
+      <label class="sel">Порядок
+        <select id="sort">
+          <option value="new">Недавно добавленные</option>
+          <option value="concert">Как в концерте</option>
+          <option value="title">По названию</option>
+          <option value="collective">По коллективу</option>
+        </select>
+      </label>
+    </div>
+  </details>
   <p class="count-row"><span class="count" id="count" aria-live="polite">Номеров: {{ numbers|length }}</span>
     <button type="button" class="linkbtn" data-reset hidden>Сбросить фильтры</button></p>
 </section>
@@ -65,7 +76,7 @@
 
 <ul class="grid" id="grid">
   {% for n in numbers %}
-  <li class="card" data-id="{{ n.id }}" data-concert="{{ n.concert.slug }}" data-season="{{ n.concert.season }}"
+  <li class="card" data-id="{{ n.id }}" data-concert="{{ n.concert.slug }}" data-season="{{ n.concert.season }}" data-type="{{ n.concert.ctype }}"
       data-direction="{% for d in n.directions %}{{ d.slug }}{% if not loop.last %} {% endif %}{% endfor %}"
       data-order="{{ loop.index0 }}" data-row="{{ n.row }}" data-title="{{ n.title }}" data-collective="{{ n.collective }}"
       data-search="{{ ([n.title, n.collective, n.concert.name]

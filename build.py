@@ -318,7 +318,7 @@ SPEC = {
     "Концерты": {
         "name": ["название"], "date": ["дата"], "video": ["видео", "ссылка на видео"], "about": ["описание"],
         "id": ["id"], "season": ["учебный год", "поколение"], "year": ["год"], "topic": ["тема"],
-        "cover": ["обложка"], "video2": ["видео 2", "видео2"],
+        "cover": ["обложка"], "video2": ["видео 2", "видео2"], "ctype": ["тип концерта", "вид концерта"],
     },
     "Направления": {"name": ["название"], "about": ["описание"], "id": ["id"], "kind": ["тип", "вне сцены"],
                     "c1": ["критерий 1"], "c2": ["критерий 2"], "c3": ["критерий 3"], "c4": ["критерий 4"],
@@ -497,6 +497,27 @@ RATE_OFF_GENERIC = [
 ]
 
 
+# Типы концертов для фильтра. Порядок — как в списке на сайте.
+CONCERT_TYPES = [("gala", "Гала-концерты"), ("debut", "Дебюты"), ("vesna", "Весны"), ("lavash", "Лаваш")]
+
+
+def concert_type(cell, name, topic=""):
+    """Тип концерта: из столбца «Тип концерта», иначе по названию. Лаваш — летняя Студвесна."""
+    for text in ((cell or ""), f"{name} {topic}"):
+        t = norm(text)
+        if not t:
+            continue
+        if "лаваш" in t or "летн" in t:
+            return "lavash"
+        if "гала" in t:
+            return "gala"
+        if "дебют" in t:
+            return "debut"
+        if "весн" in t:
+            return "vesna"
+    return ""
+
+
 def _split_crit(cell):
     """«Название — подсказка» → (название, подсказка)."""
     t = (cell or "").strip()
@@ -565,6 +586,7 @@ def build_model(wb, report):
             "name": name, "slug": c_slug[r["_row"]], "date": date, "video": video, "links": links, "row": r["_row"],
             "about": r.get("about", ""), "numbers": [], "season": season, "season_start": season_start,
             "year": year, "topic": r.get("topic", ""), "cover_url": cover_url,
+            "ctype": concert_type(r.get("ctype"), name, r.get("topic", "")),
         }
 
     # Направления
@@ -878,6 +900,8 @@ def build_site(concerts, directions, numbers, people, report, demo, source):
     concert_list = sorted(concerts.values(), key=concert_key)
     rank = {id(c): i for i, c in enumerate(concert_list)}
     all_numbers = sorted(numbers.values(), key=lambda n: (rank[id(n["concert"])], n["position"]))
+    ctype_used = {c["ctype"] for c in concert_list if c.get("ctype")}
+    ctypes = [{"key": k, "label": l} for k, l in CONCERT_TYPES if k in ctype_used]
     seasons = OrderedDict()
     for c in concert_list:
         if c["season"] and c["season"] not in seasons:
@@ -888,7 +912,7 @@ def build_site(concerts, directions, numbers, people, report, demo, source):
     all_people = sorted(people.values(), key=lambda p: norm(p["name"]))
 
     write(TMP / "index.html", env.get_template("index.html").render(
-        root="", page_title=cfg["site_title"], numbers=all_numbers, concerts=concert_list, seasons=list(seasons),
+        root="", page_title=cfg["site_title"], numbers=all_numbers, concerts=concert_list, ctypes=ctypes, seasons=list(seasons),
         dirs_on=dirs_on, dirs_off=dirs_off, people=all_people, canonical=site_url + "/" if site_url else "",
         og_image="", description=cfg.get("lead", ""), **ctx_common))
 
