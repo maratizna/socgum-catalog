@@ -305,6 +305,7 @@
 
   var avatars = {};   // uid → картинка (строка) или "" если фото нет
   var nicks = {};     // uid → ник из кабинета или "" (если не менялся)
+  var realNames = {}; // uid → имя аккаунта (публичное поле users/{uid}.name)
   var peopleNames = {};   // id страницы человека → имя на странице (из каталога)
   function nrm(s) { return String(s || "").trim().replace(/\s+/g, " ").toLowerCase().replace(/ё/g, "е"); }
   function myName() { var u = state.user; return u ? (nicks[u.uid] || u.displayName || "Без имени") : "Без имени"; }
@@ -313,7 +314,7 @@
     var n = name || "Без имени", pn = pid && peopleNames[pid];
     return pn && nrm(pn) !== nrm(n) ? n + " (" + pn + ")" : n;
   }
-  function putUA(u) { cput("ua:" + u, { a: avatars[u] || "", n: nicks[u] || "" }); }
+  function putUA(u) { cput("ua:" + u, { a: avatars[u] || "", n: nicks[u] || "", m: realNames[u] || "" }); }
 
   function loadMe(user, fresh) {
     state.user = user; state.admin = false; state.claims = {};
@@ -329,7 +330,15 @@
         });
       }).then(function (v) { state.claims = v || {}; }, function () { }),
       loadAvatars([uid], fresh)
-    ]).then(function () { state.ready = true; });
+    ]).then(function () {
+      state.ready = true;
+      /* публичное имя аккаунта нужно, чтобы у страницы пользователя было имя, даже если он ещё ничего не писал */
+      var nm = user.displayName || "";
+      if (nm && realNames[uid] !== nm) {
+        fb.f.setDoc(fdoc("users/" + uid), { name: nm.slice(0, 100), updatedAt: fb.f.serverTimestamp() }, { merge: true })
+          .then(function () { realNames[uid] = nm; putUA(uid); }, function () { });
+      }
+    });
   }
 
   /* фото пользователей: users/{uid}.avatar, маленькая картинка. Несколько uid читаются одним запросом. */
@@ -338,17 +347,17 @@
     uids.forEach(function (u) {
       if (!u || (!fresh && avatars[u] !== undefined)) return;
       var hit = fresh ? null : cget("ua:" + u, TTL.avatar);
-      if (hit) { avatars[u] = hit.v.a || ""; nicks[u] = hit.v.n || ""; } else if (need.indexOf(u) === -1) need.push(u);
+      if (hit) { avatars[u] = hit.v.a || ""; nicks[u] = hit.v.n || ""; realNames[u] = hit.v.m || ""; } else if (need.indexOf(u) === -1) need.push(u);
     });
     if (!need.length) return Promise.resolve();
     var jobs = [];
     for (var i = 0; i < need.length; i += 30) {
       (function (chunk) {
         jobs.push(fb.f.getDocs(fb.f.query(fcol("users"), fb.f.where(fb.f.documentId(), "in", chunk))).then(function (s) {
-          var got = {}, gotN = {};
-          s.forEach(function (d) { got[d.id] = d.data().avatar || ""; gotN[d.id] = d.data().nick || ""; });
-          chunk.forEach(function (u) { avatars[u] = got[u] || ""; nicks[u] = gotN[u] || ""; putUA(u); });
-        }, function () { chunk.forEach(function (u) { if (avatars[u] === undefined) { avatars[u] = ""; nicks[u] = ""; } }); }));
+          var got = {}, gotN = {}, gotM = {};
+          s.forEach(function (d) { got[d.id] = d.data().avatar || ""; gotN[d.id] = d.data().nick || ""; gotM[d.id] = d.data().name || ""; });
+          chunk.forEach(function (u) { avatars[u] = got[u] || ""; nicks[u] = gotN[u] || ""; realNames[u] = gotM[u] || ""; putUA(u); });
+        }, function () { chunk.forEach(function (u) { if (avatars[u] === undefined) { avatars[u] = ""; nicks[u] = ""; realNames[u] = ""; } }); }));
       })(need.slice(i, i + 30));
     }
     return Promise.all(jobs);
@@ -392,7 +401,7 @@
   /* Подтверждение заявки администратором: фото человека сразу переходит на его страницу. */
   function approveClaim(pid, uid) {
     return fb.f.updateDoc(fdoc("claims/" + pid), { status: "approved" }).then(function () {
-      cdrop("me:"); cdrop("pub:");
+      cdrop("me:"); cdrop("pub:"); cdrop("admin:");
       return Promise.all([loadAvatars([uid], true), profileCached(pid, true)]).then(function (r) {
         var a = avatars[uid];
         if (a && !(r[1] && r[1].avatar)) return writeProfile(pid, { avatar: a });
@@ -494,6 +503,11 @@
   }
 
   /* ------------------------------------------------------------ шапка: вход */
+  /* Страница самого пользователя: подтверждённая страница человека, иначе временная страница аккаунта */
+  function ownPageUrl() {
+    var ids = approvedPids();
+    return ids.length ? ROOT + "p/" + ids[0] + "/" : ROOT + "u/?id=" + encodeURIComponent(state.user.uid);
+  }
   function drawAuth() {
     var slot = document.getElementById("auth-slot");
     if (!slot) return;
@@ -503,8 +517,15 @@
       slot.append(el("button", { type: "button", class: "head-link head-btn", text: "Войти", onclick: signIn }));
     } else {
       var first = (myName() || "Аккаунт").split(" ")[0];
-      slot.append(el("a", { class: "head-link head-me", href: ROOT + "account/", title: "Личный кабинет: " + first + (state.admin ? " (админ)" : ""), "aria-label": "Личный кабинет: " + first },
+      slot.append(el("a", { class: "head-link head-me", href: ownPageUrl(), title: "Моя страница: " + first + (state.admin ? " (админ)" : ""), "aria-label": "Моя страница: " + first },
         avatarNode(state.user.uid, myName(), "s")));
+      if (state.admin) {
+        cached("admin:pending", TTL.comments, false, function () {
+          return fb.f.getDocs(fb.f.query(fcol("claims"), fb.f.where("status", "==", "pending"))).then(function (q) { return q.size; });
+        }).then(function (n) {
+          if (n > 0 && slot.isConnected && !slot.querySelector(".head-badge")) slot.append(el("a", { class: "head-badge", href: ROOT + "account/", title: "Заявки на подтверждение страниц", "aria-label": "Заявок на подтверждение: " + n, text: String(n) }));
+        }, function () { });
+      }
     }
   }
 
@@ -1088,8 +1109,7 @@
     function mine() { return !!(state.user && claim && claim.uid === state.user.uid && claim.status === "approved"); }
     function claimPerson() {
       var u = state.user;
-      return fb.f.setDoc(fdoc("claims/" + pid), { uid: u.uid, name: u.displayName || "Без имени", status: "pending", createdAt: fb.f.serverTimestamp() })
-        .then(function () { return loadMe(u, true); }).then(reloadPublic).then(draw, function (e) {
+      return submitClaim(pid, "").then(reloadPublic).then(draw, function (e) {
           note(box, e && e.code === "permission-denied"
             ? "Страница ещё не передана сервису. Попросите администратора открыть «Кабинет» и нажать «Обновить список»."
             : errText(e), "err");
@@ -1115,9 +1135,10 @@
           el("button", { type: "button", class: "linkbtn", text: "Отозвать заявку", onclick: function () { fb.f.deleteDoc(fdoc("claims/" + pid)).then(function () { return loadMe(u, true); }).then(reloadPublic).then(draw); } }));
       }
       if (mine()) {
-        box.append(el("div", { class: "c-row" }, shareButton(pid, pname), el("a", { class: "btn btn-s btn-ghost", href: ROOT + "account/", text: "Мой кабинет" })),
+        box.append(el("div", { class: "c-row" }, shareButton(pid, pname)),
           el("details", { class: "edit-box" }, el("summary", { text: "Редактировать страницу" }),
             profileEditor(pid, profile, aboutEl ? aboutEl.textContent.trim() : "", true, function () { reloadPublic().then(draw); })),
+          nickEditor(function () { draw(); }), selfFooter(),
           el("button", { type: "button", class: "linkbtn", text: "Отказаться от страницы", onclick: function () { if (confirm("Отвязать аккаунт от этой страницы?")) fb.f.deleteDoc(fdoc("claims/" + pid)).then(function () { return loadMe(u, true); }).then(reloadPublic).then(draw); } }));
       }
       if (state.admin) {
@@ -1143,7 +1164,7 @@
     ]).then(function (r) {
       var titles = {}; ((r[0] && r[0].numbers) || []).forEach(function (n) { titles[n.id] = n.title; });
       ((r[0] && r[0].people) || []).forEach(function (p) { peopleNames[p.id] = p.name; });
-      return { titles: titles, rate: r[1] || {} };
+      return { titles: titles, rate: r[1] || {}, numbers: (r[0] && r[0].numbers) || [], people: (r[0] && r[0].people) || [] };
     });
     return catP;
   }
@@ -1382,31 +1403,83 @@
     var box = document.getElementById("user-page");
     if (!box) return;
     var uid = new URLSearchParams(location.search).get("id") || "";
-    var data = null, titles = {}, done = false, moved = false;
+    var data = null, info = null, claimsOf = {}, done = false, moved = false;
+    var tabsHost = el("div", { class: "ptabs" });
 
-    function load() {
+    function load(fresh) {
       if (!uid) { done = true; return Promise.resolve(); }
       return Promise.all([
-        cached("user:claims:" + uid, TTL.pub, false, function () {
+        cached("user:claims:" + uid, TTL.pub, fresh === true, function () {
           return fb.f.getDocs(fb.f.query(fcol("claims"), fb.f.where("uid", "==", uid))).then(function (s) {
             var o = {}; s.forEach(function (d) { o[d.id] = d.data(); }); return o;
           });
         }).catch(function () { return {}; }),
         loadUserComments(uid).catch(function () { return null; }),
         loadAvatars([uid]),
-        fetch(ROOT + "catalog.json").then(function (r) { return r.json(); }).then(function (j) {
-          (j.numbers || []).forEach(function (n) { titles[n.id] = n.title; });
-        }).catch(function () { })
+        catalogInfo()
       ]).then(function (r) {
-        var cl = r[0] || {}, pids = Object.keys(cl).filter(function (p) { return cl[p].status === "approved"; });
+        claimsOf = r[0] || {}; data = r[1]; info = r[3];
+        var pids = Object.keys(claimsOf).filter(function (p) { return claimsOf[p].status === "approved"; });
         if (pids.length) { moved = true; location.replace(ROOT + "p/" + pids[0] + "/"); return; }
-        data = r[1]; done = true;
+        done = true;
       });
     }
-    function ms(c) { return c.createdAt && c.createdAt.toMillis ? c.createdAt.toMillis() : 0; }
-    function when(c) {
-      return c.createdAt && c.createdAt.toDate
-        ? c.createdAt.toDate().toLocaleString("ru-RU", { day: "numeric", month: "long", year: "numeric", hour: "2-digit", minute: "2-digit" }) : "";
+    function dismissed(pid) { try { return window.localStorage.getItem("sg:nomatch:" + uid + ":" + pid) === "1"; } catch (e) { return false; } }
+    function dismiss(pid) { try { window.localStorage.setItem("sg:nomatch:" + uid + ":" + pid, "1"); } catch (e) { } }
+    function refresh() { cdrop("user:claims:" + uid); return load(true).then(draw); }
+
+    /* «Это ваша страница?»: в каталоге нашёлся человек с таким же именем */
+    function matchCard(p, taken, ambiguous) {
+      var nums = numbersOfPerson(info, p.name);
+      var patr = el("input", { class: "c-input", type: "text", maxlength: "40", "aria-label": "Отчество", placeholder: ambiguous ? "Отчество (в каталоге есть тёзки)" : "Отчество (по желанию)" });
+      var card = el("section", { class: "match-card" },
+        el("h2", { text: "Это ваша страница?" }),
+        el("p", { class: "match-name" }, el("a", { href: ROOT + "p/" + p.id + "/", text: p.name }),
+          el("span", { class: "c-hint", text: nums.length ? " · номеров: " + nums.length : "" })));
+      var ul = el("div", { class: "c-list match-nums" });
+      nums.slice(0, 4).forEach(function (n) { ul.append(pcard(n.id, [el("p", { class: "c-head" }, numLink(info, n.id)), el("p", { class: "c-hint", text: n.concert || "" })])); });
+      card.append(ul);
+      if (nums.length > 4) card.append(el("p", { class: "c-hint" }, el("a", { href: ROOT + "p/" + p.id + "/", text: "Все номера на странице" })));
+      if (taken) {
+        card.append(el("p", { class: "msg", text: "На эту страницу уже подана заявка с другого аккаунта. Если вы не тот человек, нажмите «Нет, не моя»." }));
+      } else {
+        card.append(patr);
+      }
+      var row = el("div", { class: "c-row" });
+      if (!taken) row.append(el("button", { type: "button", class: "btn", text: "Да, это моя страница", onclick: function (ev) {
+        var pt = patr.value.trim().replace(/\s+/g, " ");
+        if (ambiguous && !pt) { note(card, "Впишите отчество: в каталоге есть человек с таким же именем и фамилией.", "err"); patr.focus(); return; }
+        ev.target.disabled = true;
+        submitClaim(p.id, pt).then(function () { toast("Заявка отправлена администратору."); return refresh(); },
+          function (e) { ev.target.disabled = false; note(card, e && e.code === "permission-denied" ? "Страница ещё не передана сервису. Попробуйте позже." : errText(e), "err"); });
+      } }));
+      row.append(el("button", { type: "button", class: "btn btn-ghost", text: "Нет, не моя", onclick: function () { dismiss(p.id); card.remove(); } }));
+      card.append(row);
+      if (!taken) card.append(el("p", { class: "c-hint", text: "После заявки страница будет «не подтверждена», пока её не проверит администратор." }));
+      return card;
+    }
+    function drawMatches(host) {
+      var ms = matchPeople(info, state.user.displayName || "").filter(function (p) { return !dismissed(p.id); });
+      if (!ms.length) return;
+      Promise.all(ms.map(function (p) {
+        return fb.f.getDoc(fdoc("claims/" + p.id)).then(function (d) { return d.exists() ? d.data() : null; }, function () { return null; });
+      })).then(function (taken) {
+        ms.forEach(function (p, i) { host.append(matchCard(p, taken[i], ms.length > 1)); });
+      });
+    }
+    function searchBox() {
+      var inp = el("input", { class: "c-input", type: "text", list: "pu-people", placeholder: "Фамилия и имя", "aria-label": "Найти свою страницу", autocomplete: "off" });
+      var dl = el("datalist", { id: "pu-people" });
+      (info.people || []).forEach(function (p) { dl.append(el("option", { value: p.name })); });
+      var msg = el("p", { class: "msg msg-err", hidden: true });
+      var go = function () {
+        var v = nrm(inp.value), hit = (info.people || []).filter(function (p) { return nrm(p.name) === v; })[0] || matchPeople(info, inp.value)[0];
+        if (hit) { location.href = ROOT + "p/" + hit.id + "/"; return; }
+        msg.textContent = "Такой страницы нет. Выберите имя из подсказки."; msg.hidden = false;
+      };
+      return el("details", { class: "edit-box" }, el("summary", { text: "Найти свою страницу среди участников" }),
+        el("p", { class: "c-hint", text: "Выступали под другой фамилией? Найдите страницу по прежнему имени и нажмите «Это моя страница»." }),
+        el("div", { class: "c-row" }, inp, dl, el("button", { type: "button", class: "btn btn-s", text: "Открыть", onclick: go })), msg);
     }
 
     function draw() {
@@ -1414,20 +1487,117 @@
       if (!uid) { box.append(el("p", { class: "c-hint", text: "Не указан пользователь." })); return; }
       if (!done || moved) { box.append(el("p", { class: "c-hint", text: "Загрузка…" })); return; }
       var self = !!(state.user && state.user.uid === uid);
-      var list = (data || []).slice().sort(function (a, b) { return ms(b) - ms(a); });
-      var name = (list.length && list[0].authorName) || (self && state.user.displayName) || "Пользователь";
+      if (self && !state.ready) { box.append(el("p", { class: "c-hint", text: "Загрузка…" })); return; }
+      if (self && approvedPids().length) { location.replace(ownPageUrl()); return; }
+      var cl = self ? state.claims : claimsOf;
+      var pend = Object.keys(cl || {}).filter(function (p) { return cl[p].status === "pending"; });
+      var list = (data || []).slice().sort(function (a, b) { return tsMs(b.createdAt) - tsMs(a.createdAt); });
+      var name = nicks[uid] || realNames[uid] || (list.length && list[0].authorName) || (self && myName()) || "Пользователь";
       document.title = document.title.replace(/^[^:]*:/, name + ":");
-      box.append(el("div", { class: "user-head" }, avatarNode(uid, name, "l"),
-        el("div", null, el("h1", { text: name }),
-          el("p", { class: "c-hint", text: data === null ? "Комментарии не загрузились." : "Комментариев: " + list.length }))));
-      if (self) box.append(el("div", { class: "c-row" }, shareButton("", name, location.href), el("a", { class: "btn btn-s btn-ghost", href: ROOT + "account/", text: "Мой кабинет" })));
-      var tabs = box._tabsHost;
-      if (!tabs) { tabs = box._tabsHost = el("div", { class: "ptabs" }); }
-      box.append(tabs);
-      mountTabs(tabs, { uid: uid, name: name, self: self });
+      var ttl = el("div", null, el("h1", { text: name }));
+      if (pend.length) {
+        ttl.append(el("p", { class: "user-pend" }, el("span", { class: "badge badge-off", text: "Не подтверждено" }), " ",
+          el("a", { href: ROOT + "p/" + pend[0] + "/", text: "страница «" + (peopleNames[pend[0]] || pend[0]) + "»" })));
+      } else if (self) ttl.append(el("p", { class: "c-hint", text: "Это ваша страница. Её видят все, кто нажмёт на ваше имя." }));
+      box.append(el("div", { class: "user-head" }, avatarNode(uid, name, "l"), ttl));
+
+      if (self) {
+        if (pend.length) {
+          box.append(el("p", { class: "msg", text: "Заявка на страницу «" + (peopleNames[pend[0]] || pend[0]) + "» отправлена администратору. Пока она не подтверждена, у вас эта временная страница. После подтверждения они объединятся." }),
+            el("button", { type: "button", class: "linkbtn", text: "Отозвать заявку", onclick: function () { withdrawClaim(pend[0]).then(refresh, function (e) { toast(errText(e)); }); } }));
+        } else {
+          var mh = el("div", { class: "match-host" });
+          box.append(mh); drawMatches(mh);
+          box.append(searchBox());
+        }
+        box.append(el("div", { class: "c-row" }, shareButton("", name, location.href)),
+          selfAvatarEditor(function () { draw(); }), nickEditor(function () { draw(); }), selfFooter());
+      }
+      box.append(tabsHost);
+      mountTabs(tabsHost, { uid: uid, name: name, self: self });
     }
     views.push(draw);
     load().then(draw);
+  }
+
+  /* ------------------------------------------------------------ страница пользователя: общие части */
+  /* Имя и фамилия сравниваются по первым двум словам, в любом порядке («Белоусова Виктория» = «Виктория Белоусова») */
+  function nameKeys(full) {
+    var t = nrm(full).split(" ").filter(Boolean);
+    if (t.length < 2) return [nrm(full)];
+    var a = t.slice(0, 2);
+    return [a.join(" "), a.slice().reverse().join(" ")];
+  }
+  function matchPeople(info, name) {
+    if (nrm(name).split(" ").filter(Boolean).length < 2) return [];
+    var keys = nameKeys(name);
+    return (info.people || []).filter(function (p) { return nameKeys(p.name).some(function (k) { return keys.indexOf(k) !== -1; }); });
+  }
+  function numbersOfPerson(info, name) {
+    var key = nrm(name);
+    return (info.numbers || []).filter(function (n) {
+      return (n.performers || []).concat(n.choreographers || []).some(function (x) { return nrm(x) === key; });
+    });
+  }
+  /* Заявка «это моя страница»: отчество (если нужно) дописывается к имени заявки, чтобы администратор мог отличить тёзок */
+  function submitClaim(pid, patronymic) {
+    var u = state.user, nm = (u.displayName || "Без имени") + (patronymic ? " " + patronymic : "");
+    return fb.f.setDoc(fdoc("claims/" + pid), { uid: u.uid, name: nm.slice(0, 100), status: "pending", createdAt: fb.f.serverTimestamp() })
+      .then(function () { cdrop("admin:"); return loadMe(u, true); }).then(function () { drawAuth(); });
+  }
+  function withdrawClaim(pid) {
+    return fb.f.deleteDoc(fdoc("claims/" + pid)).then(function () { cdrop("admin:"); return loadMe(state.user, true); }).then(function () { drawAuth(); });
+  }
+  /* Ник: показывается в комментариях и на странице; имя и фамилия на странице остаются прежними */
+  function nickEditor(done) {
+    var nameIn = el("input", { class: "c-input", type: "text", maxlength: "40", "aria-label": "Ник" });
+    nameIn.value = myName();
+    var box = el("details", { class: "edit-box" }, el("summary", { text: "Изменить ник" }),
+      el("label", null, "Ник или имя в комментариях", nameIn),
+      el("p", { class: "c-hint", text: "Имя и фамилия на странице не меняются: если ник отличается, они стоят рядом в скобках. Менять можно до " + LIM.renames + " раз в месяц." }),
+      el("button", { type: "button", class: "btn btn-s", text: "Сохранить", onclick: function () {
+        var nm = nameIn.value.trim().replace(/\s+/g, " ");
+        if (nm.length < 2) { note(box, "Ник слишком короткий.", "err"); return; }
+        var bad = findProfanity(nm);
+        if (bad) { note(box, "Мат не проходит: слово «" + bad + "».", "err"); return; }
+        setMyNick(nm).then(function () { note(box, "Сохранено.", "ok"); done && done(); }, function (e) { note(box, errText(e), "err"); });
+      } }));
+    return box;
+  }
+  /* Фото своего аккаунта: окно обрезки, лимит 3 раза в месяц */
+  function selfAvatarEditor(done) {
+    var u = state.user, wrap = el("div", { class: "avatar-edit" });
+    var file = el("input", { type: "file", accept: "image/*", "aria-label": "Выбрать фото", hidden: true, onchange: function () {
+      var f = file.files[0]; if (!f) return;
+      file.value = "";
+      avatarLimitLeft().then(function () { return cropDialog(f); }).then(function (blob) {
+        note(wrap, "Загружаем…");
+        return setMyAvatar(blob).then(function () { note(wrap, "Фото сохранено.", "ok"); done && done(); });
+      }).catch(function (e) {
+        if (e && e.cancelled) return;
+        note(wrap, e && e.code ? errText(e) : (e && e.message) || "Не удалось загрузить фото.", "err");
+      });
+    } });
+    wrap.append(el("div", null,
+      el("button", { type: "button", class: "btn btn-s", text: avatars[u.uid] ? "Заменить фото" : "Загрузить фото", onclick: function () { file.click(); } }),
+      avatars[u.uid] && el("button", { type: "button", class: "linkbtn", text: "Убрать фото", onclick: function () { clearMyAvatar().then(function () { done && done(); }, function (e) { note(wrap, errText(e), "err"); }); } }),
+      el("p", { class: "c-hint", text: "Фото видно рядом с комментариями и на вашей странице. Менять можно до " + LIM.avatars + " раз в месяц." })),
+      file);
+    return wrap;
+  }
+  function selfFooter() {
+    var u = state.user, out = el("div", { class: "self-foot" });
+    var viaPass = u.providerData && u.providerData.some(function (p) { return p.providerId === "password"; });
+    if (viaPass && !u.emailVerified) {
+      out.append(el("p", { class: "c-hint", text: "E-mail " + u.email + " пока не подтверждён." }),
+        el("button", { type: "button", class: "linkbtn", text: "Отправить письмо ещё раз", onclick: function (ev) {
+          fb.a.sendEmailVerification(u).then(function () { ev.target.textContent = "Письмо отправлено"; }, function (e) { toast(errText(e)); }); } }));
+    }
+    var row = el("div", { class: "c-row" });
+    if (state.admin) row.append(el("a", { class: "btn btn-s btn-ghost", href: ROOT + "account/", text: "Кабинет администратора" }));
+    row.append(el("button", { type: "button", class: "btn btn-s btn-ghost", text: "Выйти из аккаунта", onclick: signOut }));
+    out.append(row);
+    return out;
   }
 
   /* Окно обрезки фото: двигать пальцем или мышью, менять размер ползунком, колесом или щипком. Результат — квадрат 512 px. */
@@ -1704,6 +1874,7 @@
     }
     function reload() { loadMe(state.user, true).then(loadAdmin).then(loadMine).then(draw); }
     views.push(function () {
+      if (state.ready && state.user && !state.admin) { location.replace(ownPageUrl()); return; }   // у обычных пользователей кабинет заменила собственная страница
       draw();
       loadMine().then(draw);
       loadCatalog().then(function () {

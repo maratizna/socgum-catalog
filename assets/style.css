@@ -418,3 +418,14 @@ a.btn{text-decoration:none;display:inline-block}
 .pcard-body{min-width:0}
 @media (max-width:420px){.pcard{grid-template-columns:76px 1fr;gap:10px}.pcard-cover{width:76px}}
 @media (max-width:640px){.head-me .avatar{width:46px;height:46px}.head-search{width:42px;height:42px}}
+
+/* страница пользователя: заявка, «это ваша страница» */
+.head-badge{display:inline-flex;align-items:center;justify-content:center;min-width:22px;height:22px;padding:0 6px;border-radius:999px;background:var(--ember);color:#0b0a08;font-size:.8rem;font-weight:700;text-decoration:none}
+.user-pend{margin:6px 0 0}
+.match-card{margin:20px 0;padding:18px;border:2px solid var(--ember);border-radius:16px;background:var(--coal-2);display:grid;gap:12px}
+.match-card h2{margin:0;font-size:1.3rem}
+.match-name{margin:0;font-size:1.1rem}
+.match-card .c-row{display:flex;gap:12px;flex-wrap:wrap}
+.match-nums{display:grid;gap:10px}
+.self-foot{margin:22px 0 0;display:grid;gap:10px}
+.user-page .edit-box,.person .edit-box{margin:12px 0}

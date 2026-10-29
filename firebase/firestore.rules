@@ -84,12 +84,14 @@ service cloud.firestore {
     match /users/{uid} {
       allow read: if true;
       allow create, update: if signedIn() && request.auth.uid == uid
-        && request.resource.data.keys().hasOnly(['avatar', 'nick', 'updatedAt'])
+        && request.resource.data.keys().hasOnly(['avatar', 'nick', 'name', 'updatedAt'])
         && request.resource.data.updatedAt == request.time
         && (!('avatar' in request.resource.data)
             || (request.resource.data.avatar is string && request.resource.data.avatar.size() <= 40000))
         && (!('nick' in request.resource.data)
             || (request.resource.data.nick is string && request.resource.data.nick.size() <= 40))
+        && (!('name' in request.resource.data)
+            || (request.resource.data.name is string && request.resource.data.name.size() <= 100))
         // новое фото: не больше 3 в месяц; новый ник: не больше 5 в месяц
         && (request.resource.data.get('avatar', '') == ''
             || request.resource.data.get('avatar', '') == (resource == null ? '' : resource.data.get('avatar', ''))
