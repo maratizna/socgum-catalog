@@ -15,6 +15,25 @@ service cloud.firestore {
         && get(/databases/$(database)/documents/claims/$(pid)).data.status == 'approved';
     }
 
+    // Лимиты в сутки и в месяц. Время считается по Самаре (UTC+4).
+    // Счётчики лежат в usage/{аккаунт}_d{день} (комментарии, лайки) и usage/{аккаунт}_m{месяц} (фото, смена имени).
+    function stamp() { return request.time + duration.value(4, 'h'); }
+    function dayStamp() { return string(stamp().year()) + '-' + string(stamp().month()) + '-' + string(stamp().day()); }
+    function monthStamp() { return string(stamp().year()) + '-' + string(stamp().month()); }
+    function dayPath() { return /databases/$(database)/documents/usage/$(request.auth.uid + '_d' + dayStamp()); }
+    function monthPath() { return /databases/$(database)/documents/usage/$(request.auth.uid + '_m' + monthStamp()); }
+    function prevCount(p, f) { return exists(p) ? get(p).data.get(f, 0) : 0; }
+    // имя автора: ник из кабинета, если он есть, иначе имя аккаунта
+    function userPath() { return /databases/$(database)/documents/users/$(request.auth.uid); }
+    function nickOf() { return exists(userPath()) ? get(userPath()).data.get('nick', '') : ''; }
+    function nameFor(nick) { return nick != '' ? nick : request.auth.token.name; }
+    function authorOk(name) { return name == nameFor(nickOf()); }
+    // комментарий считается за сегодняшний лимит: счётчик в той же записи вырос на 1, а номер за день входит в ключ
+    function commentSlotOk(cid, cnt) {
+      return cnt == prevCount(dayPath(), 'comments') + 1
+        && cid == dayStamp() + '_' + request.auth.uid + '_' + string(cnt);
+    }
+
     // Администраторы: запись только из консоли Firebase. Каждый видит только свою запись.
     match /admins/{uid} {
       allow read: if signedIn() && request.auth.uid == uid;
@@ -65,10 +84,40 @@ service cloud.firestore {
     match /users/{uid} {
       allow read: if true;
       allow create, update: if signedIn() && request.auth.uid == uid
-        && request.resource.data.keys().hasOnly(['avatar', 'updatedAt'])
-        && request.resource.data.avatar is string && request.resource.data.avatar.size() <= 40000
-        && request.resource.data.updatedAt == request.time;
+        && request.resource.data.keys().hasOnly(['avatar', 'nick', 'updatedAt'])
+        && request.resource.data.updatedAt == request.time
+        && (!('avatar' in request.resource.data)
+            || (request.resource.data.avatar is string && request.resource.data.avatar.size() <= 40000))
+        && (!('nick' in request.resource.data)
+            || (request.resource.data.nick is string && request.resource.data.nick.size() <= 40))
+        // новое фото: не больше 3 в месяц; новый ник: не больше 5 в месяц
+        && (request.resource.data.get('avatar', '') == ''
+            || request.resource.data.get('avatar', '') == (resource == null ? '' : resource.data.get('avatar', ''))
+            || getAfter(monthPath()).data.get('avatars', 0) == prevCount(monthPath(), 'avatars') + 1)
+        && (request.resource.data.get('nick', '') == (resource == null ? '' : resource.data.get('nick', ''))
+            || getAfter(monthPath()).data.get('renames', 0) == prevCount(monthPath(), 'renames') + 1);
       allow delete: if signedIn() && (request.auth.uid == uid || isAdmin());
+    }
+
+    // Счётчики лимитов: растут не больше чем на 1 за запись и не выше предела.
+    match /usage/{key} {
+      function usePrev(f) { return resource == null ? 0 : resource.data.get(f, 0); }
+      function useStep(f, max) {
+        return request.resource.data.get(f, 0) >= usePrev(f)
+          && request.resource.data.get(f, 0) <= usePrev(f) + 1
+          && request.resource.data.get(f, 0) <= max;
+      }
+      allow read: if signedIn() && key.matches(request.auth.uid + '_.*');
+      allow create, update: if signedIn()
+        && request.resource.data.uid == request.auth.uid
+        && request.resource.data.updatedAt == request.time
+        && ((key == request.auth.uid + '_d' + dayStamp()
+              && request.resource.data.keys().hasOnly(['uid', 'comments', 'likes', 'updatedAt'])
+              && useStep('comments', 10) && useStep('likes', 50))
+            || (key == request.auth.uid + '_m' + monthStamp()
+              && request.resource.data.keys().hasOnly(['uid', 'avatars', 'renames', 'updatedAt'])
+              && useStep('avatars', 3) && useStep('renames', 5)));
+      allow delete: if false;
     }
 
     // Слово постановщика на странице номера.
@@ -92,7 +141,9 @@ service cloud.firestore {
       allow create: if signedIn()
         && request.resource.data.keys().hasOnly(['numberId', 'uid', 'authorName', 'authorPersonId', 'text', 'createdAt', 'status', 'parentId'])
         && request.resource.data.uid == request.auth.uid
-        && request.resource.data.authorName == request.auth.token.name
+        && authorOk(request.resource.data.authorName)
+        // не больше 10 комментариев в день: номер за день входит в ключ комментария
+        && commentSlotOk(cid, getAfter(dayPath()).data.get('comments', 0))
         && request.resource.data.numberId is string && request.resource.data.numberId.size() <= 100
         && request.resource.data.text is string
         && request.resource.data.text.size() >= 1 && request.resource.data.text.size() <= 2000
@@ -175,6 +226,7 @@ service cloud.firestore {
 
     // Лайки комментариям. Один лайк на человека (ключ «комментарий_аккаунт»). Список лайкнувших публичный.
     // Убрать лайк может сам автор лайка, автор комментария (при удалении комментария) и администратор.
+    function likeTargetOk(c) { return c.numberId == request.resource.data.numberId && c.status == 'visible'; }
     match /likes/{lid} {
       allow read: if true;
       allow create: if signedIn()
@@ -182,12 +234,13 @@ service cloud.firestore {
         && request.resource.data.commentId is string
         && lid == request.resource.data.commentId + '_' + request.auth.uid
         && request.resource.data.uid == request.auth.uid
-        && request.resource.data.userName == request.auth.token.name
+        && authorOk(request.resource.data.userName)
+        // не больше 50 лайков в день
+        && getAfter(dayPath()).data.get('likes', 0) == prevCount(dayPath(), 'likes') + 1
         && request.resource.data.createdAt == request.time
         && request.resource.data.numberId is string
         && exists(/databases/$(database)/documents/comments/$(request.resource.data.commentId))
-        && get(/databases/$(database)/documents/comments/$(request.resource.data.commentId)).data.numberId == request.resource.data.numberId
-        && get(/databases/$(database)/documents/comments/$(request.resource.data.commentId)).data.status == 'visible';
+        && likeTargetOk(get(/databases/$(database)/documents/comments/$(request.resource.data.commentId)).data);
       allow delete: if signedIn()
         && (resource.data.uid == request.auth.uid
             || isAdmin()

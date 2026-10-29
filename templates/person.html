@@ -6,7 +6,7 @@
   <div class="person-head">
     {% if firebase %}<img id="p-avatar" class="avatar avatar-l" alt="" hidden>{% endif %}
     <div>
-      <h1>{{ p.name }}</h1>
+      <h1 id="p-name">{{ p.name }}</h1>
       <p class="lead" id="p-about"{% if not p.about %} hidden{% endif %}>{{ p.about }}</p>
       <p class="person-link" id="p-link"{% if not p.link %} hidden{% endif %}>{% if p.link %}<a href="{{ p.link }}" rel="noopener">{{ p.link|domain }}</a>{% endif %}</p>
     </div>
