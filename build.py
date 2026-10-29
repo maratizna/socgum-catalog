@@ -41,7 +41,6 @@ ROOT = Path(__file__).resolve().parent
 OUT = ROOT / "site"
 TMP = ROOT / "site.tmp"
 COVERS = ROOT / "covers"
-MATERIALS = ROOT / "materials"   # свои файлы для листа «Доп. материалы»
 Image.MAX_IMAGE_PIXELS = 200_000_000
 
 # ---------------------------------------------------------------- вспомогательное
@@ -650,7 +649,17 @@ def parse_materials(rows, concerts, directions, numbers, report):
                     continue
                 obj["materials"]["links"].append({"url": u, "label": caption or re.sub(r"^https?://(www\.)?", "", u).split("/")[0]})
             else:
-                obj["materials"]["photos"].append({"url": u, "caption": caption, "row": row})
+                if not re.match(r"^https?://\S+$", u):
+                    report.warn(S, row, f"Фото «{u}»: нужна прямая ссылка на картинку (начало https://). Пропущено.")
+                    continue
+                if re.match(r"^https?://(www\.|m\.)?vk\.com/", u, re.I):
+                    report.warn(S, row, "Это страница ВК, а не картинка. Откройте фото, нажмите «Открыть оригинал» и скопируйте адрес картинки "
+                                        "(он начинается с sun9-… и заканчивается на userapi.com/…). Фото не показано.")
+                    continue
+                m = re.search(r"drive\.google\.com/file/d/([\w-]+)", u) or re.search(r"drive\.google\.com/(?:open|uc)\?[^#]*?id=([\w-]+)", u)
+                if m:
+                    u = f"https://drive.google.com/thumbnail?id={m.group(1)}&sz=w1600"
+                obj["materials"]["photos"].append({"src": u, "caption": caption})
 
 
 def build_model(wb, report):
@@ -1002,39 +1011,6 @@ def build_site(concerts, directions, numbers, people, report, demo, source):
             else:
                 report.warn("Номера", n["row"], f"У номера «{n['title']}» нет обложки (положите в covers файл {n['id']}.jpg). Показана заглушка.")
         n["cover_size"] = size
-    # фото из «Доп. материалов»: скачиваем и храним свои копии (ссылки ВК со временем «протухают»)
-    made, mdir = {}, TMP / "img" / "m"
-    for obj in list(concerts.values()) + list(directions.values()) + list(numbers.values()):
-        keep = []
-        for ph in obj["materials"]["photos"]:
-            url = ph["url"]
-            if url not in made:
-                made[url] = None
-                if re.match(r"https?://", url, re.I):
-                    src = download_cover(url, report, {"row": ph["row"], "sheet": "Доп. материалы", "tail": "Фото не показано."})
-                else:
-                    f = MATERIALS / url
-                    src = f if f.is_file() else None
-                    if not src:
-                        report.warn("Доп. материалы", ph["row"], f"Файл «{url}» не найден в папке materials. Фото не показано.")
-                if src:
-                    try:
-                        with Image.open(src) as im:
-                            im.load()
-                            im = ImageOps.exif_transpose(im).convert("RGB")
-                            if max(im.size) > 1280:
-                                im.thumbnail((1280, 1280), Image.LANCZOS)
-                            name = hashlib.sha1(url.encode()).hexdigest()[:12] + ".webp"
-                            mdir.mkdir(parents=True, exist_ok=True)
-                            im.save(mdir / name, "WEBP", quality=80, method=4)
-                            made[url] = {"src": "img/m/" + name, "w": im.width, "h": im.height, "ext": False}
-                    except Exception as e:  # noqa: BLE001
-                        report.warn("Доп. материалы", ph["row"], f"Не удалось открыть фото «{url}»: {e}. Фото не показано.")
-                if not made[url] and re.match(r"https?://\S+$", url) and IMG_EXT_RE.search(url):
-                    made[url] = {"src": url, "w": 4, "h": 3, "ext": True}  # запасной вариант: показываем по ссылке
-            if made[url]:
-                keep.append({**made[url], "caption": ph["caption"]})
-        obj["materials"]["photos"] = keep
     if report.errors:
         return None
 

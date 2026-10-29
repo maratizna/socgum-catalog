@@ -7,8 +7,8 @@
     <div class="gal-track" tabindex="0" role="group" aria-label="Фотографии, листайте вбок">
       {% for p in m.photos %}
       <figure class="gal-item">
-        <img src="{{ p.src if p.ext else root ~ p.src }}" {% if not p.ext %}width="{{ p.w }}" height="{{ p.h }}"{% endif %} loading="lazy" decoding="async"
-             alt="{{ p.caption or 'Фото ' ~ loop.index }}"{% if p.ext %} referrerpolicy="no-referrer"{% endif %}>
+        <img src="{{ p.src }}" loading="lazy" decoding="async" referrerpolicy="no-referrer"
+             alt="{{ p.caption or 'Фото ' ~ loop.index }}">
         {% if p.caption %}<figcaption>{{ p.caption }}</figcaption>{% endif %}
       </figure>
       {% endfor %}
