@@ -8,8 +8,12 @@
 
 <section class="filters" aria-label="Поиск и фильтры">
   <div class="filter-row">
-    <input type="search" id="q" class="search" placeholder="Название, коллектив, участник, постановщик" list="people-list" autocomplete="off" aria-label="Поиск по каталогу">
-    <datalist id="people-list">{% for p in people %}<option value="{{ p.name }}">{% endfor %}</datalist>
+    <div class="search-wrap">
+      <input type="search" id="q" class="search" placeholder="Название, коллектив, участник, постановщик" autocomplete="off" aria-label="Поиск по каталогу" role="combobox" aria-expanded="false" aria-controls="sugg" aria-autocomplete="list">
+      <div id="sugg" class="sugg" role="listbox" aria-label="Подсказки" hidden></div>
+    </div>
+    {% set pj = [] %}{% for p in people %}{% set _ = pj.append({"n": p.name, "s": p.slug}) %}{% endfor %}
+    <script type="application/json" id="people-json">{{ pj|tojson }}</script>
   </div>
   <details class="filter-group" id="filter-group">
     <summary><span>Фильтры</span> <span class="filter-n" id="filter-n" hidden></span></summary>

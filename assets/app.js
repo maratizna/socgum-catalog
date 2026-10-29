@@ -6,6 +6,33 @@
   function norm(s) {
     return String(s || "").trim().replace(/\s+/g, " ").toLowerCase().replace(/ё/g, "е");
   }
+  /* для поиска: без регистра, «ё» = «е», «й» = «и» */
+  function nrm2(s) { return norm(s).replace(/й/g, "и"); }
+  /* расстояние Дамерау — Левенштейна с остановкой, когда оно уже больше max */
+  function lev(a, b, max) {
+    var la = a.length, lb = b.length, i, j;
+    if (Math.abs(la - lb) > max) return max + 1;
+    var p2 = null, p = [], c = [];
+    for (j = 0; j <= lb; j++) p[j] = j;
+    for (i = 1; i <= la; i++) {
+      c = [i]; var rowMin = i;
+      for (j = 1; j <= lb; j++) {
+        var v = Math.min(p[j] + 1, c[j - 1] + 1, p[j - 1] + (a.charAt(i - 1) === b.charAt(j - 1) ? 0 : 1));
+        if (i > 1 && j > 1 && a.charAt(i - 1) === b.charAt(j - 2) && a.charAt(i - 2) === b.charAt(j - 1)) v = Math.min(v, p2[j - 2] + 1);
+        c[j] = v; if (v < rowMin) rowMin = v;
+      }
+      if (rowMin > max) return max + 1;
+      p2 = p; p = c;
+    }
+    return p[lb];
+  }
+  /* слово запроса похоже на слово из каталога с опечаткой (короткие слова ищутся только точно) */
+  function nearWord(w, t) {
+    var k = w.length >= 9 ? 2 : (w.length >= 5 ? 1 : 0);
+    if (!k) return false;
+    if (lev(w, t, k) <= k) return true;
+    return t.length > w.length && lev(w, t.slice(0, w.length), k) <= k;
+  }
   var reduceMotion = window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 
   /* ------------------------------------------------------------ главная: фильтры */
@@ -34,7 +61,10 @@
     if (!/^(new|concert|title|collective)$/.test(state.s)) state.s = "new";
     var shown = PAGE;
 
-    cards.forEach(function (c) { c._search = norm(c.dataset.search); c._dirs = (c.dataset.direction || "").split(" "); });
+    cards.forEach(function (c) {
+      c._search = nrm2(c.dataset.search); c._dirs = (c.dataset.direction || "").split(" ");
+      c._tokens = c._search.split(/[^a-zа-я0-9]+/).filter(function (t, i, a) { return t && a.indexOf(t) === i; });
+    });
 
     /* Группа «Фильтры»: открыта или свёрнута — запоминается в браузере */
     var group = document.getElementById("filter-group");
@@ -84,8 +114,12 @@
       if (state.c && card.dataset.concert !== state.c) return false;
       if (state.d && card._dirs.indexOf(state.d) === -1) return false;
       if (state.q) {
-        var words = norm(state.q).split(" ");
-        for (var i = 0; i < words.length; i++) if (card._search.indexOf(words[i]) === -1) return false;
+        var words = nrm2(state.q).split(" ");
+        for (var i = 0; i < words.length; i++) {
+          var w = words[i];
+          if (card._search.indexOf(w) !== -1) continue;
+          if (!card._tokens.some(function (t) { return nearWord(w, t); })) return false;
+        }
       }
       return true;
     }
@@ -173,6 +207,108 @@
         apply(true);
       });
     });
+
+    /* ---- подсказки и недавние запросы: всё из страницы и из памяти устройства, сервис не используется */
+    (function suggest() {
+      var box = document.getElementById("sugg"), KEY = "sg:recent", MONTH = 30 * 86400e3, MAXR = 8, MAXS = 8;
+      if (!box) return;
+      var people = []; try { people = JSON.parse(document.getElementById("people-json").textContent) || []; } catch (e) { }
+      var items = [], seen = {};
+      function add(kind, label, extra) { var k = kind + "|" + nrm2(label); if (!label || seen[k]) return; seen[k] = 1; var o = { kind: kind, label: label, key: nrm2(label), toks: nrm2(label).split(/[^a-zа-я0-9]+/).filter(Boolean) }; for (var x in extra) o[x] = extra[x]; items.push(o); }
+      cards.forEach(function (c) {
+        var a = c.querySelector(".card-link");
+        add("Номер", c.dataset.title, { href: a ? a.getAttribute("href") : "" });
+      });
+      people.forEach(function (p) { add("Человек", p.n, { href: "p/" + p.s + "/" }); });
+      cards.forEach(function (c) { add("Коллектив", c.dataset.collective, {}); });
+      if (selConcert) Array.prototype.forEach.call(selConcert.options, function (o) { if (o.value) add("Концерт", o.textContent.trim(), { concert: o.value }); });
+      var KIND_RANK = { "Номер": 0, "Человек": 1, "Коллектив": 2, "Концерт": 3 };
+
+      function recents() {
+        var r = []; try { r = JSON.parse(localStorage.getItem(KEY) || "[]"); } catch (e) { }
+        var now = Date.now(); return r.filter(function (x) { return x && x.q && now - x.t < MONTH; });
+      }
+      function saveRecent(q) {
+        q = String(q || "").trim().replace(/\s+/g, " ");
+        if (q.length < 3) return;
+        var r = recents().filter(function (x) { return nrm2(x.q) !== nrm2(q); });
+        r.unshift({ q: q, t: Date.now() });
+        try { localStorage.setItem(KEY, JSON.stringify(r.slice(0, MAXR))); } catch (e) { }
+      }
+      function clearRecents() { try { localStorage.removeItem(KEY); } catch (e) { } }
+
+      function score(it, words) {
+        var total = 0;
+        for (var i = 0; i < words.length; i++) {
+          var w = words[i], s;
+          if (it.key.indexOf(w) === 0) s = 0;
+          else if (it.toks.some(function (t) { return t.indexOf(w) === 0; })) s = 1;
+          else if (it.key.indexOf(w) !== -1) s = 2;
+          else if (it.toks.some(function (t) { return nearWord(w, t); })) s = 3;
+          else return -1;
+          total += s;
+        }
+        return total;
+      }
+      var list = [], active = -1, open = false;
+      function el(tag, cls, text) { var n = document.createElement(tag); if (cls) n.className = cls; if (text != null) n.textContent = text; return n; }
+      function close() { open = false; box.hidden = true; qInput.setAttribute("aria-expanded", "false"); qInput.removeAttribute("aria-activedescendant"); active = -1; }
+      function setActive(i) {
+        var nodes = box.querySelectorAll(".sg-item");
+        if (!nodes.length) return;
+        active = (i + nodes.length) % nodes.length;
+        Array.prototype.forEach.call(nodes, function (n, k) { n.classList.toggle("is-on", k === active); n.setAttribute("aria-selected", k === active ? "true" : "false"); });
+        qInput.setAttribute("aria-activedescendant", nodes[active].id);
+        nodes[active].scrollIntoView({ block: "nearest" });
+      }
+      function pick(it) {
+        saveRecent(it.label);
+        close();
+        if (it.href && it.kind !== "Коллектив") { location.href = it.href; return; }
+        if (it.concert) { state.q = ""; qInput.value = ""; state.c = it.concert; if (selConcert) selConcert.value = it.concert; apply(true); return; }
+        qInput.value = it.label; state.q = it.label; apply(true);
+      }
+      function render() {
+        var v = qInput.value.trim(), words = nrm2(v).split(" ").filter(Boolean);
+        clear();
+        list = [];
+        if (!words.length) {
+          var r = recents();
+          if (!r.length) { close(); return; }
+          var head = el("div", "sg-head");
+          head.append(el("span", "", "Недавние запросы"));
+          var clr = el("button", "sg-clear", "Очистить"); clr.type = "button";
+          clr.addEventListener("mousedown", function (e) { e.preventDefault(); clearRecents(); close(); });
+          head.append(clr); box.append(head);
+          r.forEach(function (x) { list.push({ kind: "Недавнее", label: x.q }); });
+        } else {
+          var scored = [];
+          items.forEach(function (it) { var s = score(it, words); if (s >= 0) scored.push([s, KIND_RANK[it.kind], it]); });
+          scored.sort(function (a, b) { return a[0] - b[0] || a[1] - b[1] || a[2].label.localeCompare(b[2].label, "ru"); });
+          list = scored.slice(0, MAXS).map(function (x) { return x[2]; });
+          if (!list.length) { close(); return; }
+        }
+        list.forEach(function (it, i) {
+          var n = el("div", "sg-item"); n.id = "sg-" + i; n.setAttribute("role", "option"); n.setAttribute("aria-selected", "false");
+          n.append(el("span", "sg-kind", it.kind), el("span", "sg-text", it.label));
+          n.addEventListener("mousedown", function (e) { e.preventDefault(); pick(it); });
+          box.append(n);
+        });
+        open = true; box.hidden = false; qInput.setAttribute("aria-expanded", "true"); active = -1;
+      }
+      function clear() { while (box.firstChild) box.removeChild(box.firstChild); }
+      qInput.addEventListener("input", render);
+      qInput.addEventListener("focus", render);
+      qInput.addEventListener("blur", function () { saveRecent(qInput.value); setTimeout(close, 120); });
+      qInput.addEventListener("keydown", function (e) {
+        if (e.key === "ArrowDown") { if (!open) render(); else setActive(active + 1); e.preventDefault(); }
+        else if (e.key === "ArrowUp" && open) { setActive(active < 0 ? -1 : active - 1); e.preventDefault(); }
+        else if (e.key === "Enter") {
+          if (open && active >= 0 && list[active]) { e.preventDefault(); pick(list[active]); }
+          else { saveRecent(qInput.value); close(); }
+        } else if (e.key === "Escape" && open) { close(); e.stopPropagation(); }
+      });
+    })();
 
     /* Значок поиска в шапке: на главной переводит в поле поиска, на других страницах ведёт на главную */
     function focusSearch() {

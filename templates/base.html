@@ -47,6 +47,22 @@
   <p>{{ site_title }}</p>
   {% if home_url %}<p><a href="{{ home_url }}">{{ home_label }}</a></p>{% endif %}
 </footer>
+<script>
+/* шапка прячется при прокрутке вниз и возвращается при прокрутке вверх */
+(function () {
+  var h = document.querySelector(".site-head"); if (!h) return;
+  var last = window.pageYOffset, busy = false;
+  function upd() {
+    busy = false;
+    var y = window.pageYOffset, d = y - last;
+    if (y < 80 || h.contains(document.activeElement) || document.querySelector(".user-menu")) { h.classList.remove("is-hidden"); last = y; return; }
+    if (d > 8) { h.classList.add("is-hidden"); last = y; }
+    else if (d < -8) { h.classList.remove("is-hidden"); last = y; }
+  }
+  window.addEventListener("scroll", function () { if (!busy) { busy = true; requestAnimationFrame(upd); } }, { passive: true });
+  h.addEventListener("focusin", function () { h.classList.remove("is-hidden"); });
+})();
+</script>
 {% block scripts %}{% endblock %}
 {% if firebase %}<script type="module" src="{{ root }}assets/social.js?v={{ asset_v }}"></script>{% endif %}
 </body>
