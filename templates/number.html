@@ -20,10 +20,13 @@
         </button>
         {% elif watch_links %}
         <div class="stage-note stage-links">{% for l in watch_links %}<a class="add-btn add-btn-s" href="{{ l.url }}" rel="noopener" target="_blank">Смотреть запись {{ l.label }}</a> {% endfor %}</div>
-        {% else %}
+        {% elif not n.offstage %}
         <p class="stage-note">Запись концерта пока не добавлена.</p>
         {% endif %}
       </div>
+      {% if n.social %}
+      <p class="social-links">{% for s in n.social %}<a class="add-btn add-btn-s soc soc-{{ s.kind }}" href="{{ s.url }}" rel="noopener" target="_blank">{% include "_soc_icon.html" %}<span>{{ 'Группа во ВКонтакте' if s.kind == 'vk' else ('Канал в Telegram' if s.kind == 'tg' else s.label) }}</span></a>{% endfor %}</p>
+      {% endif %}
       {% if firebase %}
       <div id="director-note" class="director-note" hidden></div>
       {% endif %}

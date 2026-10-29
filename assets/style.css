@@ -346,3 +346,8 @@ a.btn{text-decoration:none;display:inline-block}
   .head-me span{max-width:34vw;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
   .stage-note{padding:22px 12px 12px}
 }
+
+/* ссылки на группы и соцсети */
+.social-links{display:flex;flex-wrap:wrap;gap:8px;margin:14px 0 0}
+.soc{display:inline-flex;align-items:center;gap:8px}
+.soc-i{width:1.15em;height:1.15em;flex:none;color:var(--ember)}

@@ -243,6 +243,34 @@ def watch_link(url):
     return {"url": url, "label": label}
 
 
+SOCIAL_KINDS = [
+    (("vk.com", "vk.ru", "vkvideo.ru"), "vk", "ВКонтакте"),
+    (("t.me", "telegram.me", "telegram.org"), "tg", "Telegram"),
+    (("instagram.com",), "ig", "Instagram"),
+    (("youtube.com", "youtu.be"), "yt", "YouTube"),
+    (("tiktok.com",), "tt", "TikTok"),
+    (("rutube.ru",), "rt", "Rutube"),
+]
+
+
+def social_links(text):
+    """Ссылки на группы и соцсети из ячейки (через пробел, запятую или перенос строки): значок и название сети."""
+    out, seen = [], set()
+    for part in re.split(r"[\s,;]+", html.unescape(str(text or ""))):
+        url = part.strip()
+        if not re.match(r"^https?://\S+$", url, re.I) or url in seen:
+            continue
+        seen.add(url)
+        host = urlparse(url).netloc.lower().removeprefix("www.")
+        kind, label = "web", host or "Сайт"
+        for hosts, k, name in SOCIAL_KINDS:
+            if any(host == h or host.endswith("." + h) for h in hosts):
+                kind, label = k, name
+                break
+        out.append({"url": url, "kind": kind, "label": label})
+    return out
+
+
 def split_people(text):
     seen, out = set(), []
     for part in re.split(r"[,;\n]+", text or ""):
@@ -298,7 +326,7 @@ SPEC = {
         "order": ["№ в концерте", "номер в концерте", "порядок"], "title": ["название"],
         "collective": ["коллектив"], "performers": ["участники", "исполнители"], "choreographers": ["постановщики"],
         "about": ["описание"], "cover": ["обложка"], "start": ["начало"], "end": ["конец"],
-        "old_url": ["старый адрес"], "direction2": ["ещё направление", "еще направление", "второе направление"],
+        "old_url": ["старый адрес"], "links": ["ссылки", "соцсети", "группа"], "direction2": ["ещё направление", "еще направление", "второе направление"],
     },
     "Люди": {"name": ["имя"], "about": ["о себе", "описание"], "link": ["ссылка"], "id": ["id"]},
     "Формы": {"title": ["форма"], "url": ["ссылка для сотрудников", "ссылка"]},
@@ -520,7 +548,8 @@ def build_model(wb, report):
             "concert": concert, "direction": direction, "directions": dirs_found, "order": order,
             "performers": split_people(r.get("performers")), "choreographers": split_people(r.get("choreographers")),
             "about": r.get("about", ""), "cover_name": r.get("cover", ""), "start": start, "end": end,
-            "old_url": r.get("old_url", ""),
+            "old_url": r.get("old_url", ""), "social": social_links(r.get("links")),
+            "offstage": any(d.get("offstage") for d in dirs_found),
         }
         if concert and concert["video"] and start is None:
             report.warn("Номера", row, f"У номера «{r['title']}» нет начала: видео откроется с самого начала записи.")
@@ -779,7 +808,7 @@ def build_site(concerts, directions, numbers, people, report, demo, source):
             root="../../", n=n, page_title=f"{n['title']}: {cfg['site_title']}",
             canonical=f"{site_url}/n/{n['id']}/" if site_url else "",
             og_image=f"{site_url}/img/{n['id']}/og.jpg" if site_url else "", description=desc,
-            video=n["concert"]["video"], watch_links=n["concert"]["links"], people_names=people_names, **ctx_common))
+            video=None if n["offstage"] else n["concert"]["video"], watch_links=[] if n["offstage"] else n["concert"]["links"], people_names=people_names, **ctx_common))
 
     for p in people.values():
         write(TMP / "p" / p["slug"] / "index.html", env.get_template("person.html").render(
