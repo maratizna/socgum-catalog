@@ -20,13 +20,43 @@
   {% if firebase %}<div id="claim" class="claim" data-person="{{ p.slug }}" data-name="{{ p.name }}" data-director="{{ 1 if p.is_director else 0 }}" hidden></div>{% endif %}
   <div id="p-tabs" class="ptabs">
     <div id="p-nums" class="ptabs-panel" role="tabpanel">
-      <ul class="grid">
+      {% if p.numbers %}
+      <div class="pview" role="group" aria-label="Что показать">
+        <button type="button" class="pview-b is-on" data-v="nums" aria-pressed="true">Номера</button>
+        <button type="button" class="pview-b" data-v="cons" aria-pressed="false">Концерты</button>
+      </div>
+      {% endif %}
+      <ul class="grid" id="pv-nums">
         {% for e in p.numbers %}
         {% set n = e.number %}
         <li class="card">{% with roles = e.roles %}{% include "_card.html" %}{% endwith %}</li>
+        {% endfor %}
+      </ul>
+      <ul class="p-concerts" id="pv-cons" hidden>
+        {% for g in p.concerts %}
+        <li class="p-concert">
+          <h3><a href="{{ root or './' }}?c={{ g.concert.slug }}">{{ g.concert.name }}</a></h3>
+          <p class="c-hint">{% if g.concert.date %}{{ g.concert.date|ru_date }}{% elif g.concert.season %}{{ g.concert.season }}{% endif %} · {{ g.numbers|length }} {{ g.numbers|length|plural("номер", "номера", "номеров") }}</p>
+          <ul class="p-concert-nums">{% for e in g.numbers %}<li><a href="{{ root }}n/{{ e.number.id }}/">{{ e.number.title }}</a>{% if e.roles %} <span class="c-hint">({{ e.roles|join(", ") }})</span>{% endif %}</li>{% endfor %}</ul>
+        </li>
         {% endfor %}
       </ul>
     </div>
   </div>
 </section>
 {% endblock %}
+{% block scripts %}<script>
+(function () {
+  var bs = document.querySelectorAll(".pview-b"), nums = document.getElementById("pv-nums"), cons = document.getElementById("pv-cons");
+  if (!bs.length || !nums || !cons) return;
+  function show(v) {
+    nums.hidden = v !== "nums"; cons.hidden = v !== "cons";
+    Array.prototype.forEach.call(bs, function (b) { var on = b.dataset.v === v; b.classList.toggle("is-on", on); b.setAttribute("aria-pressed", on ? "true" : "false"); });
+  }
+  Array.prototype.forEach.call(bs, function (b) { b.addEventListener("click", function () {
+    show(b.dataset.v);
+    try { window.localStorage.setItem("sg:p-view", b.dataset.v); } catch (e) { }
+  }); });
+  try { if (window.localStorage.getItem("sg:p-view") === "cons") show("cons"); } catch (e) { }
+})();
+</script>{% endblock %}

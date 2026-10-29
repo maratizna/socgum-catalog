@@ -27,6 +27,9 @@
       {% if n.social %}
       <p class="social-links">{% for s in n.social %}<a class="add-btn add-btn-s soc soc-{{ s.kind }}" href="{{ s.url }}" rel="noopener" target="_blank">{% include "_soc_icon.html" %}<span>{{ 'Группа концерта' if s.kind == 'vk' else ('Канал концерта' if s.kind == 'tg' else s.label) }}</span></a>{% endfor %}</p>
       {% endif %}
+      {% if n.tracks %}
+      <p class="social-links track-links">{% for t in n.tracks %}<a class="add-btn add-btn-s soc soc-track" href="{{ t.url }}" rel="noopener" target="_blank"><svg class="soc-i" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 18V6l11-2v12" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/><circle cx="6.5" cy="18" r="2.8" fill="currentColor"/><circle cx="17.5" cy="16" r="2.8" fill="currentColor"/></svg><span>Слушать трек{% if n.tracks|length > 1 %}: {{ t.label }}{% endif %}</span></a>{% endfor %}</p>
+      {% endif %}
       {% if firebase %}
       <div id="pl-add" class="pl-add" data-number="{{ n.id }}"></div>
       <div id="director-note" class="director-note" hidden></div>

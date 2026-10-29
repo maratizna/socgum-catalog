@@ -488,3 +488,16 @@ button.head-me:focus-visible{outline:2px solid var(--ember);outline-offset:3px}
 .user-head .social-links,.person-head .social-links{margin:12px 0 0}
 #p-social[hidden]{display:none}
 .settings{padding-top:18px}
+
+/* переключатель «Номера / Концерты» на странице человека */
+.pview{margin-top:18px!important;display:inline-flex;border:1px solid var(--line);border-radius:999px;padding:3px;margin:0 0 18px;gap:2px}
+.pview-b{appearance:none;background:none;border:0;border-radius:999px;padding:7px 18px;color:var(--ash);font:inherit;font-weight:600;cursor:pointer}
+.pview-b:hover{color:var(--ink)}
+.pview-b.is-on{background:var(--ember);color:var(--night)}
+.pview-b:focus-visible{outline:2px solid var(--ember-hi);outline-offset:2px}
+.p-concerts{list-style:none;padding:0;margin:0;display:grid;gap:14px}
+.p-concerts[hidden],.grid[hidden]{display:none}
+.p-concert{border:1px solid var(--line);border-radius:16px;padding:16px 20px;background:var(--coal)}
+.p-concert h3{margin:0 0 4px;font-size:1.15rem}
+.p-concert .c-hint{margin:0}
+.p-concert-nums{list-style:none;padding:0;margin:12px 0 0;display:grid;gap:6px}

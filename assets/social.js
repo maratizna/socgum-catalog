@@ -32,7 +32,8 @@
   /* ------------------------------------------------------------ кеш чтений
      Ответы сервиса держатся в памяти и в localStorage на ограниченное время, чтобы не ходить на сервер при каждом заходе.
      Любая запись сбрасывает связанные ключи. Без localStorage всё работает, только без запоминания между страницами. */
-  var TTL = { me: 10 * 60e3, pub: 5 * 60e3, comments: 60e3, note: 2 * 60e3, avatar: 30 * 60e3 };
+  /* сроки хранения в браузере; свои изменения человека сбрасывают нужные ключи сразу, не дожидаясь срока */
+  var TTL = { me: 3 * 86400e3, pub: 10 * 60e3, comments: 10 * 60e3, note: 2 * 60e3, avatar: 14 * 86400e3 };
   var MEM = {};
   function store() { try { return window.localStorage; } catch (e) { return null; } }
   function pack(v) {
@@ -301,7 +302,7 @@
     t.textContent = text; t.hidden = false;
     clearTimeout(t._h); t._h = setTimeout(function () { t.hidden = true; }, 9000);
   }
-  function signOut() { cdrop("me:"); return fb.a.signOut(fb.auth); }
+  function signOut() { cdrop("me:"); cdrop("ua:"); return fb.a.signOut(fb.auth); }
 
   var avatars = {};   // uid → картинка (строка) или "" если фото нет
   var nicks = {};     // uid → ник из кабинета или "" (если не менялся)

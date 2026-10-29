@@ -271,6 +271,37 @@ def social_links(text):
     return out
 
 
+TRACK_KINDS = [
+    (("music.yandex.ru", "music.yandex.com", "music.yandex.by", "music.yandex.kz"), "Яндекс Музыка"),
+    (("disk.yandex.ru", "disk.yandex.com", "yadi.sk"), "Яндекс Диск"),
+    (("vk.com", "vk.ru", "vkvideo.ru"), "ВКонтакте"),
+    (("zvuk.com",), "Звук"),
+    (("spotify.com", "open.spotify.com"), "Spotify"),
+    (("soundcloud.com",), "SoundCloud"),
+    (("music.apple.com",), "Apple Music"),
+    (("music.youtube.com",), "YouTube Music"),
+    (("youtube.com", "youtu.be"), "YouTube"),
+]
+
+
+def track_links(text):
+    """Ссылки на трек из ячейки «Трек» (через пробел, запятую или перенос строки): адрес и название сервиса."""
+    out, seen = [], set()
+    for part in re.split(r"[\s,;]+", html.unescape(str(text or ""))):
+        url = part.strip()
+        if not re.match(r"^https?://\S+$", url, re.I) or url in seen:
+            continue
+        seen.add(url)
+        host = urlparse(url).netloc.lower().removeprefix("www.")
+        label = host or "Трек"
+        for hosts, name in TRACK_KINDS:
+            if any(host == h or host.endswith("." + h) for h in hosts):
+                label = name
+                break
+        out.append({"url": url, "label": label})
+    return out
+
+
 def split_people(text):
     seen, out = set(), []
     for part in re.split(r"[,;\n]+", text or ""):
@@ -328,7 +359,7 @@ SPEC = {
         "order": ["№ в концерте", "номер в концерте", "порядок"], "title": ["название"],
         "collective": ["коллектив"], "performers": ["участники", "исполнители"], "choreographers": ["постановщики"],
         "about": ["описание"], "cover": ["обложка"], "start": ["начало"], "end": ["конец"],
-        "old_url": ["старый адрес"], "links": ["ссылки", "соцсети", "группа"], "direction2": ["ещё направление", "еще направление", "второе направление"],
+        "old_url": ["старый адрес"], "links": ["ссылки", "соцсети", "группа"], "track": ["трек", "саундтрек"], "direction2": ["ещё направление", "еще направление", "второе направление"],
     },
     "Люди": {"name": ["имя"], "about": ["о себе", "описание"], "link": ["ссылка"], "id": ["id"]},
     "Формы": {"title": ["форма"], "url": ["ссылка для сотрудников", "ссылка"]},
@@ -660,7 +691,7 @@ def build_model(wb, report):
             "concert": concert, "direction": direction, "directions": dirs_found, "order": order,
             "performers": split_people(r.get("performers")), "choreographers": split_people(r.get("choreographers")),
             "about": r.get("about", ""), "cover_name": r.get("cover", ""), "start": start, "end": end,
-            "old_url": r.get("old_url", ""), "social": social_links(r.get("links")),
+            "old_url": r.get("old_url", ""), "social": social_links(r.get("links")), "tracks": track_links(r.get("track")),
             "offstage": any(d.get("offstage") for d in dirs_found),
             "rate_dir": next((d for d in dirs_found if d.get("offstage")), None) or next((d for d in dirs_found if d.get("criteria")), None),
         }
@@ -731,6 +762,10 @@ def build_model(wb, report):
             entry["roles"] = sorted(set(entry["roles"]))
         p["is_director"] = any("постановщик" in e["roles"] for e in p["numbers"])
         # сводка для страницы человека: считается при каждой сборке (после правок таблицы и раз в сутки по расписанию)
+        cons = OrderedDict()
+        for e in p["numbers"]:
+            cons.setdefault(e["number"]["concert"]["slug"], {"concert": e["number"]["concert"], "numbers": []})["numbers"].append(e)
+        p["concerts"] = list(cons.values())
         p["dir_names"] = sorted({d["name"] for e in p["numbers"] for d in (e["number"].get("directions") or [])})
     return concerts, directions, numbers, people
 
