@@ -7,14 +7,19 @@
     {% if firebase %}<img id="p-avatar" class="avatar avatar-l" alt="" hidden>{% endif %}
     <div>
       <h1 id="p-name">{{ p.name }}</h1>
+      <ul class="pstats" id="p-stats">
+        <li><b>{{ p.numbers|length }}</b> {{ p.numbers|length|plural("номер", "номера", "номеров") }}</li>
+        {% if p.dir_names %}<li><b>{{ p.dir_names|length }}</b> {{ p.dir_names|length|plural("направление", "направления", "направлений") }}</li>{% endif %}
+        {% if firebase %}<li id="p-st-comm" hidden></li>{% endif %}
+      </ul>
       <p class="lead" id="p-about"{% if not p.about %} hidden{% endif %}>{{ p.about }}</p>
       <p class="person-link" id="p-link"{% if not p.link %} hidden{% endif %}>{% if p.link %}<a href="{{ p.link }}" rel="noopener">{{ p.link|domain }}</a>{% endif %}</p>
+      {% if firebase %}<div id="p-social" hidden></div>{% endif %}
     </div>
   </div>
   {% if firebase %}<div id="claim" class="claim" data-person="{{ p.slug }}" data-name="{{ p.name }}" data-director="{{ 1 if p.is_director else 0 }}" hidden></div>{% endif %}
   <div id="p-tabs" class="ptabs">
     <div id="p-nums" class="ptabs-panel" role="tabpanel">
-      <p class="count">Номеров: {{ p.numbers|length }}</p>
       <ul class="grid">
         {% for e in p.numbers %}
         {% set n = e.number %}

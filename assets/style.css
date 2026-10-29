@@ -429,3 +429,62 @@ a.btn{text-decoration:none;display:inline-block}
 .match-nums{display:grid;gap:10px}
 .self-foot{margin:22px 0 0;display:grid;gap:10px}
 .user-page .edit-box,.person .edit-box{margin:12px 0}
+
+/* меню профиля в шапке */
+.auth-slot{position:relative}
+button.head-me{background:none;border:0;padding:0;cursor:pointer;position:relative;border-radius:50%;line-height:0}
+button.head-me:focus-visible{outline:2px solid var(--ember);outline-offset:3px}
+.head-me .head-badge{position:absolute;top:-6px;right:-8px;min-width:18px;height:18px;padding:0 5px;font-size:.7rem;line-height:1;box-shadow:0 0 0 2px var(--night)}
+.user-menu{position:absolute;right:0;top:calc(100% + 14px);z-index:70;width:min(290px,calc(100vw - 2 * var(--pad)));padding:8px;background:var(--coal);border:1px solid var(--line);border-radius:16px;box-shadow:0 18px 40px rgba(0,0,0,.55);display:grid;gap:2px}
+.user-menu::before{content:"";position:absolute;right:13px;top:-7px;width:12px;height:12px;background:var(--coal);border-left:1px solid var(--line);border-top:1px solid var(--line);transform:rotate(45deg)}
+.um-head{display:flex;align-items:center;gap:12px;padding:10px 10px 12px;margin:0 0 6px;border-bottom:1px solid var(--line);min-width:0}
+.um-who{display:grid;min-width:0}
+.um-who b{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:1rem}
+.um-who .c-hint{margin:0;font-size:.82rem}
+.um-item{display:flex;align-items:center;gap:12px;padding:11px 10px;border-radius:10px;color:var(--ink);text-decoration:none;font-weight:600}
+.um-item:hover,.um-item:focus-visible{background:rgba(255,255,255,.07);color:var(--ember-hi);outline:none}
+.um-ic{display:inline-flex;color:var(--ember)}
+.um-text{flex:1;min-width:0}
+.um-item .head-badge{flex:none}
+
+/* настройки профиля */
+.settings{max-width:760px}
+.settings h1{margin:6px 0 18px}
+.set-tabs{display:flex;gap:6px;flex-wrap:wrap;margin:0 0 22px}
+.set-tab{appearance:none;background:none;border:0;padding:8px 2px;margin-right:18px;color:var(--ash);font:inherit;font-size:1.05rem;font-weight:600;cursor:pointer;text-decoration:none;border-bottom:2px solid transparent;display:inline-flex;align-items:center;gap:6px}
+.set-tab:hover{color:var(--ink)}
+.set-tab.is-on{color:var(--ink);border-bottom-color:var(--ember)}
+.set-tab:focus-visible{outline:2px solid var(--ember);outline-offset:3px}
+.set-tab-ic{display:inline-flex;color:var(--ember)}
+.set-panel{display:grid;gap:18px}
+.set-card{border:1px solid var(--line);border-radius:18px;padding:22px clamp(16px,3vw,28px);background:var(--coal);display:grid;gap:12px;min-width:0}
+.set-card h2{margin:0;font-size:1.3rem}
+.set-card .c-hint{margin:0;max-width:62ch}
+.set-card .c-input[readonly]{opacity:.75;cursor:default}
+.set-photo{display:flex;gap:20px;align-items:center;flex-wrap:wrap;margin-top:6px}
+.set-photo-btns{display:grid;gap:10px;justify-items:start}
+.avatar-xl{width:132px;height:132px;flex:none}
+.avatar-xl.avatar-init{font-size:3.2rem}
+.soc-field{display:grid;grid-template-columns:150px 1fr;gap:12px;align-items:center}
+.soc-field-name{color:var(--ink);font-weight:600}
+.soc-ic{display:inline-flex}
+@media (max-width:560px){.soc-field{grid-template-columns:1fr;gap:6px}}
+.set-foot{display:grid;gap:14px;justify-items:start;margin:14px 0 40px}
+.btn-out{background:transparent;color:#ff9d8a;border:1px solid #ff9d8a}
+.btn-out:hover{background:#ff9d8a;color:var(--night)}
+.lim-row{display:grid;gap:6px;margin:6px 0 4px}
+.lim-top{display:flex;justify-content:space-between;gap:12px;font-weight:600}
+.lim-num{color:var(--ash);font-variant-numeric:tabular-nums}
+.lim-bar{height:8px;border-radius:999px;background:var(--line);overflow:hidden}
+.lim-bar span{display:block;height:100%;background:var(--ember);border-radius:999px}
+.lim-row.is-full .lim-bar span{background:#ff9d8a}
+.lim-row .c-hint{margin:0}
+
+/* сводка на странице человека */
+.pstats{list-style:none;padding:0;margin:10px 0 0;display:flex;flex-wrap:wrap;gap:8px}
+.pstats li{border:1px solid var(--line);border-radius:999px;padding:3px 12px;font-size:.92rem;color:var(--ash)}
+.pstats li[hidden]{display:none}
+.pstats b{color:var(--ink);font-weight:700}
+.user-head .social-links,.person-head .social-links{margin:12px 0 0}
+#p-social[hidden]{display:none}
+.settings{padding-top:18px}

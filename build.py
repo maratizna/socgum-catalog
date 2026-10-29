@@ -730,6 +730,8 @@ def build_model(wb, report):
         for entry in p["numbers"]:
             entry["roles"] = sorted(set(entry["roles"]))
         p["is_director"] = any("постановщик" in e["roles"] for e in p["numbers"])
+        # сводка для страницы человека: считается при каждой сборке (после правок таблицы и раз в сутки по расписанию)
+        p["dir_names"] = sorted({d["name"] for e in p["numbers"] for d in (e["number"].get("directions") or [])})
     return concerts, directions, numbers, people
 
 
@@ -833,6 +835,8 @@ def make_env():
     env.filters["hms"] = hms
     env.filters["vk_t"] = vk_t
     env.filters["ru_date"] = ru_date
+    env.filters["plural"] = lambda n, one, few, many: (
+        one if n % 10 == 1 and n % 100 != 11 else few if 2 <= n % 10 <= 4 and not 12 <= n % 100 <= 14 else many)
     env.filters["domain"] = lambda u: re.sub(r"^https?://(www\.)?", "", str(u)).rstrip("/")
     return env
 
@@ -934,6 +938,8 @@ def build_site(concerts, directions, numbers, people, report, demo, source):
     if firebase:
         write(TMP / "account" / "index.html", env.get_template("account.html").render(
             root="../", page_title=f"Кабинет: {cfg['site_title']}", canonical="", og_image="", description="", **ctx_common))
+        write(TMP / "settings" / "index.html", env.get_template("settings.html").render(
+            root="../", page_title=f"Настройки профиля: {cfg['site_title']}", canonical="", og_image="", description="", **ctx_common))
         write(TMP / "u" / "index.html", env.get_template("user.html").render(
             root="../", page_title=f"Пользователь: {cfg['site_title']}", canonical="", og_image="", description="", **ctx_common))
 

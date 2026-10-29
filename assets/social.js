@@ -306,6 +306,7 @@
   var avatars = {};   // uid → картинка (строка) или "" если фото нет
   var nicks = {};     // uid → ник из кабинета или "" (если не менялся)
   var realNames = {}; // uid → имя аккаунта (публичное поле users/{uid}.name)
+  var userLinks = {};     // uid → ссылки на соцсети { vk, tg, ig, yt, web }
   var peopleNames = {};   // id страницы человека → имя на странице (из каталога)
   function nrm(s) { return String(s || "").trim().replace(/\s+/g, " ").toLowerCase().replace(/ё/g, "е"); }
   function myName() { var u = state.user; return u ? (nicks[u.uid] || u.displayName || "Без имени") : "Без имени"; }
@@ -314,7 +315,7 @@
     var n = name || "Без имени", pn = pid && peopleNames[pid];
     return pn && nrm(pn) !== nrm(n) ? n + " (" + pn + ")" : n;
   }
-  function putUA(u) { cput("ua:" + u, { a: avatars[u] || "", n: nicks[u] || "", m: realNames[u] || "" }); }
+  function putUA(u) { cput("ua:" + u, { a: avatars[u] || "", n: nicks[u] || "", m: realNames[u] || "", l: userLinks[u] || {} }); }
 
   function loadMe(user, fresh) {
     state.user = user; state.admin = false; state.claims = {};
@@ -347,17 +348,17 @@
     uids.forEach(function (u) {
       if (!u || (!fresh && avatars[u] !== undefined)) return;
       var hit = fresh ? null : cget("ua:" + u, TTL.avatar);
-      if (hit) { avatars[u] = hit.v.a || ""; nicks[u] = hit.v.n || ""; realNames[u] = hit.v.m || ""; } else if (need.indexOf(u) === -1) need.push(u);
+      if (hit) { avatars[u] = hit.v.a || ""; nicks[u] = hit.v.n || ""; realNames[u] = hit.v.m || ""; userLinks[u] = hit.v.l || {}; } else if (need.indexOf(u) === -1) need.push(u);
     });
     if (!need.length) return Promise.resolve();
     var jobs = [];
     for (var i = 0; i < need.length; i += 30) {
       (function (chunk) {
         jobs.push(fb.f.getDocs(fb.f.query(fcol("users"), fb.f.where(fb.f.documentId(), "in", chunk))).then(function (s) {
-          var got = {}, gotN = {}, gotM = {};
-          s.forEach(function (d) { got[d.id] = d.data().avatar || ""; gotN[d.id] = d.data().nick || ""; gotM[d.id] = d.data().name || ""; });
-          chunk.forEach(function (u) { avatars[u] = got[u] || ""; nicks[u] = gotN[u] || ""; realNames[u] = gotM[u] || ""; putUA(u); });
-        }, function () { chunk.forEach(function (u) { if (avatars[u] === undefined) { avatars[u] = ""; nicks[u] = ""; realNames[u] = ""; } }); }));
+          var got = {}, gotN = {}, gotM = {}, gotL = {};
+          s.forEach(function (d) { var x = d.data(); got[d.id] = x.avatar || ""; gotN[d.id] = x.nick || ""; gotM[d.id] = x.name || ""; gotL[d.id] = x.links || {}; });
+          chunk.forEach(function (u) { avatars[u] = got[u] || ""; nicks[u] = gotN[u] || ""; realNames[u] = gotM[u] || ""; userLinks[u] = gotL[u] || {}; putUA(u); });
+        }, function () { chunk.forEach(function (u) { if (avatars[u] === undefined) { avatars[u] = ""; nicks[u] = ""; realNames[u] = ""; userLinks[u] = {}; } }); }));
       })(need.slice(i, i + 30));
     }
     return Promise.all(jobs);
@@ -372,6 +373,53 @@
     var n = el("span", { class: cls + " avatar-init", "aria-hidden": "true", text: ch });
     n.style.background = "hsl(" + hue(String(uid || name)) + ",35%,32%)";
     return n;
+  }
+
+  /* ссылки на соцсети в профиле: ВКонтакте, Telegram, Instagram, YouTube, сайт */
+  var SOC = [
+    { k: "vk", label: "ВКонтакте", ph: "https://vk.com/ваш_адрес" },
+    { k: "tg", label: "Telegram", ph: "https://t.me/ваш_ник" },
+    { k: "ig", label: "Instagram", ph: "https://instagram.com/ваш_ник" },
+    { k: "yt", label: "YouTube", ph: "https://youtube.com/@ваш_канал" },
+    { k: "web", label: "Сайт", ph: "https://" }
+  ];
+  var SOC_SVG = {
+    vk: '<svg class="soc-i" viewBox="0 0 24 24" aria-hidden="true"><rect x="2" y="2" width="20" height="20" rx="5" fill="currentColor"/><path d="M5.5 8.5h2c.1 3 1.4 4.3 2.4 4.6V8.5h1.9v2.6c1-.1 2.1-1.3 2.5-2.6h1.9c-.3 1.6-1.4 2.7-2.2 3.2.8.4 2.1 1.4 2.6 3.3h-2.1c-.4-1.3-1.4-2.3-2.7-2.4v2.4h-.3c-4 0-6.2-2.8-6.3-6.5z" fill="#0b0a08"/></svg>',
+    tg: '<svg class="soc-i" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="10" fill="currentColor"/><path d="M5.8 11.8l11.3-4.4c.5-.2 1 .1.8.9l-1.9 9c-.1.6-.5.8-1 .5l-2.9-2.1-1.4 1.4c-.2.2-.3.3-.6.3l.2-3 5.4-4.9c.2-.2 0-.3-.4-.1l-6.7 4.2-2.9-.9c-.6-.2-.6-.6.1-.9z" fill="#0b0a08"/></svg>',
+    ig: '<svg class="soc-i" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="5.5" fill="none" stroke="currentColor" stroke-width="2"/><circle cx="12" cy="12" r="4.2" fill="none" stroke="currentColor" stroke-width="2"/><circle cx="17.2" cy="6.8" r="1.2" fill="currentColor"/></svg>',
+    yt: '<svg class="soc-i" viewBox="0 0 24 24" aria-hidden="true"><rect x="2" y="5" width="20" height="14" rx="4.5" fill="currentColor"/><path d="M10 9l5.5 3-5.5 3z" fill="#0b0a08"/></svg>',
+    web: '<svg class="soc-i" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9" fill="none" stroke="currentColor" stroke-width="2"/><path d="M3 12h18M12 3c3 3.2 3 14.8 0 18M12 3c-3 3.2-3 14.8 0 18" fill="none" stroke="currentColor" stroke-width="1.6"/></svg>'
+  };
+  /* значок: готовая разметка из константы выше, пользовательский текст сюда не попадает */
+  function socIcon(kind) { var w = el("span", { class: "soc-ic" }); w.innerHTML = SOC_SVG[kind] || SOC_SVG.web; return w; }
+  function socialRow(links) {
+    var row = el("p", { class: "social-links" });
+    SOC.forEach(function (s) {
+      var u = links && links[s.k];
+      if (!u || !/^https?:\/\/\S+$/i.test(u)) return;
+      row.append(el("a", { class: "add-btn add-btn-s soc soc-" + s.k, href: u, rel: "noopener nofollow ugc", target: "_blank" }, socIcon(s.k), el("span", { text: s.label })));
+    });
+    return row.firstChild ? row : null;
+  }
+  /* адрес из поля: добавляем https://, пустое остаётся пустым, непохожее на адрес — null */
+  function cleanUrl(v) {
+    v = String(v || "").trim();
+    if (!v) return "";
+    if (!/^https?:\/\//i.test(v)) v = "https://" + v;
+    return v.length <= 200 && /^https?:\/\/[^\s\/]+\.[^\s\/]{2,}\S*$/i.test(v) ? v : null;
+  }
+  function plural(n, one, few, many) {
+    var a = n % 10, b = n % 100;
+    return a === 1 && b !== 11 ? one : (a >= 2 && a <= 4 && !(b >= 12 && b <= 14) ? few : many);
+  }
+  function statItem(n, one, few, many) { return el("li", null, el("b", { text: String(n) }), " " + plural(n, one, few, many)); }
+  /* число комментариев пользователя: считает сервис без загрузки самих комментариев, ответ держится в кеше */
+  function commentCount(uid, fresh) {
+    return cached("user:ccount:" + uid, TTL.pub, fresh === true, function () {
+      var q = fb.f.query(fcol("comments"), fb.f.where("uid", "==", uid), fb.f.where("status", "==", "visible"));
+      if (fb.f.getCountFromServer) return fb.f.getCountFromServer(q).then(function (s) { return s.data().count; });
+      return loadUserComments(uid).then(function (l) { return l.length; });
+    });
   }
 
   /* ------------------------------------------------------------ единая страница человека
@@ -508,24 +556,69 @@
     var ids = approvedPids();
     return ids.length ? ROOT + "p/" + ids[0] + "/" : ROOT + "u/?id=" + encodeURIComponent(state.user.uid);
   }
+  /* число новых заявок: видит только администратор */
+  function adminPending() {
+    return cached("admin:pending", TTL.comments, false, function () {
+      return fb.f.getDocs(fb.f.query(fcol("claims"), fb.f.where("status", "==", "pending"))).then(function (q) { return q.size; });
+    });
+  }
+  var menuOpen = false;
+  function setMenu(on, focusBtn) {
+    menuOpen = on; drawAuth();
+    var b = document.querySelector(".head-me");
+    if (on) { var f = document.querySelector(".user-menu .um-item"); if (f) f.focus(); } else if (focusBtn && b) b.focus();
+  }
+  /* путь клика берём заранее: к моменту обработки кнопка меню уже перерисована и из документа убрана */
+  document.addEventListener("click", function (e) {
+    if (!menuOpen) return;
+    var path = e.composedPath ? e.composedPath() : [], inside = path.some(function (n) { return n && n.id === "auth-slot"; });
+    if (!inside) setMenu(false);
+  });
+  document.addEventListener("keydown", function (e) { if (menuOpen && e.key === "Escape") setMenu(false, true); });
+  var UM_ICON = {
+    page: '<svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><circle cx="12" cy="8" r="4" fill="none" stroke="currentColor" stroke-width="2"/><path d="M4.5 20c.8-3.6 3.7-5.5 7.5-5.5s6.7 1.9 7.5 5.5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>',
+    gear: '<svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><circle cx="12" cy="12" r="3.2" fill="none" stroke="currentColor" stroke-width="2"/><path d="M12 2.8v3M12 18.2v3M2.8 12h3M18.2 12h3M5.5 5.5l2.1 2.1M16.4 16.4l2.1 2.1M18.5 5.5l-2.1 2.1M7.6 16.4l-2.1 2.1" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>',
+    admin: '<svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><path d="M12 3l7.5 3v5.5c0 4.6-3.1 8.2-7.5 9.5-4.4-1.3-7.5-4.9-7.5-9.5V6z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/></svg>'
+  };
+  function umItem(href, icon, text, extra) {
+    var a = el("a", { class: "um-item", role: "menuitem", href: href });
+    var ic = el("span", { class: "um-ic" }); ic.innerHTML = UM_ICON[icon];
+    a.append(ic, el("span", { class: "um-text", text: text }));
+    if (extra) a.append(extra);
+    return a;
+  }
   function drawAuth() {
     var slot = document.getElementById("auth-slot");
     if (!slot) return;
     clear(slot);
     if (!state.ready) return;
     if (!state.user) {
+      menuOpen = false;
       slot.append(el("button", { type: "button", class: "head-link head-btn", text: "Войти", onclick: signIn }));
-    } else {
-      var first = (myName() || "Аккаунт").split(" ")[0];
-      slot.append(el("a", { class: "head-link head-me", href: ownPageUrl(), title: "Моя страница: " + first + (state.admin ? " (админ)" : ""), "aria-label": "Моя страница: " + first },
-        avatarNode(state.user.uid, myName(), "s")));
-      if (state.admin) {
-        cached("admin:pending", TTL.comments, false, function () {
-          return fb.f.getDocs(fb.f.query(fcol("claims"), fb.f.where("status", "==", "pending"))).then(function (q) { return q.size; });
-        }).then(function (n) {
-          if (n > 0 && slot.isConnected && !slot.querySelector(".head-badge")) slot.append(el("a", { class: "head-badge", href: ROOT + "account/", title: "Заявки на подтверждение страниц", "aria-label": "Заявок на подтверждение: " + n, text: String(n) }));
-        }, function () { });
-      }
+      return;
+    }
+    var uid = state.user.uid, nm = myName();
+    var btn = el("button", { type: "button", class: "head-link head-me", "aria-haspopup": "menu", "aria-expanded": menuOpen ? "true" : "false",
+      "aria-label": "Меню профиля: " + nm, title: nm, onclick: function () { setMenu(!menuOpen); } }, avatarNode(uid, nm, "s"));
+    slot.append(btn);
+    if (menuOpen) {
+      var menu = el("div", { class: "user-menu", role: "menu", "aria-label": "Профиль" },
+        el("div", { class: "um-head" }, avatarNode(uid, nm, "s"),
+          el("div", { class: "um-who" }, el("b", { text: nm }), state.admin ? el("span", { class: "c-hint", text: "Администратор" }) : null)),
+        umItem(ownPageUrl(), "page", "Моя страница"),
+        umItem(ROOT + "settings/", "gear", "Настройки профиля"));
+      var admItem = null;
+      if (state.admin) { admItem = umItem(ROOT + "account/", "admin", "Кабинет администратора"); menu.append(admItem); }
+      slot.append(menu);
+    }
+    if (state.admin) {
+      adminPending().then(function (n) {
+        if (n > 0 && btn.isConnected) {
+          btn.append(el("span", { class: "head-badge", title: "Заявки на подтверждение страниц", text: String(n) }));
+          var it = slot.querySelector(".um-item[href$='account/']");
+          if (it) it.append(el("span", { class: "head-badge", text: String(n) }));
+        }
+      }, function () { });
     }
   }
 
@@ -666,7 +759,7 @@
         ratings.forEach(function (r) { ratingBy[r.uid] = r; });
       }, function () { ratings = []; ratingBy = {}; });
     }
-    function dropComments() { cdrop("comments:" + nid); cdrop("likes:" + nid); cdrop("ratings:" + nid); }
+    function dropComments() { cdrop("comments:" + nid); cdrop("likes:" + nid); cdrop("ratings:" + nid); cdrop("user:ccount:"); cdrop("user:comments2:"); }
     function plural(n) {
       var m = n % 100, d = n % 10;
       return n + " " + (m > 10 && m < 20 ? "лайков" : d === 1 ? "лайк" : d > 1 && d < 5 ? "лайка" : "лайков");
@@ -1104,6 +1197,21 @@
       }
       var av = profile && profile.avatar || (approved() && avatars[claim.uid]) || "";
       if (avatarEl) { if (av) { avatarEl.src = av; avatarEl.hidden = false; } else avatarEl.hidden = true; }
+      var socEl = document.getElementById("p-social");
+      if (socEl) {
+        clear(socEl);
+        var row = approved() ? socialRow(userLinks[claim.uid]) : null;
+        if (row) socEl.append(row);
+        socEl.hidden = !row;
+      }
+      var commEl = document.getElementById("p-st-comm");
+      if (commEl) {
+        if (!approved()) commEl.hidden = true;
+        else commentCount(claim.uid).then(function (n) {
+          clear(commEl).append(el("b", { text: String(n) }), " " + plural(n, "комментарий", "комментария", "комментариев"));
+          commEl.hidden = false;
+        }, function () { });
+      }
     }
 
     function mine() { return !!(state.user && claim && claim.uid === state.user.uid && claim.status === "approved"); }
@@ -1135,10 +1243,8 @@
           el("button", { type: "button", class: "linkbtn", text: "Отозвать заявку", onclick: function () { fb.f.deleteDoc(fdoc("claims/" + pid)).then(function () { return loadMe(u, true); }).then(reloadPublic).then(draw); } }));
       }
       if (mine()) {
-        box.append(el("div", { class: "c-row" }, shareButton(pid, pname)),
-          el("details", { class: "edit-box" }, el("summary", { text: "Редактировать страницу" }),
-            profileEditor(pid, profile, aboutEl ? aboutEl.textContent.trim() : "", true, function () { reloadPublic().then(draw); })),
-          nickEditor(function () { draw(); }), selfFooter(),
+        box.append(el("div", { class: "c-row" }, shareButton(pid, pname),
+            el("a", { class: "btn btn-s btn-ghost", href: ROOT + "settings/", text: "Настройки профиля" })),
           el("button", { type: "button", class: "linkbtn", text: "Отказаться от страницы", onclick: function () { if (confirm("Отвязать аккаунт от этой страницы?")) fb.f.deleteDoc(fdoc("claims/" + pid)).then(function () { return loadMe(u, true); }).then(reloadPublic).then(draw); } }));
       }
       if (state.admin) {
@@ -1499,6 +1605,13 @@
         ttl.append(el("p", { class: "user-pend" }, el("span", { class: "badge badge-off", text: "Не подтверждено" }), " ",
           el("a", { href: ROOT + "p/" + pend[0] + "/", text: "страница «" + (peopleNames[pend[0]] || pend[0]) + "»" })));
       } else if (self) ttl.append(el("p", { class: "c-hint", text: "Это ваша страница. Её видят все, кто нажмёт на ваше имя." }));
+      var stats = el("ul", { class: "pstats" }), commLi = el("li", { hidden: true });
+      stats.append(commLi); ttl.append(stats);
+      commentCount(uid).then(function (n) {
+        clear(commLi).append(el("b", { text: String(n) }), " " + plural(n, "комментарий", "комментария", "комментариев"));
+        commLi.hidden = false;
+      }, function () { });
+      var soc = socialRow(userLinks[uid]); if (soc) ttl.append(soc);
       box.append(el("div", { class: "user-head" }, avatarNode(uid, name, "l"), ttl));
 
       if (self) {
@@ -1510,8 +1623,8 @@
           box.append(mh); drawMatches(mh);
           box.append(searchBox());
         }
-        box.append(el("div", { class: "c-row" }, shareButton("", name, location.href)),
-          selfAvatarEditor(function () { draw(); }), nickEditor(function () { draw(); }), selfFooter());
+        box.append(el("div", { class: "c-row" }, shareButton("", name, location.href),
+          el("a", { class: "btn btn-s btn-ghost", href: ROOT + "settings/", text: "Настройки профиля" })));
       }
       box.append(tabsHost);
       mountTabs(tabsHost, { uid: uid, name: name, self: self });
@@ -1548,58 +1661,6 @@
   function withdrawClaim(pid) {
     return fb.f.deleteDoc(fdoc("claims/" + pid)).then(function () { cdrop("admin:"); return loadMe(state.user, true); }).then(function () { drawAuth(); });
   }
-  /* Ник: показывается в комментариях и на странице; имя и фамилия на странице остаются прежними */
-  function nickEditor(done) {
-    var nameIn = el("input", { class: "c-input", type: "text", maxlength: "40", "aria-label": "Ник" });
-    nameIn.value = myName();
-    var box = el("details", { class: "edit-box" }, el("summary", { text: "Изменить ник" }),
-      el("label", null, "Ник или имя в комментариях", nameIn),
-      el("p", { class: "c-hint", text: "Имя и фамилия на странице не меняются: если ник отличается, они стоят рядом в скобках. Менять можно до " + LIM.renames + " раз в месяц." }),
-      el("button", { type: "button", class: "btn btn-s", text: "Сохранить", onclick: function () {
-        var nm = nameIn.value.trim().replace(/\s+/g, " ");
-        if (nm.length < 2) { note(box, "Ник слишком короткий.", "err"); return; }
-        var bad = findProfanity(nm);
-        if (bad) { note(box, "Мат не проходит: слово «" + bad + "».", "err"); return; }
-        setMyNick(nm).then(function () { note(box, "Сохранено.", "ok"); done && done(); }, function (e) { note(box, errText(e), "err"); });
-      } }));
-    return box;
-  }
-  /* Фото своего аккаунта: окно обрезки, лимит 3 раза в месяц */
-  function selfAvatarEditor(done) {
-    var u = state.user, wrap = el("div", { class: "avatar-edit" });
-    var file = el("input", { type: "file", accept: "image/*", "aria-label": "Выбрать фото", hidden: true, onchange: function () {
-      var f = file.files[0]; if (!f) return;
-      file.value = "";
-      avatarLimitLeft().then(function () { return cropDialog(f); }).then(function (blob) {
-        note(wrap, "Загружаем…");
-        return setMyAvatar(blob).then(function () { note(wrap, "Фото сохранено.", "ok"); done && done(); });
-      }).catch(function (e) {
-        if (e && e.cancelled) return;
-        note(wrap, e && e.code ? errText(e) : (e && e.message) || "Не удалось загрузить фото.", "err");
-      });
-    } });
-    wrap.append(el("div", null,
-      el("button", { type: "button", class: "btn btn-s", text: avatars[u.uid] ? "Заменить фото" : "Загрузить фото", onclick: function () { file.click(); } }),
-      avatars[u.uid] && el("button", { type: "button", class: "linkbtn", text: "Убрать фото", onclick: function () { clearMyAvatar().then(function () { done && done(); }, function (e) { note(wrap, errText(e), "err"); }); } }),
-      el("p", { class: "c-hint", text: "Фото видно рядом с комментариями и на вашей странице. Менять можно до " + LIM.avatars + " раз в месяц." })),
-      file);
-    return wrap;
-  }
-  function selfFooter() {
-    var u = state.user, out = el("div", { class: "self-foot" });
-    var viaPass = u.providerData && u.providerData.some(function (p) { return p.providerId === "password"; });
-    if (viaPass && !u.emailVerified) {
-      out.append(el("p", { class: "c-hint", text: "E-mail " + u.email + " пока не подтверждён." }),
-        el("button", { type: "button", class: "linkbtn", text: "Отправить письмо ещё раз", onclick: function (ev) {
-          fb.a.sendEmailVerification(u).then(function () { ev.target.textContent = "Письмо отправлено"; }, function (e) { toast(errText(e)); }); } }));
-    }
-    var row = el("div", { class: "c-row" });
-    if (state.admin) row.append(el("a", { class: "btn btn-s btn-ghost", href: ROOT + "account/", text: "Кабинет администратора" }));
-    row.append(el("button", { type: "button", class: "btn btn-s btn-ghost", text: "Выйти из аккаунта", onclick: signOut }));
-    out.append(row);
-    return out;
-  }
-
   /* Окно обрезки фото: двигать пальцем или мышью, менять размер ползунком, колесом или щипком. Результат — квадрат 512 px. */
   function cropDialog(file) {
     return new Promise(function (ok, bad) {
@@ -1884,10 +1945,171 @@
     });
   }
 
+  /* ------------------------------------------------------------ настройки профиля
+     Здесь всё личное: фото, ник, соцсети, «о себе», лимиты и выход. Публичное (номера, комментарии, оценки) лежит на странице человека. */
+  function initSettings() {
+    var box = document.getElementById("settings");
+    if (!box) return;
+    var tab = location.hash === "#limits" ? "limits" : "main";
+    var usage = null, usageErr = false, prof = null, started = false;
+
+    function loadUsage() {
+      usageErr = false;
+      return Promise.all([readUsage("d"), readUsage("m")]).then(function (r) { usage = { d: r[0], m: r[1] }; },
+        function () { usage = null; usageErr = true; });
+    }
+    function loadProf() {
+      var ids = approvedPids();
+      if (!ids.length) { prof = null; return Promise.resolve(); }
+      return ownProfile(ids[0]).then(function (p) { prof = p || {}; }, function () { prof = {}; });
+    }
+    function left(kind, field, max) { return usage ? Math.max(0, max - ((usage[kind] && usage[kind][field]) || 0)) : null; }
+    function card(title, hint) {
+      return el("section", { class: "set-card" }, el("h2", { text: title }), hint ? el("p", { class: "c-hint", text: hint }) : null);
+    }
+    function reloadAll() { usage = null; return Promise.all([loadUsage(), loadProf()]).then(draw); }
+
+    function avatarCard() {
+      var u = state.user, c = card("Фото", "Фото можно менять " + LIM.avatars + " раза в месяц. Оно сразу появится рядом с вашими комментариями и на вашей странице. Подойдёт любая картинка: окно поможет выбрать, что войдёт в круг.");
+      var l = left("m", "avatars", LIM.avatars);
+      if (l !== null) c.append(el("p", { class: "c-hint", text: "Осталось смен в этом месяце: " + l + " из " + LIM.avatars + "." }));
+      var file = el("input", { type: "file", accept: "image/*", "aria-label": "Выбрать фото", hidden: true, onchange: function () {
+        var f = file.files[0]; if (!f) return;
+        file.value = "";
+        avatarLimitLeft().then(function () { return cropDialog(f); }).then(function (blob) {
+          note(c, "Загружаем…");
+          return setMyAvatar(blob).then(function () { return reloadAll(); });
+        }).catch(function (e) {
+          if (e && e.cancelled) return;
+          note(c, e && e.code ? errText(e) : (e && e.message) || "Не удалось загрузить фото.", "err");
+        });
+      } });
+      c.append(el("div", { class: "set-photo" }, avatarNode(u.uid, myName(), "xl"),
+        el("div", { class: "set-photo-btns" },
+          el("button", { type: "button", class: "btn", text: avatars[u.uid] ? "Заменить фото" : "Выбрать изображение", onclick: function () { file.click(); } }),
+          avatars[u.uid] && el("button", { type: "button", class: "linkbtn", text: "Убрать фото", onclick: function () {
+            clearMyAvatar().then(function () { draw(); }, function (e) { note(c, errText(e), "err"); }); } }))), file);
+      return c;
+    }
+    function nameCard() {
+      var u = state.user, ids = approvedPids(), shown = (ids.length && peopleNames[ids[0]]) || u.displayName || "Без имени";
+      var c = card("Имя", "Имя нельзя изменить: оно остаётся таким же на вашей странице и в каталоге. Менять можно только ник.");
+      c.append(el("input", { class: "c-input", type: "text", value: shown, readonly: true, "aria-label": "Имя" }));
+      return c;
+    }
+    function nickCard() {
+      var c = card("Ник", "Ник виден в комментариях и на вашей странице. Если он отличается от имени, имя стоит рядом в скобках. Менять можно до " + LIM.renames + " раз в месяц.");
+      var l = left("m", "renames", LIM.renames);
+      if (l !== null) c.append(el("p", { class: "c-hint", text: "Осталось смен в этом месяце: " + l + " из " + LIM.renames + "." }));
+      var inp = el("input", { class: "c-input", type: "text", maxlength: "40", "aria-label": "Ник" });
+      inp.value = myName();
+      c.append(inp, el("div", { class: "c-row" }, el("button", { type: "button", class: "btn", text: "Сохранить ник", onclick: function () {
+        var nm = inp.value.trim().replace(/\s+/g, " ");
+        if (nm.length < 2) { note(c, "Ник слишком короткий.", "err"); return; }
+        var bad = findProfanity(nm);
+        if (bad) { note(c, "Мат не проходит: слово «" + bad + "».", "err"); return; }
+        setMyNick(nm).then(function () { return reloadAll(); }, function (e) { note(c, errText(e), "err"); });
+      } })));
+      return c;
+    }
+    function socialCard() {
+      var u = state.user, cur = userLinks[u.uid] || {}, c = card("Соцсети", "Ссылки покажутся на вашей странице. Оставьте поле пустым, если ссылка не нужна.");
+      var ins = {};
+      SOC.forEach(function (sc) {
+        ins[sc.k] = el("input", { class: "c-input", type: "url", inputmode: "url", maxlength: "200", placeholder: sc.ph, "aria-label": sc.label });
+        ins[sc.k].value = cur[sc.k] || "";
+        c.append(el("label", { class: "soc-field" }, el("span", { class: "soc-field-name soc" }, socIcon(sc.k), el("span", { text: sc.label })), ins[sc.k]));
+      });
+      c.append(el("div", { class: "c-row" }, el("button", { type: "button", class: "btn", text: "Сохранить ссылки", onclick: function () {
+        var out = {}, bad = "";
+        SOC.forEach(function (sc) { var v = cleanUrl(ins[sc.k].value); if (v === null) bad = bad || sc.label; else out[sc.k] = v; });
+        if (bad) { note(c, "Ссылка «" + bad + "» не похожа на адрес сайта.", "err"); return; }
+        fb.f.setDoc(fdoc("users/" + u.uid), { links: out, updatedAt: fb.f.serverTimestamp() }, { merge: true }).then(function () {
+          userLinks[u.uid] = out; putUA(u.uid);
+          SOC.forEach(function (sc) { ins[sc.k].value = out[sc.k]; });
+          note(c, "Сохранено.", "ok");
+        }, function (e) { note(c, e && e.code === "permission-denied" ? "Сервис пока не принимает ссылки. Попробуйте позже." : errText(e), "err"); });
+      } })));
+      return c;
+    }
+    function bioCard() {
+      var ids = approvedPids();
+      if (!ids.length) return null;
+      var c = card("О себе", "Текст на вашей странице в каталоге.");
+      var ta = el("textarea", { class: "c-input", rows: "5", maxlength: "2000", "aria-label": "О себе", placeholder: "Коротко о себе" });
+      ta.value = (prof && prof.bio) || "";
+      c.append(ta, el("div", { class: "c-row" }, el("button", { type: "button", class: "btn", text: "Сохранить", onclick: function () {
+        writeProfile(ids[0], { bio: ta.value.trim() }).then(function () { return loadProf(); }).then(function () { note(c, "Сохранено.", "ok"); }, function (e) { note(c, errText(e), "err"); });
+      } })));
+      return c;
+    }
+    function footer() {
+      var u = state.user, out = el("div", { class: "set-foot" });
+      var viaPass = u.providerData && u.providerData.some(function (p) { return p.providerId === "password"; });
+      if (viaPass && !u.emailVerified) {
+        out.append(el("p", { class: "c-hint", text: "E-mail " + u.email + " пока не подтверждён." }),
+          el("button", { type: "button", class: "linkbtn", text: "Отправить письмо ещё раз", onclick: function (ev) {
+            fb.a.sendEmailVerification(u).then(function () { ev.target.textContent = "Письмо отправлено"; }, function (e) { toast(errText(e)); }); } }));
+      }
+      if (state.admin) out.append(el("a", { class: "btn btn-ghost", href: ROOT + "account/", text: "Кабинет администратора" }));
+      out.append(el("button", { type: "button", class: "btn btn-out", text: "Выйти из профиля", onclick: function () { signOut().then(function () { location.href = ROOT || "./"; }); } }));
+      return out;
+    }
+
+    function limitRow(label, used, max, reset) {
+      var rest = Math.max(0, max - used), full = rest === 0;
+      return el("div", { class: "lim-row" + (full ? " is-full" : "") },
+        el("div", { class: "lim-top" }, el("span", { class: "lim-name", text: label }), el("span", { class: "lim-num", text: used + " из " + max })),
+        el("div", { class: "lim-bar", role: "progressbar", "aria-valuemin": "0", "aria-valuemax": String(max), "aria-valuenow": String(Math.min(used, max)), "aria-label": label },
+          el("span", { style: "width:" + Math.min(100, Math.round(used / max * 100)) + "%" })),
+        el("p", { class: "c-hint", text: (full ? "Лимит исчерпан. " : "Осталось: " + rest + ". ") + reset }));
+    }
+    function limitsPanel() {
+      var wrap = el("div", { class: "set-panel" });
+      if (usageErr) { wrap.append(card("Лимиты", "Не удалось загрузить лимиты. Обновите страницу чуть позже.")); return wrap; }
+      if (!usage) { wrap.append(el("p", { class: "c-hint", text: "Загрузка…" })); return wrap; }
+      var day = card("Сегодня", "Счётчики дня обнуляются в полночь по времени Самары (UTC+4).");
+      day.append(limitRow("Комментарии", usage.d.comments || 0, LIM.comments, "Новые комментарии и ответы."),
+        limitRow("Лайки комментариям", usage.d.likes || 0, LIM.likes, "Лайки комментариям других людей."));
+      var mon = card("В этом месяце", "Счётчики месяца обнуляются первого числа.");
+      mon.append(limitRow("Смена фото", usage.m.avatars || 0, LIM.avatars, "Загрузка нового фото."),
+        limitRow("Смена ника", usage.m.renames || 0, LIM.renames, "Имя на странице не меняется."));
+      wrap.append(day, mon);
+      return wrap;
+    }
+
+    function tabBtn(id, label) {
+      return el("button", { type: "button", class: "set-tab" + (tab === id ? " is-on" : ""), "aria-current": tab === id ? "page" : null, text: label, onclick: function () {
+        tab = id;
+        try { history.replaceState(null, "", id === "limits" ? "#limits" : location.pathname + location.search); } catch (e) { }
+        if (id === "limits") { usage = null; loadUsage().then(draw); }
+        draw();
+      } });
+    }
+    function draw() {
+      clear(box);
+      if (!state.ready) { box.append(el("p", { class: "c-hint", text: "Загрузка…" })); return; }
+      if (!state.user) {
+        box.append(el("p", { class: "lead", text: "Войдите, чтобы открыть настройки профиля." }),
+          el("button", { type: "button", class: "btn", text: "Войти", onclick: signIn }));
+        return;
+      }
+      if (!started) { started = true; catalogInfo().then(draw, function () { }); reloadAll(); }
+      var arrow = el("span", { class: "set-tab-ic" }); arrow.innerHTML = '<svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><path d="M7 17L17 7M9 7h8v8" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+      box.append(el("nav", { class: "set-tabs", "aria-label": "Разделы настроек" }, tabBtn("main", "Основные"), tabBtn("limits", "Лимиты"),
+        el("a", { class: "set-tab set-tab-link", href: ownPageUrl() }, "Моя страница", arrow)));
+      if (tab === "limits") { box.append(limitsPanel()); return; }
+      var main = el("div", { class: "set-panel" }, avatarCard(), nameCard(), nickCard(), socialCard(), bioCard(), footer());
+      box.append(main);
+    }
+    views.push(draw);
+    draw();
+  }
+
   /* ------------------------------------------------------------ запуск */
   var slot = document.getElementById("auth-slot");
   load().then(function () {
-    initNumber(); initPlaylistAdd(); initPerson(); initAccount(); initUserPage();
+    initNumber(); initPlaylistAdd(); initPerson(); initAccount(); initUserPage(); initSettings();
     views.unshift(drawAuth);
     fb.a.onAuthStateChanged(fb.auth, function (user) { loadMe(user).then(refreshViews); });
   }, function (e) {

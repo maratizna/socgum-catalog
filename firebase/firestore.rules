@@ -27,6 +27,7 @@ service cloud.firestore {
     function userPath() { return /databases/$(database)/documents/users/$(request.auth.uid); }
     function nickOf() { return exists(userPath()) ? get(userPath()).data.get('nick', '') : ''; }
     function nameFor(nick) { return nick != '' ? nick : request.auth.token.name; }
+    function linkOk(v) { return v is string && v.size() <= 200 && (v == '' || v.matches('https?://[^ ]+')); }
     function authorOk(name) { return name == nameFor(nickOf()); }
     // комментарий считается за сегодняшний лимит: счётчик в той же записи вырос на 1, а номер за день входит в ключ
     function commentSlotOk(cid, cnt) {
@@ -84,7 +85,7 @@ service cloud.firestore {
     match /users/{uid} {
       allow read: if true;
       allow create, update: if signedIn() && request.auth.uid == uid
-        && request.resource.data.keys().hasOnly(['avatar', 'nick', 'name', 'updatedAt'])
+        && request.resource.data.keys().hasOnly(['avatar', 'nick', 'name', 'links', 'updatedAt'])
         && request.resource.data.updatedAt == request.time
         && (!('avatar' in request.resource.data)
             || (request.resource.data.avatar is string && request.resource.data.avatar.size() <= 40000))
@@ -92,6 +93,15 @@ service cloud.firestore {
             || (request.resource.data.nick is string && request.resource.data.nick.size() <= 40))
         && (!('name' in request.resource.data)
             || (request.resource.data.name is string && request.resource.data.name.size() <= 100))
+        // ссылки на соцсети: ВКонтакте, Telegram, Instagram, YouTube, сайт; только http(s), до 200 знаков
+        && (!('links' in request.resource.data)
+            || (request.resource.data.links is map
+                && request.resource.data.links.keys().hasOnly(['vk', 'tg', 'ig', 'yt', 'web'])
+                && linkOk(request.resource.data.links.get('vk', ''))
+                && linkOk(request.resource.data.links.get('tg', ''))
+                && linkOk(request.resource.data.links.get('ig', ''))
+                && linkOk(request.resource.data.links.get('yt', ''))
+                && linkOk(request.resource.data.links.get('web', ''))))
         // новое фото: не больше 3 в месяц; новый ник: не больше 5 в месяц
         && (request.resource.data.get('avatar', '') == ''
             || request.resource.data.get('avatar', '') == (resource == null ? '' : resource.data.get('avatar', ''))
