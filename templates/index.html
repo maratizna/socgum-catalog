@@ -7,10 +7,13 @@
 </section>
 
 {% if firebase %}
-<section class="hot-strip" id="hot-strip" aria-labelledby="hot-h" hidden>
-  <div class="hot-head"><h2 id="hot-h">Самое обсуждаемое</h2><a class="linkbtn" href="hot/">Смотреть все</a></div>
-  <ul class="hot-row" id="hot-row"></ul>
-</section>
+<details class="hot-strip" id="hot-strip">
+  <summary><span id="hot-h">Самое обсуждаемое</span></summary>
+  <div class="hot-body" id="hot-body">
+    <ul class="hot-row" id="hot-row"></ul>
+    <p class="hot-more"><a class="linkbtn" href="hot/">Смотреть все</a></p>
+  </div>
+</details>
 {% set hj = {} %}{% for n in numbers %}{% set _ = hj.update({n.id: [n.title, n.collective, n.concert.name]}) %}{% endfor %}
 <script type="application/json" id="hot-json">{{ hj|tojson }}</script>
 {% endif %}

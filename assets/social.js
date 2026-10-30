@@ -2103,14 +2103,24 @@
     if (!strip && !page) return;
     var meta = hotMeta();
     if (strip) {
-      var row = document.getElementById("hot-row");
-      loadHot("a", 5).then(function (arr) {
-        var cards = (arr || []).map(function (it) { return hotCard(meta, it); }).filter(Boolean);
-        if (!cards.length) return;
-        clear(row);
-        cards.forEach(function (c) { row.append(el("li", null, c)); });
-        strip.hidden = false;
-      }, function () { /* полоса необязательна: без сети или счётчиков просто не показываем */ });
+      /* данные берутся с сервера только когда человек раскрыл блок; после обновления страницы блок снова свёрнут */
+      var row = document.getElementById("hot-row"), done = false;
+      var openStrip = function () {
+        if (done || !strip.open) return;
+        done = true;
+        clear(row).append(el("li", { class: "hot-wait" }, el("span", { class: "c-hint", text: "Загружаем…" })));
+        loadHot("a", 5).then(function (arr) {
+          var cards = (arr || []).map(function (it) { return hotCard(meta, it); }).filter(Boolean);
+          clear(row);
+          if (!cards.length) { row.append(el("li", { class: "hot-wait" }, el("span", { class: "c-hint", text: "Пока никто не комментировал. Откройте номер и напишите первым." }))); return; }
+          cards.forEach(function (c) { row.append(el("li", null, c)); });
+        }, function (e) {
+          done = false;
+          clear(row).append(el("li", { class: "hot-wait" }, el("span", { class: "msg msg-err", text: "Не удалось загрузить: " + errText(e) + " " }),
+            el("button", { type: "button", class: "linkbtn", text: "Повторить", onclick: openStrip })));
+        });
+      };
+      strip.addEventListener("toggle", openStrip);
     }
     if (page) {
       var wk = document.getElementById("hot-week"), all = document.getElementById("hot-all");
