@@ -734,3 +734,17 @@ html[data-signed="1"] .head-ph{display:inline-block}
 .similar-body{padding:6px 0 4px}
 .similar .rel-list{grid-template-columns:repeat(auto-fill,minmax(min(100%,300px),1fr))}
 h1,h2{text-wrap:balance}
+
+/* фирменный шрифт заголовков: чуть крупнее и с большим межбуквенным расстоянием, чтобы буквы не слипались */
+h1,h2,.wordmark,.play,.rate-sum h3,.rate-big strong,.rate-val,.add-block h2,.rate-thanks-big,.hot-strip>summary,.p-graph>summary,.add-dialog h2,.avatar-init{letter-spacing:.05em;word-spacing:.08em}
+h1{font-size:clamp(2.05rem,5.8vw,3.8rem);line-height:1.14}
+h2{font-size:1.18rem;line-height:1.35}
+.wordmark{font-size:1.02rem}
+.play{font-size:.98rem}
+.rate-sum h3{font-size:1.1rem}
+.rate-big strong{font-size:clamp(2.4rem,6.4vw,3.3rem)}
+.rate-val{font-size:1.35rem}
+.add-block h2{font-size:1.18rem}
+.hot-strip>summary,.p-graph>summary{font-size:1.15rem}
+.add-dialog h2{font-size:1.2rem}
+.similar>summary h2{font-size:1.25rem}
