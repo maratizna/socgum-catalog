@@ -160,6 +160,7 @@
         more.hidden = left <= 0;
         more.textContent = "Показать ещё" + (left > 0 ? " (" + Math.min(PAGE, left) + " из " + left + ")" : "");
       }
+      document.body.classList.toggle("is-filtered", !!filtered);
       var resetBtn = document.querySelector(".linkbtn[data-reset]");
       if (resetBtn) resetBtn.hidden = !filtered;
       empty.hidden = visible !== 0;

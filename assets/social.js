@@ -203,6 +203,29 @@
     batch.set(usageRef(kind), d);
   }
 
+  /* ------------------------------------------------------------ обсуждаемое
+     Счётчики комментариев по номерам лежат в buzz/{номер}: total (всего) и wkn (неделя*10000 + число комментариев недели).
+     Неделя идёт с понедельника по времени Самары. Так главную и страницу «Самое обсуждаемое» собирают 5–25 чтениями,
+     а не чтением всех комментариев. Счётчик меняется в том же пакете, что и комментарий; если правила базы ещё
+     не обновлены, комментарий всё равно сохраняется, а счёт поправит кнопка «Пересчитать обсуждаемое» в кабинете. */
+  var WEEK_MS = 604800000;
+  function weekOf(ms) { return Math.floor((ms + 4 * 3600e3 + 3 * 86400e3) / WEEK_MS); }
+  function buzzRef(nid) { return fdoc("buzz/" + nid); }
+  function readBuzz(nid) { return fb.f.getDoc(buzzRef(nid)).then(function (s) { return s.exists() ? s.data() : null; }, function () { return null; }); }
+  function buzzNext(old, delta, createdMs) {
+    var o = old || {}, total = Math.max(0, (o.total || 0) + delta), wkn = o.wkn || 0;
+    var cw = weekOf(createdMs), bw = Math.floor(wkn / 10000), nw = weekOf(Date.now());
+    if (cw === bw) wkn = Math.max(cw * 10000, wkn + delta);
+    else if (delta > 0 && cw === nw && cw > bw) wkn = cw * 10000 + 1;
+    return { total: total, wkn: wkn };
+  }
+  function buzzSet(batch, nid, old, delta, createdMs, cid) {
+    var v = buzzNext(old, delta, createdMs);
+    if (cid) v.ref = cid;
+    batch.set(buzzRef(nid), v);
+  }
+  function isDenied(e) { return !!e && e.code === "permission-denied"; }
+
   /* ------------------------------------------------------------ вход: окно с двумя способами */
   function authError(e) {
     var c = e && e.code || "";
@@ -783,7 +806,7 @@
         ratings.forEach(function (r) { ratingBy[r.uid] = r; });
       }, function () { ratings = []; ratingBy = {}; });
     }
-    function dropComments() { cdrop("comments:" + nid); cdrop("likes:" + nid); cdrop("ratings:" + nid); cdrop("user:ccount:"); cdrop("user:comments2:"); }
+    function dropComments() { cdrop("comments:" + nid); cdrop("likes:" + nid); cdrop("ratings:" + nid); cdrop("hot:"); cdrop("user:ccount:"); cdrop("user:comments2:"); }
     function plural(n) {
       var m = n % 100, d = n % 10;
       return n + " " + (m > 10 && m < 20 ? "лайков" : d === 1 ? "лайк" : d > 1 && d < 5 ? "лайка" : "лайков");
@@ -832,11 +855,30 @@
     /* комментарий удаляется вместе со своими лайками одним пакетом */
     function deleteComment(c) {
       return fb.f.getDocs(fb.f.query(fcol("likes"), fb.f.where("commentId", "==", c.id), fb.f.limit(450))).then(function (s) {
-        var b = fb.f.writeBatch(fb.db);
-        s.forEach(function (d) { b.delete(d.ref); });
-        b.delete(fdoc("comments/" + c.id));
-        return b.commit();
+        return (c.status === "visible" ? readBuzz(nid) : Promise.resolve(null)).then(function (buz) {
+          var run = function (withBuzz) {
+            var b = fb.f.writeBatch(fb.db);
+            s.forEach(function (d) { b.delete(d.ref); });
+            b.delete(fdoc("comments/" + c.id));
+            if (withBuzz && buz) buzzSet(b, nid, buz, -1, ms(c), c.id);
+            return b.commit().catch(function (e) { if (withBuzz && buz && isDenied(e)) return run(false); throw e; });
+          };
+          return run(true);
+        });
       }).then(function () { cdrop("likers:" + c.id); });
+    }
+    /* скрыть или показать комментарий (администратор); счётчик обсуждаемого меняется вместе с ним */
+    function toggleHidden(c) {
+      var show = c.status === "hidden", upd = { status: show ? "visible" : "hidden" };
+      return readBuzz(nid).then(function (buz) {
+        var b = fb.f.writeBatch(fb.db);
+        b.update(fdoc("comments/" + c.id), upd);
+        if (buz) buzzSet(b, nid, buz, show ? 1 : -1, ms(c), null);
+        return b.commit().catch(function (e) {
+          if (buz && isDenied(e)) return fb.f.updateDoc(fdoc("comments/" + c.id), upd);
+          throw e;
+        });
+      });
     }
     function ms(c) { return c.createdAt && c.createdAt.toMillis ? c.createdAt.toMillis() : Date.now(); }
     function when(c) {
@@ -937,7 +979,7 @@
       if (n > 0) actions.append(el("button", { type: "button", class: "linkbtn like-count", "aria-expanded": openLikers[c.id] ? "true" : "false", text: plural(n),
         onclick: function () { openLikers[c.id] = !openLikers[c.id]; drawList(); } }));
       if (!isReply && state.user) actions.append(el("button", { type: "button", class: "linkbtn", text: "Ответить", onclick: function () { replyTo = c; drawForm(); form.scrollIntoView({ block: "center" }); } }));
-      if (state.admin) actions.append(el("button", { type: "button", class: "linkbtn", text: c.status === "hidden" ? "Показать" : "Скрыть", onclick: function () { act(fb.f.updateDoc(fdoc("comments/" + c.id), { status: c.status === "hidden" ? "visible" : "hidden" })); } }));
+      if (state.admin) actions.append(el("button", { type: "button", class: "linkbtn", text: c.status === "hidden" ? "Показать" : "Скрыть", onclick: function () { act(toggleHidden(c)); } }));
       if (canEdit(c) && !editing[c.id]) actions.append(el("button", { type: "button", class: "linkbtn", text: "Править", onclick: function () { startEdit(c); } }));
       if (mine || state.admin) actions.append(el("button", { type: "button", class: "linkbtn", text: "Удалить", onclick: function () { if (confirm("Удалить комментарий насовсем?")) act(deleteComment(c)); } }));
       var rt = !isReply && firstTop[c.uid] === c.id && ratingBy[c.uid], rline = rt ? ratingNode(rt) : null;
@@ -1130,7 +1172,10 @@
         var doneInfo = { rate: wantRate, clear: wantClear, text: !!text, tot: wantRate ? ratingTotal(draft) : null };
         justDone = null;
         send.disabled = true;
+        var buz = null;
         (text ? readUsage("d") : Promise.resolve({})).then(function (cur) {
+          return (text ? readBuzz(nid) : Promise.resolve(null)).then(function (b0) { buz = b0; return cur; });
+        }).then(function (cur) {
           var n = (cur.comments || 0) + 1;
           if (text && n > LIM.comments) throw new Error("Лимит: " + LIM.comments + " комментариев в день. Следующий можно оставить завтра.");
           var cdata = null, cref = null;
@@ -1144,9 +1189,12 @@
           }
           var rref = fdoc("ratings/" + nid + "_" + uid);
           /* Один пакет: комментарий и оценка вместе. withCtx — с пометкой «откуда знаю работу» (для направлений вне сцены) */
-          var go = function (withCtx) {
+          var go = function (withCtx, withBuzz) {
             var b = fb.f.writeBatch(fb.db);
-            if (text) { b.set(cref, cdata); bumpUsage(b, "d", cur, "comments"); }
+            if (text) {
+              b.set(cref, cdata); bumpUsage(b, "d", cur, "comments");
+              if (withBuzz) buzzSet(b, nid, buz, 1, Date.now(), cref.path.split("/").pop());
+            }
             if (wantRate) {
               var rd = { numberId: nid, uid: uid, updatedAt: fb.f.serverTimestamp() };
               RATE.forEach(function (k) { rd[k[0]] = draft[k[0]]; });
@@ -1155,11 +1203,15 @@
             } else if (wantClear) b.delete(rref);
             return b.commit();
           };
-          return go(true).catch(function (e) {
-            /* пока правила базы не обновлены, поле ctx отклоняется: сохраняем оценку без него */
-            if (wantRate && OFFSTAGE && e && e.code === "permission-denied") return go(false);
-            throw e;
-          });
+          var run = function (withCtx, withBuzz) {
+            return go(withCtx, withBuzz).catch(function (e) {
+              /* пока правила базы не обновлены, счётчик обсуждаемого и поле ctx отклоняются: сохраняем без них */
+              if (isDenied(e) && withBuzz && text) return run(withCtx, false);
+              if (isDenied(e) && withCtx && wantRate && OFFSTAGE) return run(false, false);
+              throw e;
+            });
+          };
+          return run(true, true);
         }).then(function () { replyTo = null; justDone = { k: 1, t: Date.now(), rate: doneInfo.rate, clear: doneInfo.clear, text: doneInfo.text, tot: doneInfo.tot }; dropComments(); return loadComments(true); }).then(draw, function (e) { send.disabled = false; note(form, errText(e), "err"); });
       } },
         replyTo && el("p", { class: "c-replyto" }, "Ответ для " + replyTo.authorName + " ",
@@ -1820,7 +1872,7 @@
   function initAccount() {
     var box = document.getElementById("account");
     if (!box) return;
-    var names = {}, catalog = null, pending = [], approved = [], syncMsg = "";
+    var names = {}, catalog = null, pending = [], approved = [], syncMsg = "", buzzMsg = "";
     var myProfiles = {};   // pid → профиль страницы, которой владеет этот аккаунт
 
     function loadMine() {
@@ -1977,7 +2029,13 @@
           el("button", { type: "button", class: "btn", text: "Обновить список", onclick: function (ev) {
             ev.target.disabled = true; syncMsg = "Обновляем…"; draw();
             sync(true).then(function (m) { syncMsg = m; }, function (e) { syncMsg = errText(e); }).then(draw);
-          } }), el("p", { class: "msg", text: syncMsg, hidden: !syncMsg }));
+          } }), el("p", { class: "msg", text: syncMsg, hidden: !syncMsg }),
+          el("h2", { text: "Самое обсуждаемое" }),
+          el("p", { class: "c-hint", text: "Счётчики комментариев по номерам ведутся сами. Если они разошлись с жизнью (например, после правил базы или ручного удаления в консоли), нажмите кнопку: сервис один раз пересчитает все видимые комментарии." }),
+          el("button", { type: "button", class: "btn", text: "Пересчитать обсуждаемое", onclick: function (ev) {
+            ev.target.disabled = true; buzzMsg = "Считаем…"; draw();
+            recountBuzz().then(function (m) { buzzMsg = m; }, function (e) { buzzMsg = errText(e); }).then(function () { cdrop("hot:"); draw(); });
+          } }), el("p", { class: "msg", text: buzzMsg, hidden: !buzzMsg }));
       }
       box.append(el("h2", { text: "Выход" }),
         el("button", { type: "button", class: "btn btn-s", text: "Выйти из аккаунта", onclick: signOut }));
@@ -1992,6 +2050,86 @@
         return sync(false).then(function (m) { syncMsg = /обновлён/.test(m) ? m : ""; }, function (e) { syncMsg = errText(e); }).then(loadAdmin).then(draw);
       });
     });
+  }
+
+
+  /* пересчёт счётчиков по всем видимым комментариям (только администратор) */
+  function recountBuzz() {
+    var cw = weekOf(Date.now()), by = {}, n = 0;
+    return fb.f.getDocs(fb.f.query(fcol("comments"), fb.f.where("status", "==", "visible"))).then(function (s) {
+      s.forEach(function (d) {
+        var x = d.data(); if (!x.numberId) return;
+        var o = by[x.numberId] || (by[x.numberId] = { total: 0, w: 0 });
+        o.total++; n++;
+        if (x.createdAt && x.createdAt.toMillis && weekOf(x.createdAt.toMillis()) === cw) o.w++;
+      });
+      return fb.f.getDocs(fcol("buzz"));
+    }).then(function (old) {
+      old.forEach(function (d) { if (!by[d.id]) by[d.id] = { total: 0, w: 0 }; });
+      var ids = Object.keys(by), jobs = [];
+      for (var i = 0; i < ids.length; i += 400) {
+        var b = fb.f.writeBatch(fb.db);
+        ids.slice(i, i + 400).forEach(function (id) { b.set(buzzRef(id), { total: by[id].total, wkn: cw * 10000 + Math.min(by[id].w, 9999) }); });
+        jobs.push(b.commit());
+      }
+      return Promise.all(jobs);
+    }).then(function () { return "Готово: учтено комментариев — " + n + ", номеров — " + Object.keys(by).length + "."; });
+  }
+
+  /* ------------------------------------------------------------ самое обсуждаемое: полоса на главной и страница /hot/ */
+  function hotMeta() { try { return JSON.parse(document.getElementById("hot-json").textContent) || {}; } catch (e) { return {}; } }
+  function loadHot(kind, lim, fresh) {
+    var base = weekOf(Date.now()) * 10000;
+    return cached("hot:" + kind + lim + (kind === "w" ? ":" + weekOf(Date.now()) : ""), TTL.pub, fresh === true, function () {
+      var q = kind === "w"
+        ? fb.f.query(fcol("buzz"), fb.f.where("wkn", ">", base), fb.f.orderBy("wkn", "desc"), fb.f.limit(lim))
+        : fb.f.query(fcol("buzz"), fb.f.where("total", ">", 0), fb.f.orderBy("total", "desc"), fb.f.limit(lim));
+      return fb.f.getDocs(q).then(function (s) {
+        return s.docs.map(function (d) { var x = d.data(); return { id: d.id, n: kind === "w" ? (x.wkn || 0) - base : x.total || 0 }; });
+      });
+    });
+  }
+  function hotWord(n) { return n + " " + plural(n, "комментарий", "комментария", "комментариев"); }
+  function hotCard(meta, it, tag) {
+    var m = meta[it.id];
+    if (!m) return null;
+    var img = el("img", { src: ROOT + "img/" + encodeURIComponent(it.id) + "/card.webp", width: "160", height: "120", alt: "", loading: "lazy", decoding: "async" });
+    return el("a", { class: "hot-card", href: ROOT + "n/" + encodeURIComponent(it.id) + "/" }, img,
+      el("span", { class: "hot-t" }, el("b", { text: m[0] }), m[1] ? el("small", { text: m[1] }) : null, el("small", { text: m[2] || "" }),
+        el("span", { class: "hot-n", text: hotWord(it.n) })));
+  }
+  function initHot() {
+    var strip = document.getElementById("hot-strip"), page = document.getElementById("hot-page");
+    if (!strip && !page) return;
+    var meta = hotMeta();
+    if (strip) {
+      var row = document.getElementById("hot-row");
+      loadHot("a", 5).then(function (arr) {
+        var cards = (arr || []).map(function (it) { return hotCard(meta, it); }).filter(Boolean);
+        if (!cards.length) return;
+        clear(row);
+        cards.forEach(function (c) { row.append(el("li", null, c)); });
+        strip.hidden = false;
+      }, function () { /* полоса необязательна: без сети или счётчиков просто не показываем */ });
+    }
+    if (page) {
+      var wk = document.getElementById("hot-week"), all = document.getElementById("hot-all");
+      var fill = function (box, kind, lim, emptyTitle, emptyText) {
+        clear(box).append(el("p", { class: "c-hint", text: "Загружаем…" }));
+        return loadHot(kind, lim).then(function (arr) {
+          var items = (arr || []).filter(function (it) { return meta[it.id]; }).map(function (it, i) {
+            return el("li", null, el("span", { class: "hot-rank", text: String(i + 1) }), hotCard(meta, it));
+          });
+          clear(box);
+          if (!items.length) { box.append(emptyState(emptyTitle, emptyText)); return; }
+          var ol = el("ol", { class: "hot-list" });
+          items.forEach(function (li) { ol.append(li); });
+          box.append(ol);
+        }, function (e) { clear(box).append(errorState("Не удалось загрузить: " + errText(e), function () { fill(box, kind, lim, emptyTitle, emptyText); })); });
+      };
+      fill(wk, "w", 5, "На этой неделе пока тихо", "Комментарии, оставленные с понедельника, появятся здесь. Откройте номер и напишите первым.");
+      fill(all, "a", 20, "Пока никто не комментировал", "Когда появятся комментарии, здесь будут самые обсуждаемые номера.");
+    }
   }
 
   /* ------------------------------------------------------------ настройки профиля
@@ -2158,7 +2296,7 @@
   /* ------------------------------------------------------------ запуск */
   var slot = document.getElementById("auth-slot");
   load().then(function () {
-    initNumber(); initPlaylistAdd(); initPerson(); initAccount(); initUserPage(); initSettings();
+    initNumber(); initPlaylistAdd(); initPerson(); initAccount(); initUserPage(); initSettings(); initHot();
     views.unshift(drawAuth);
     fb.a.onAuthStateChanged(fb.auth, function (user) { loadMe(user).then(refreshViews); });
   }, function (e) {

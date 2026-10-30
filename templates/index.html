@@ -6,6 +6,15 @@
   <p class="lead">{{ lead }}</p>
 </section>
 
+{% if firebase %}
+<section class="hot-strip" id="hot-strip" aria-labelledby="hot-h" hidden>
+  <div class="hot-head"><h2 id="hot-h">Самое обсуждаемое</h2><a class="linkbtn" href="hot/">Смотреть все</a></div>
+  <ul class="hot-row" id="hot-row"></ul>
+</section>
+{% set hj = {} %}{% for n in numbers %}{% set _ = hj.update({n.id: [n.title, n.collective, n.concert.name]}) %}{% endfor %}
+<script type="application/json" id="hot-json">{{ hj|tojson }}</script>
+{% endif %}
+
 <section class="filters" aria-label="Поиск и фильтры">
   <div class="filter-row">
     <div class="search-wrap">

@@ -193,6 +193,51 @@ service cloud.firestore {
       allow delete: if isAdmin() || (signedIn() && resource.data.uid == request.auth.uid);
     }
 
+    // Обсуждаемое: счётчик комментариев по номерам. total — всего, wkn — неделя*10000 + число комментариев недели
+    // (неделя идёт с понедельника, время Самары). Читают все. Обычный человек может изменить счётчик только на единицу
+    // и только вместе с комментарием: добавленным (+1) или своим удаляемым (−1) в том же пакете. Администратор пишет любые значения
+    // (кнопка «Пересчитать обсуждаемое» в кабинете).
+    function weekOf(ts) { return math.floor((ts.toMillis() + 4 * 3600000 + 3 * 86400000) / 604800000); }
+    function buzzCPath() { return /databases/$(database)/documents/comments/$(request.resource.data.ref); }
+    function buzzAdded(nid) {
+      return request.resource.data.ref is string
+        && !exists(buzzCPath()) && existsAfter(buzzCPath())
+        && getAfter(buzzCPath()).data.numberId == nid
+        && getAfter(buzzCPath()).data.uid == request.auth.uid
+        && getAfter(buzzCPath()).data.status == 'visible';
+    }
+    function buzzRemoved(nid) {
+      return request.resource.data.ref is string
+        && exists(buzzCPath()) && !existsAfter(buzzCPath())
+        && get(buzzCPath()).data.numberId == nid
+        && get(buzzCPath()).data.uid == request.auth.uid
+        && get(buzzCPath()).data.status == 'visible';
+    }
+    match /buzz/{nid} {
+      allow read: if true;
+      allow create: if isAdmin()
+        || (signedIn()
+          && request.resource.data.keys().hasOnly(['total', 'wkn', 'ref'])
+          && request.resource.data.total == 1
+          && request.resource.data.wkn == math.floor((request.time.toMillis() + 4 * 3600000 + 3 * 86400000) / 604800000) * 10000 + 1
+          && buzzAdded(nid));
+      allow update: if isAdmin()
+        || (signedIn()
+          && request.resource.data.keys().hasOnly(['total', 'wkn', 'ref'])
+          && ((request.resource.data.total == resource.data.total + 1
+                && request.resource.data.wkn == (math.floor(resource.data.wkn / 10000) == math.floor((request.time.toMillis() + 4 * 3600000 + 3 * 86400000) / 604800000)
+                    ? resource.data.wkn + 1
+                    : math.floor((request.time.toMillis() + 4 * 3600000 + 3 * 86400000) / 604800000) * 10000 + 1)
+                && buzzAdded(nid))
+            || (request.resource.data.total == resource.data.total - 1
+                && request.resource.data.total >= 0
+                && request.resource.data.wkn == (math.floor(resource.data.wkn / 10000) == weekOf(get(buzzCPath()).data.createdAt)
+                    ? resource.data.wkn - 1
+                    : resource.data.wkn)
+                && buzzRemoved(nid))));
+      allow delete: if isAdmin();
+    }
+
     // Оценки номера: 1–5 по четырём критериям (замысел, постановка, исполнение, сценическое воплощение)
     // и общему впечатлению. Один документ на человека и номер (ключ «номер_аккаунт»), все пять полей обязательны.
     // Читают все; создаёт и меняет только сам человек; убрать может он сам или администратор.

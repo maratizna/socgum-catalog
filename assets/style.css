@@ -601,3 +601,25 @@ html[data-signed="1"] .head-ph{display:inline-block}
 .lightbox-x{position:absolute;top:12px;right:14px;width:44px;height:44px;border:0;border-radius:50%;background:rgba(255,255,255,.14);color:#fff;font-size:1.8rem;line-height:1;cursor:pointer}
 .dir-panel .concert-text{min-width:0;width:100%}
 .concert-text{min-width:0}
+
+/* Самое обсуждаемое: полоса на главной и страница */
+.hot-strip{margin:0 0 22px}
+.is-filtered .hot-strip{display:none}
+.hot-head{display:flex;align-items:baseline;justify-content:space-between;gap:12px;margin:0 0 10px}
+.hot-head h2{margin:0;font-size:1.15rem}
+.hot-row{list-style:none;margin:0;padding:0 0 6px;display:flex;gap:12px;overflow-x:auto;scroll-snap-type:x proximity;-webkit-overflow-scrolling:touch}
+.hot-row>li{flex:0 0 min(260px,72vw);scroll-snap-align:start}
+.hot-card{display:flex;gap:12px;align-items:center;height:100%;padding:8px;border:1px solid var(--line);border-radius:var(--r);background:var(--coal);color:inherit;text-decoration:none}
+.hot-card:hover{border-color:var(--ember)}
+.hot-card img{flex:none;width:72px;height:54px;object-fit:cover;border-radius:calc(var(--r) - 2px)}
+.hot-t{display:flex;flex-direction:column;gap:1px;min-width:0}
+.hot-t b{overflow:hidden;text-overflow:ellipsis;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical}
+.hot-t small{color:var(--ash);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.hot-n{color:var(--ember);font-size:.9rem}
+.hot-page section{margin:26px 0 0}
+.hot-page h2{font-size:1.15rem;margin:0 0 6px}
+.hot-list{list-style:none;margin:12px 0 0;padding:0;display:grid;gap:10px;max-width:720px}
+.hot-list>li{display:flex;gap:12px;align-items:center}
+.hot-list .hot-card{flex:1;min-width:0}
+.hot-list .hot-card img{width:96px;height:72px}
+.hot-rank{flex:none;width:2ch;text-align:right;color:var(--ash);font-variant-numeric:tabular-nums}

@@ -1,0 +1,20 @@
+{% extends "base.html" %}
+{% block body_class %}page-hot{% endblock %}
+{% block main %}
+<article class="hot-page" id="hot-page">
+  <h1>Самое обсуждаемое</h1>
+  <p class="lead">Номера, под которыми чаще всего пишут комментарии.</p>
+  <section aria-labelledby="hw-h">
+    <h2 id="hw-h">На этой неделе</h2>
+    <p class="c-hint">Неделя идёт с понедельника. Пять номеров с наибольшим числом новых комментариев.</p>
+    <div id="hot-week"><p class="c-hint">Загружаем…</p></div>
+  </section>
+  <section aria-labelledby="ha-h">
+    <h2 id="ha-h">За всё время</h2>
+    <div id="hot-all"><p class="c-hint">Загружаем…</p></div>
+  </section>
+</article>
+{% set hj = {} %}{% for n in numbers %}{% set _ = hj.update({n.id: [n.title, n.collective, n.concert.name]}) %}{% endfor %}
+<script type="application/json" id="hot-json">{{ hj|tojson }}</script>
+{% endblock %}
+{% block scripts %}<script src="{{ root }}assets/app.js?v={{ asset_v }}" defer></script>{% endblock %}

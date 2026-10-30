@@ -1064,6 +1064,9 @@ def build_site(concerts, directions, numbers, people, report, demo, source):
     if firebase:
         write(TMP / "account" / "index.html", env.get_template("account.html").render(
             root="../", page_title=f"Кабинет: {cfg['site_title']}", canonical="", og_image="", description="", **ctx_common))
+        write(TMP / "hot" / "index.html", env.get_template("hot.html").render(
+            root="../", numbers=all_numbers, page_title=f"Самое обсуждаемое: {cfg['site_title']}",
+            canonical=f"{site_url}/hot/" if site_url else "", og_image="", description="Номера, под которыми чаще всего пишут комментарии.", **ctx_common))
         write(TMP / "settings" / "index.html", env.get_template("settings.html").render(
             root="../", page_title=f"Настройки профиля: {cfg['site_title']}", canonical="", og_image="", description="", **ctx_common))
         write(TMP / "u" / "index.html", env.get_template("user.html").render(

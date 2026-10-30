@@ -76,7 +76,7 @@ async function warm(withImages) {
   const res = await fetch(abs("catalog.json"), { cache: "no-store" });
   await put(cache, abs("catalog.json"), res.clone());
   const cat = await res.json();
-  const pages = ["", "u/", "settings/", "account/"].concat((cat.numbers || []).map((n) => "n/" + n.id + "/"), (cat.people || []).map((p) => "p/" + p.id + "/"));
+  const pages = ["", "u/", "hot/", "settings/", "account/"].concat((cat.numbers || []).map((n) => "n/" + n.id + "/"), (cat.people || []).map((p) => "p/" + p.id + "/"));
   const imgs = withImages ? (cat.numbers || []).map((n) => "img/" + n.id + "/card.webp") : [];
   const jobs = pages.map((u) => [u, true]).concat(imgs.map((u) => [u, false]));
   let done = 0, i = 0;
