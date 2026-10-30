@@ -18,6 +18,19 @@
     </div>
   </div>
   {% if firebase %}<div id="claim" class="claim" data-person="{{ p.slug }}" data-name="{{ p.name }}" data-director="{{ 1 if p.is_director else 0 }}" hidden></div>{% endif %}
+  {% if p.graph.nodes %}
+  <details class="p-graph" id="p-graph" data-total="{{ p.graph.total }}">
+    <summary><span>Связи с людьми</span> <span class="p-graph-n">{{ p.graph.total }}</span></summary>
+    <div class="graph-wrap" id="graph-wrap">
+      <svg id="graph-svg" class="graph-svg" role="group" aria-label="Граф связей: {{ p.name }} и люди, с которыми делал(а) номера вместе"></svg>
+    </div>
+    <p class="c-hint">Чем больше общих номеров, тем крупнее шарик и тем ближе он к центру. Нажмите на шарик, чтобы открыть страницу человека. Шарики можно перетаскивать.{% if p.graph.total > p.graph.nodes|length %} Показаны {{ p.graph.nodes|length }} из {{ p.graph.total }}.{% endif %}</p>
+    <details class="p-graph-list"><summary>Списком</summary>
+      <ul>{% for q in p.graph.nodes %}<li><a href="{{ root }}p/{{ q.s }}/">{{ q.n }}</a> <span class="c-hint">{{ q.c }} {{ q.c|plural("общий номер", "общих номера", "общих номеров") }}</span></li>{% endfor %}</ul>
+    </details>
+  </details>
+  <script type="application/json" id="graph-json">{{ {"name": p.name, "nodes": p.graph.nodes}|tojson }}</script>
+  {% endif %}
   <div id="p-tabs" class="ptabs">
     <div id="p-nums" class="ptabs-panel" role="tabpanel">
       {% if p.numbers %}
@@ -49,7 +62,7 @@
   </div>
 </section>
 {% endblock %}
-{% block scripts %}<script>
+{% block scripts %}{% if p.graph.nodes %}<script src="{{ root }}assets/graph.js?v={{ asset_v }}" defer></script>{% endif %}<script>
 (function () {
   var bs = document.querySelectorAll(".pview-b"), nums = document.getElementById("pv-nums"), cons = document.getElementById("pv-cons");
   if (!bs.length || !nums || !cons) return;

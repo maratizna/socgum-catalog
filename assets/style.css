@@ -661,3 +661,28 @@ html[data-signed="1"] .head-ph{display:inline-block}
 @keyframes dice-roll{0%{transform:rotate(0)}60%{transform:rotate(300deg) translateY(-4px)}100%{transform:rotate(360deg)}}
 .dice-msg{color:#ff9d8a;font-size:.85rem}
 @media (prefers-reduced-motion:reduce){.dice.is-rolling .dice-i svg{animation:none}}
+
+/* Граф связей на странице человека */
+.p-graph{margin:22px 0 0;border:1px solid var(--line);border-radius:var(--r);background:var(--coal)}
+.p-graph>summary{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:12px 14px;cursor:pointer;list-style:none;font-family:var(--font-display);font-size:1.05rem;color:var(--ember)}
+.p-graph>summary::-webkit-details-marker{display:none}
+.p-graph>summary::after{content:"";width:0;height:0;border:6px solid transparent;border-top-color:currentColor;border-bottom-width:0;transition:transform .15s;margin-left:auto}
+.p-graph[open]>summary::after{transform:rotate(180deg)}
+.p-graph>summary:focus-visible{outline:2px solid var(--ember);outline-offset:2px}
+.p-graph-n{color:var(--ash);font-family:var(--font-text);font-size:.9rem}
+.p-graph .c-hint{margin:0;padding:6px 14px 0}
+.graph-wrap{padding:0 6px}
+.graph-svg{display:block;max-width:100%;touch-action:pan-y;user-select:none}
+.g-line{stroke:var(--ember);stroke-opacity:.28}
+.g-line.is-hot{stroke-opacity:.9}
+.g-node{cursor:pointer;outline:none}
+.g-ball{fill:var(--ember);stroke:var(--ember-hi);stroke-width:1;transition:stroke-width .12s}
+.g-node:hover .g-ball,.g-node:focus-visible .g-ball{stroke:#fff;stroke-width:2}
+.g-ball-c{fill:var(--ember);stroke:#fff;stroke-width:2}
+.g-label{fill:var(--ink);font:600 12px var(--font-text);paint-order:stroke;stroke:var(--coal);stroke-width:3px;pointer-events:none}
+.g-label-c{font-size:14px;fill:var(--ember-hi)}
+.g-nodes .is-dim{opacity:.35}
+.g-nodes g{transition:opacity .12s}
+.p-graph-list{margin:8px 14px 12px}
+.p-graph-list summary{cursor:pointer;color:var(--ash);font-size:.9rem}
+.p-graph-list ul{margin:8px 0 0;padding-left:20px}

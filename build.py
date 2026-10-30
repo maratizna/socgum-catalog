@@ -662,6 +662,9 @@ def parse_materials(rows, concerts, directions, numbers, report):
                 obj["materials"]["photos"].append({"src": u, "caption": caption})
 
 
+GRAPH_MAX = 40   # сколько людей показывать на графе связей человека
+
+
 def build_model(wb, report):
     sheets = {n: read_sheet(wb, n, report) for n in SPEC}
     FORMS[:] = form_links(sheets.get("Формы") or [])
@@ -858,6 +861,19 @@ def build_model(wb, report):
             cons.setdefault(e["number"]["concert"]["slug"], {"concert": e["number"]["concert"], "numbers": []})["numbers"].append(e)
         p["concerts"] = list(cons.values())
         p["dir_names"] = sorted({d["name"] for e in p["numbers"] for d in (e["number"].get("directions") or [])})
+
+    # связи людей: с кем делал номера вместе (число общих номеров). Считается при сборке, сервис и таблица при просмотре не нужны.
+    by_num = {n["id"]: {id(q): q for q in n["people"]["choreographers"] + n["people"]["performers"]} for n in numbers.values()}
+    for p in people.values():
+        cnt, ref = defaultdict(int), {}
+        for e in p["numbers"]:
+            for qid, q in by_num[e["number"]["id"]].items():
+                if q is not p:
+                    cnt[qid] += 1
+                    ref[qid] = q
+        order = sorted(cnt, key=lambda k: (-cnt[k], norm(ref[k]["name"])))
+        p["graph"] = {"nodes": [{"n": ref[k]["name"], "s": ref[k]["slug"], "c": cnt[k]} for k in order[:GRAPH_MAX]],
+                      "total": len(order)}
     return concerts, directions, numbers, people
 
 
@@ -1018,7 +1034,7 @@ def build_site(concerts, directions, numbers, people, report, demo, source):
     today = dt.date.today().isoformat()
     fbc = cfg.get("firebase") or {}
     firebase = {k: fbc[k] for k in ("apiKey", "authDomain", "projectId", "appId") if fbc.get(k)} if fbc.get("apiKey") and fbc.get("projectId") else None
-    asset_v = hashlib.sha1(b"".join((ROOT / "assets" / f).read_bytes() for f in ("style.css", "app.js", "social.js"))).hexdigest()[:8]
+    asset_v = hashlib.sha1(b"".join((ROOT / "assets" / f).read_bytes() for f in ("style.css", "app.js", "social.js", "graph.js"))).hexdigest()[:8]
     ctx_common = dict(firebase=firebase, asset_v=asset_v, site_title=cfg["site_title"], site_url=site_url, home_url=cfg.get("home_url", ""),
                       home_label=cfg.get("home_label", ""), demo=demo, brand_font=bool(brand_font),
                       lead=cfg.get("lead", ""), forms=list(FORMS))
@@ -1083,7 +1099,7 @@ def build_site(concerts, directions, numbers, people, report, demo, source):
     write(TMP / "offline.html", env.get_template("offline.html").render(
         root=base_path, page_title=f"Нет соединения: {cfg['site_title']}", canonical="", og_image="", description="", **{**ctx_common, "firebase": None}))
     core = ["./", "offline.html", "catalog.json", "rate.json", "manifest.webmanifest",
-            f"assets/style.css?v={asset_v}", f"assets/app.js?v={asset_v}"]
+            f"assets/style.css?v={asset_v}", f"assets/app.js?v={asset_v}", f"assets/graph.js?v={asset_v}"]
     if firebase:
         core.append(f"assets/social.js?v={asset_v}")
     if brand_font:
