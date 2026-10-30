@@ -140,7 +140,9 @@ function formatSheet_(sh, d) {
     sh.getRange(2, c + 1, Math.max(1, sh.getMaxRows() - 1), 1).setNumberFormat('@');
   });
   var existing = sh.getRange(1, 1, 1, n).getValues()[0];
-  if (existing.join('') === '') sh.getRange(1, 1, 1, n).setValues([d.head]);
+  // заполняем только пустые ячейки заголовка: новые столбцы появляются, существующие названия не трогаются
+  var merged = d.head.map(function (h, i) { return existing[i] === '' || existing[i] == null ? h : existing[i]; });
+  sh.getRange(1, 1, 1, n).setValues([merged]);
   sh.getRange(1, 1, 1, n).setBackground(ORANGE).setFontWeight('bold').setFontColor('#1a0f05').setVerticalAlignment('middle');
   sh.setRowHeight(1, 32);
   sh.setFrozenRows(1);
