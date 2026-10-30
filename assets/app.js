@@ -107,7 +107,26 @@
       });
       if (state.d && !have[state.d]) state.d = "";
       selDir.value = state.d;
+      syncChips();
     }
+
+    /* Направления кнопками с иконками; скрытый список выше хранит значение и подсказывает, какие направления есть в выбранном */
+    var dirChips = document.getElementById("dir-chips");
+    function syncChips() {
+      if (!dirChips || !selDir) return;
+      Array.prototype.forEach.call(dirChips.querySelectorAll(".dchip"), function (b) {
+        var v = b.dataset.v, opt = v ? selDir.querySelector('option[value="' + v + '"]') : null;
+        b.hidden = !!(opt && opt.disabled);
+        b.setAttribute("aria-pressed", state.d === v ? "true" : "false");
+      });
+      Array.prototype.forEach.call(dirChips.querySelectorAll(".dir-g"), function (g) { g.hidden = !g.querySelector(".dchip:not([hidden])"); });
+    }
+    if (dirChips) dirChips.addEventListener("click", function (e) {
+      var b = e.target.closest && e.target.closest(".dchip");
+      if (!b) return;
+      state.d = b.dataset.v && state.d === b.dataset.v ? "" : b.dataset.v;   // повторное нажатие снимает выбор
+      apply(true);
+    });
 
     function matches(card) {
       if (state.t && card.dataset.type !== state.t) return false;
@@ -190,7 +209,7 @@
 
       if (selType) selType.value = state.t;
       if (selSeason) selSeason.value = state.y;
-      if (selDir) selDir.value = state.d;
+      if (selDir) { selDir.value = state.d; syncChips(); }
       if (pushUrl) {
         var p = new URLSearchParams();
         if (state.q) p.set("q", state.q);
@@ -391,11 +410,88 @@
     function bindApi() {
       loadApi(function () {
         try { vk = window.VK.VideoPlayer(iframe); } catch (e) { vk = null; }
+        hookPos();
       });
+    }
+
+    /* ---- место в видео запоминается в браузере зрителя (сервис и лимиты не задействуются) ----
+       Ключ — запись концерта целиком: её смотрят с разных страниц номеров, время считается по всей записи, как в ссылках ?t=. */
+    var POS_KEY = "sg:pos:" + stage.dataset.oid + "_" + stage.dataset.vid;
+    var POS_TTL = 90 * 864e5;
+    var startSec = parseInt(stage.dataset.start, 10) || 0, endSec = parseInt(stage.dataset.end, 10) || 0;
+    var resumeBox = document.getElementById("resume");
+    function posGet() {
+      try {
+        var r = JSON.parse(window.localStorage.getItem(POS_KEY));
+        if (!r || !(r.t > 0)) return null;
+        if (Date.now() - (r.at || 0) > POS_TTL) { window.localStorage.removeItem(POS_KEY); return null; }
+        return r;
+      } catch (e) { return null; }
+    }
+    function posPut(t) {
+      try { window.localStorage.setItem(POS_KEY, JSON.stringify({ t: Math.floor(t), at: Date.now(), nid: stage.dataset.nid || "", title: stage.dataset.title || "" })); } catch (e) { }
+    }
+    function posDrop() { try { window.localStorage.removeItem(POS_KEY); } catch (e) { } }
+    function clock(sec) {
+      sec = Math.max(0, Math.floor(sec));
+      var h = Math.floor(sec / 3600), m = Math.floor(sec % 3600 / 60), s = sec % 60;
+      return (h ? h + ":" + (m < 10 ? "0" : "") + m : m) + ":" + (s < 10 ? "0" : "") + s;
+    }
+    function hideResume() { if (resumeBox) resumeBox.hidden = true; }
+    function showResume() {
+      if (!resumeBox) return;
+      var p = posGet();
+      if (!p) return;
+      var here = p.t >= startSec && (!endSec || p.t < endSec);
+      if (here && p.t - startSec < 15) return;   // почти начало номера: хватит кнопки «Смотреть»
+      var same = !p.nid || p.nid === stage.dataset.nid;
+      var note = here ? "Вы остановились на этом номере" : same ? "Вы остановились здесь" : "Вы смотрели запись этого концерта" + (p.title ? ", остановились на номере «" + p.title + "»" : "");
+      var go = document.createElement("button");
+      go.type = "button"; go.className = "add-btn add-btn-s"; go.dataset.t = p.t; go.textContent = "Продолжить с " + clock(p.t);
+      var txt = document.createElement("span"); txt.className = "resume-note"; txt.textContent = note;
+      var no = document.createElement("button");
+      no.type = "button"; no.className = "linkbtn"; no.textContent = "Забыть";
+      no.addEventListener("click", function () { posDrop(); hideResume(); });
+      resumeBox.textContent = "";
+      resumeBox.append(go, txt, no);
+      resumeBox.hidden = false;
+    }
+    function tnum(a) {   // время из ответа плеера: число или объект с полем времени
+      if (Array.isArray(a)) a = a[0];
+      if (a && typeof a === "object") a = a.time != null ? a.time : a.currentTime != null ? a.currentTime : a.position;
+      a = +a;
+      return isFinite(a) && a >= 0 ? a : null;
+    }
+    function hookPos() {
+      if (!vk || typeof vk.on !== "function") return;
+      var last = 0, ticked = false, playing = false, poll = 0;
+      function rec(t, force) {
+        if (t === null || t < 5) return;
+        var now = Date.now();
+        if (!force && now - last < 4000) return;
+        last = now; posPut(t);
+      }
+      function ask() {
+        try {
+          var r = vk.getCurrentTime(function (t) { rec(tnum(t), true); });
+          if (r && typeof r.then === "function") r.then(function (t) { rec(tnum(t), true); }, function () { });
+          else if (typeof r === "number") rec(r, true);
+        } catch (e) { }
+      }
+      function on(ev, fn) { try { vk.on(ev, fn); } catch (e) { } }
+      on("timeupdate", function (a) { ticked = true; rec(tnum(a)); });
+      on("started", function () { playing = true; });
+      on("resumed", function () { playing = true; });
+      on("paused", function () { playing = false; ask(); });
+      on("ended", function () { playing = false; posDrop(); });
+      // если плеер не присылает время сам, спрашиваем его раз в несколько секунд
+      poll = setInterval(function () { if (!ticked) ask(); }, 5000);
+      window.addEventListener("pagehide", function () { clearInterval(poll); if (!ticked || playing) ask(); });
     }
 
     function playAt(sec) {
       sec = Math.max(0, parseInt(sec, 10) || 0);
+      hideResume();
       if (!iframe) {
         iframe = document.createElement("iframe");
         iframe.src = src(sec);
@@ -424,8 +520,31 @@
        Время считается по записи концерта целиком, как в плеере. */
     var want = new URLSearchParams(location.search).get("t") || (location.hash.match(/^#t=(.+)$/) || [])[1];
     var sec = parseTime(want);
-    if (sec !== null) playAt(sec);
+    if (sec !== null) playAt(sec); else showResume();
   }
+
+  /* ------------------------------------------------------------ похожие номера: данные на странице, список строится только при раскрытии */
+  (function similar() {
+    var box = document.getElementById("similar"), body = document.getElementById("similar-body"), raw = document.getElementById("similar-json");
+    if (!box || !body || !raw) return;
+    var built = false, root = document.documentElement.dataset.root || "";
+    function build() {
+      built = true;
+      var data = []; try { data = JSON.parse(raw.textContent) || []; } catch (e) { }
+      var ul = document.createElement("ul"); ul.className = "rel-list";
+      data.forEach(function (x) {
+        var li = document.createElement("li"), a = document.createElement("a"), img = document.createElement("img"), t = document.createElement("span");
+        a.className = "rel-card"; a.href = root + "n/" + encodeURIComponent(x.id) + "/";
+        img.src = root + "img/" + x.id + "/card.webp"; img.width = 96; img.height = 72; img.alt = ""; img.loading = "lazy"; img.decoding = "async";
+        t.className = "rel-t";
+        var b = document.createElement("b"); b.textContent = x.t; t.append(b);
+        [x.c, x.w].forEach(function (line) { if (!line) return; var sm = document.createElement("small"); sm.textContent = line; t.append(sm); });
+        a.append(img, t); li.append(a); ul.append(li);
+      });
+      body.append(ul);
+    }
+    box.addEventListener("toggle", function () { if (box.open && !built) build(); });
+  })();
 
   function parseTime(v) {
     if (!v) return null;

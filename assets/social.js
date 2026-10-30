@@ -226,6 +226,27 @@
   }
   function isDenied(e) { return !!e && e.code === "permission-denied"; }
 
+  /* Сводка оценок номера: rateAgg/номер = { n — сколько оценок, absent — сколько «не был(а) на концерте», idea, comp, perf, stage, overall — суммы }.
+     Меняется на разницу «новая оценка минус прежняя» в том же пакете, что и сама оценка. Правила базы проверяют эту разницу по самим документам оценок. */
+  var AGG_KEYS = ["idea", "comp", "perf", "stage", "overall"];
+  function aggWrite(b, newR, oldR, aggDoc, canCreate, aref, refId) {
+    if (aggDoc === undefined || oldR === undefined) return;   // не удалось прочитать: сводку не трогаем
+    var num = function (r, k) { return (r && r[k]) || 0; };
+    var abs = function (r) { return r && r.ctx === "absent" ? 1 : 0; };
+    var d = { n: (newR ? 1 : 0) - (oldR ? 1 : 0), absent: abs(newR) - abs(oldR) };
+    AGG_KEYS.forEach(function (k) { d[k] = num(newR, k) - num(oldR, k); });
+    if (!d.n && !d.absent && AGG_KEYS.every(function (k) { return !d[k]; })) return;
+    if (aggDoc) {
+      var u = { ref: refId, n: fb.f.increment(d.n), absent: fb.f.increment(d.absent) };
+      AGG_KEYS.forEach(function (k) { u[k] = fb.f.increment(d[k]); });
+      b.update(aref, u);
+    } else if (canCreate && newR && !oldR) {
+      var c = { ref: refId, n: 1, absent: abs(newR) };
+      AGG_KEYS.forEach(function (k) { c[k] = num(newR, k); });
+      b.set(aref, c);
+    }
+  }
+
   /* ------------------------------------------------------------ вход: окно с двумя способами */
   function authError(e) {
     var c = e && e.code || "";
@@ -790,23 +811,42 @@
         });
       }).then(function (ids) { (ids || []).forEach(function (id) { myLikes[id] = true; }); }, function () { });
     }
-    /* Оценки: по одному документу на человека и номер (ratings/номер_аккаунт). Читаются списком, до 500 штук. */
+    /* Оценки: по одному документу на человека и номер (ratings/номер_аккаунт).
+       Итоги номера лежат одним документом rateAgg/номер: читаем его (одно чтение), а сами оценки берём только у авторов
+       комментариев на странице и мою. Пока сводки нет (старые номера до первого пересчёта), читаем список целиком, как раньше. */
+    var agg = null;
+    function ratingFrom(d) {
+      var x = d.data(), o = { uid: x.uid };
+      if (x.ctx) o.ctx = x.ctx;
+      RATE.forEach(function (r) { if (typeof x[r[0]] === "number") o[r[0]] = x[r[0]]; });
+      return o;
+    }
+    function ratingsAll() {
+      return fb.f.getDocs(fb.f.query(fcol("ratings"), fb.f.where("numberId", "==", nid), fb.f.limit(500))).then(function (s) { return s.docs.map(ratingFrom); });
+    }
+    function ratingsOf(uids) {
+      var ids = [], seen = {};
+      uids.forEach(function (u) { if (u && !seen[u]) { seen[u] = 1; ids.push(nid + "_" + u); } });
+      var jobs = [];
+      for (var i = 0; i < ids.length; i += 30) {
+        jobs.push(fb.f.getDocs(fb.f.query(fcol("ratings"), fb.f.where(fb.f.documentId(), "in", ids.slice(i, i + 30)))).then(function (s) { return s.docs.map(ratingFrom); }));
+      }
+      return Promise.all(jobs).then(function (parts) { return [].concat.apply([], parts); });
+    }
     function loadRatings(fresh) {
-      return cached("ratings:" + nid, TTL.comments, fresh, function () {
-        return fb.f.getDocs(fb.f.query(fcol("ratings"), fb.f.where("numberId", "==", nid), fb.f.limit(500))).then(function (s) {
-          return s.docs.map(function (d) {
-            var x = d.data(), o = { uid: x.uid };
-            if (x.ctx) o.ctx = x.ctx;
-            RATE.forEach(function (r) { if (typeof x[r[0]] === "number") o[r[0]] = x[r[0]]; });
-            return o;
-          });
-        });
+      var me = state.user ? state.user.uid : "";
+      return cached("ragg:" + nid, TTL.comments, fresh, function () {
+        return fb.f.getDoc(fdoc("rateAgg/" + nid)).then(function (s) { return s.exists() ? s.data() : null; });
+      }).then(function (a) { agg = a || null; }, function () { agg = null; }).then(function () {
+        if (!agg) return cached("ratings:" + nid, TTL.comments, fresh, ratingsAll);
+        var who = comments.map(function (c) { return c.uid; }); if (me) who.push(me);
+        return cached("ratings:" + nid + ":" + me, TTL.comments, fresh, function () { return ratingsOf(who); });
       }).then(function (arr) {
         ratings = arr || []; ratingBy = {};
         ratings.forEach(function (r) { ratingBy[r.uid] = r; });
       }, function () { ratings = []; ratingBy = {}; });
     }
-    function dropComments() { cdrop("comments:" + nid); cdrop("likes:" + nid); cdrop("ratings:" + nid); cdrop("hot:"); cdrop("user:ccount:"); cdrop("user:comments2:"); }
+    function dropComments() { cdrop("comments:" + nid); cdrop("likes:" + nid); cdrop("ratings:" + nid); cdrop("ragg:" + nid); cdrop("hot:"); cdrop("user:ccount:"); cdrop("user:comments2:"); }
     function plural(n) {
       var m = n % 100, d = n % 10;
       return n + " " + (m > 10 && m < 20 ? "лайков" : d === 1 ? "лайк" : d > 1 && d < 5 ? "лайка" : "лайков");
@@ -991,13 +1031,26 @@
     /* Сводка: средняя сумма крупно, пять средних полосками (четыре критерия и общее впечатление) */
     function drawSummary() {
       clear(sumBox);
-      if (!ratings.length) { sumBox.hidden = true; return; }
-      var sum = {}, cnt = {}, tsum = 0, tcnt = 0, absentN = 0;
-      ratings.forEach(function (r) {
-        if (r.ctx === "absent") absentN++;
-        RATE.forEach(function (k) { if (r[k[0]]) { sum[k[0]] = (sum[k[0]] || 0) + r[k[0]]; cnt[k[0]] = (cnt[k[0]] || 0) + 1; } });
-        var t = ratingTotal(r); if (t !== null) { tsum += t; tcnt++; }
-      });
+      var sum = {}, cnt = {}, tsum = 0, tcnt = 0, absentN = 0, nAll = 0;
+      if (agg) {
+        /* итоги из одного документа rateAgg: в нём все оценки полные (пять из пяти) */
+        nAll = Math.max(0, agg.n || 0);
+        if (!nAll) { sumBox.hidden = true; return; }
+        absentN = Math.max(0, agg.absent || 0);
+        RATE.forEach(function (k) {
+          sum[k[0]] = Math.max(0, agg[k[0]] || 0); cnt[k[0]] = nAll;
+          tsum += sum[k[0]] * (k[0] === "overall" ? OVERALL_W : 1);
+        });
+        tcnt = nAll;
+      } else {
+        if (!ratings.length) { sumBox.hidden = true; return; }
+        nAll = ratings.length;
+        ratings.forEach(function (r) {
+          if (r.ctx === "absent") absentN++;
+          RATE.forEach(function (k) { if (r[k[0]]) { sum[k[0]] = (sum[k[0]] || 0) + r[k[0]]; cnt[k[0]] = (cnt[k[0]] || 0) + 1; } });
+          var t = ratingTotal(r); if (t !== null) { tsum += t; tcnt++; }
+        });
+      }
       var bars = el("ul", { class: "rate-bars" });
       RATE.forEach(function (k) {
         var v = cnt[k[0]] ? sum[k[0]] / cnt[k[0]] : null;
@@ -1009,9 +1062,9 @@
       sumBox.append(el("h3", { text: OFFSTAGE ? "Оценки" : "Оценки зрителей" }),
         el("div", { class: "rate-sum-grid" },
           tcnt ? el("p", { class: "rate-big" }, el("strong", { text: fmtT(tsum / tcnt) }), el("span", { text: " из " + TOTAL_MAX }),
-            el("small", { text: "средняя сумма, " + plRate(tcnt) })) : el("p", { class: "rate-big" }, el("small", { text: plRate(ratings.length) + ", полных нет" })),
+            el("small", { text: "средняя сумма, " + plRate(tcnt) })) : el("p", { class: "rate-big" }, el("small", { text: plRate(nAll) + ", полных нет" })),
           bars),
-        OFFSTAGE && absentN ? el("p", { class: "rate-ctx-note", text: "Не были на концерте: " + absentN + " из " + ratings.length }) : "");
+        OFFSTAGE && absentN ? el("p", { class: "rate-ctx-note", text: "Не были на концерте: " + absentN + " из " + nAll }) : "");
       sumBox.hidden = false;
     }
     function drawSort(topCount) {
@@ -1187,31 +1240,48 @@
             var pid = myPersonForComment();
             if (pid) cdata.authorPersonId = pid;
           }
-          var rref = fdoc("ratings/" + nid + "_" + uid);
-          /* Один пакет: комментарий и оценка вместе. withCtx — с пометкой «откуда знаю работу» (для направлений вне сцены) */
-          var go = function (withCtx, withBuzz) {
-            var b = fb.f.writeBatch(fb.db);
-            if (text) {
-              b.set(cref, cdata); bumpUsage(b, "d", cur, "comments");
-              if (withBuzz) buzzSet(b, nid, buz, 1, Date.now(), cref.path.split("/").pop());
+          var rref = fdoc("ratings/" + nid + "_" + uid), aref = fdoc("rateAgg/" + nid);
+          /* Перед сохранением оценки читаем её прежнюю версию и сводку номера: итоги меняются на разницу (старая → новая) */
+          var pre = (wantRate || wantClear) ? Promise.all([
+            fb.f.getDoc(rref).then(function (s) { return s.exists() ? s.data() : null; }, function () { return undefined; }),
+            fb.f.getDoc(aref).then(function (s) { return s.exists() ? s.data() : null; }, function () { return undefined; })
+          ]).then(function (pv) {
+            // сводки нет: создать её можно, только если у номера вообще нет других оценок (иначе итоги стали бы неполными, их соберёт пересчёт)
+            if (pv[1] === null && wantRate && pv[0] === null) {
+              return fb.f.getDocs(fb.f.query(fcol("ratings"), fb.f.where("numberId", "==", nid), fb.f.limit(1))).then(function (s) { pv[2] = s.empty; return pv; }, function () { pv[2] = false; return pv; });
             }
-            if (wantRate) {
-              var rd = { numberId: nid, uid: uid, updatedAt: fb.f.serverTimestamp() };
-              RATE.forEach(function (k) { rd[k[0]] = draft[k[0]]; });
-              if (withCtx && OFFSTAGE && ctxv) rd.ctx = ctxv;
-              b.set(rref, rd);
-            } else if (wantClear) b.delete(rref);
-            return b.commit();
-          };
-          var run = function (withCtx, withBuzz) {
-            return go(withCtx, withBuzz).catch(function (e) {
-              /* пока правила базы не обновлены, счётчик обсуждаемого и поле ctx отклоняются: сохраняем без них */
-              if (isDenied(e) && withBuzz && text) return run(withCtx, false);
-              if (isDenied(e) && withCtx && wantRate && OFFSTAGE) return run(false, false);
-              throw e;
-            });
-          };
-          return run(true, true);
+            return pv;
+          }) : Promise.resolve([null, null]);
+          return pre.then(function (pv) {
+            var oldR = pv[0], aggDoc = pv[1], canCreateAgg = !!pv[2];
+            /* Один пакет: комментарий, оценка и сводка вместе. withCtx — с пометкой «откуда знаю работу» (для направлений вне сцены) */
+            var go = function (withCtx, withBuzz, withAgg) {
+              var b = fb.f.writeBatch(fb.db);
+              if (text) {
+                b.set(cref, cdata); bumpUsage(b, "d", cur, "comments");
+                if (withBuzz) buzzSet(b, nid, buz, 1, Date.now(), cref.path.split("/").pop());
+              }
+              var rd = null;
+              if (wantRate) {
+                rd = { numberId: nid, uid: uid, updatedAt: fb.f.serverTimestamp() };
+                RATE.forEach(function (k) { rd[k[0]] = draft[k[0]]; });
+                if (withCtx && OFFSTAGE && ctxv) rd.ctx = ctxv;
+                b.set(rref, rd);
+              } else if (wantClear) b.delete(rref);
+              if (withAgg && (wantRate || wantClear)) aggWrite(b, rd, oldR, aggDoc, canCreateAgg, aref, nid + "_" + uid);
+              return b.commit();
+            };
+            var run = function (withCtx, withBuzz, withAgg) {
+              return go(withCtx, withBuzz, withAgg).catch(function (e) {
+                /* пока правила базы не обновлены, сводка оценок, счётчик обсуждаемого и поле ctx отклоняются: сохраняем без них */
+                if (isDenied(e) && withAgg) return run(withCtx, withBuzz, false);
+                if (isDenied(e) && withBuzz && text) return run(withCtx, false, false);
+                if (isDenied(e) && withCtx && wantRate && OFFSTAGE) return run(false, false, false);
+                throw e;
+              });
+            };
+            return run(true, true, true);
+          });
         }).then(function () { replyTo = null; justDone = { k: 1, t: Date.now(), rate: doneInfo.rate, clear: doneInfo.clear, text: doneInfo.text, tot: doneInfo.tot }; dropComments(); return loadComments(true); }).then(draw, function (e) { send.disabled = false; note(form, errText(e), "err"); });
       } },
         replyTo && el("p", { class: "c-replyto" }, "Ответ для " + replyTo.authorName + " ",
@@ -1253,7 +1323,31 @@
     }
 
     function draw() { drawSummary(); drawMoments(); drawList(); drawForm(); drawNote(); }
-    views.push(function () { loaded = false; replyTo = null; draw(); Promise.all([loadComments(), loadNote()]).then(draw); });
+    /* Комментарии, оценки и мои лайки читаются из базы только когда блок почти виден на экране (или в него нажали):
+       тот, кто просто смотрит видео и уходит, не тратит ни одного чтения. Слово постановщика стоит рядом с видео, его читаем сразу. */
+    var armed = false, armCb = null, armObs = null;
+    function arm() {
+      if (armed) return;
+      armed = true;
+      if (armObs) { armObs.disconnect(); armObs = null; }
+      root.removeEventListener("focusin", arm); root.removeEventListener("pointerdown", arm);
+      var cb = armCb; armCb = null;
+      if (cb) cb();
+    }
+    function whenNear(cb) {
+      if (armed) return cb();
+      armCb = cb;
+      if (armObs) return;
+      if (!("IntersectionObserver" in window)) return arm();
+      armObs = new IntersectionObserver(function (es) { if (es.some(function (e) { return e.isIntersecting; })) arm(); }, { rootMargin: "600px 0px" });
+      armObs.observe(root);
+      root.addEventListener("focusin", arm); root.addEventListener("pointerdown", arm);
+    }
+    views.push(function () {
+      loaded = false; replyTo = null; draw();
+      loadNote().then(function () { drawNote(); drawMoments(); });
+      whenNear(function () { loadComments().then(draw); });
+    });
     catalogInfo().then(function () { draw(); });   // имена на страницах людей нужны для подписи «ник (имя)»
   }
 
@@ -2030,9 +2124,11 @@
             ev.target.disabled = true; syncMsg = "Обновляем…"; draw();
             sync(true).then(function (m) { syncMsg = m; }, function (e) { syncMsg = errText(e); }).then(draw);
           } }), el("p", { class: "msg", text: syncMsg, hidden: !syncMsg }),
-          el("h2", { text: "Самое обсуждаемое" }),
-          el("p", { class: "c-hint", text: "Счётчики комментариев по номерам ведутся сами. Если они разошлись с жизнью (например, после правил базы или ручного удаления в консоли), нажмите кнопку: сервис один раз пересчитает все видимые комментарии." }),
-          el("button", { type: "button", class: "btn", text: "Пересчитать обсуждаемое", onclick: function (ev) {
+          el("h2", { text: "Самое обсуждаемое и оценки" }),
+          el("p", { class: "c-hint", text: "Счётчики комментариев и итоги оценок по номерам ведутся сами. Если они разошлись с жизнью (после обновления правил базы, после ручного удаления в консоли, при первом запуске), нажмите кнопку: сервис один раз прочитает все видимые комментарии и все оценки сайта и пересчитает итоги. Это самое дорогое действие для бесплатного лимита Firebase (50 000 чтений в сутки), поэтому не чаще раза в неделю." }),
+          el("p", { class: "c-hint", text: recountWhen() }),
+          el("button", { type: "button", class: "btn", text: "Пересчитать обсуждаемое и оценки", onclick: function (ev) {
+            if (!confirm("Сервис прочитает все видимые комментарии и все оценки сайта. Чем их больше, тем больше расход бесплатного лимита чтений. " + recountWhen() + " Пересчитать сейчас?")) return;
             ev.target.disabled = true; buzzMsg = "Считаем…"; draw();
             recountBuzz().then(function (m) { buzzMsg = m; }, function (e) { buzzMsg = errText(e); }).then(function () { cdrop("hot:"); draw(); });
           } }), el("p", { class: "msg", text: buzzMsg, hidden: !buzzMsg }));
@@ -2053,10 +2149,20 @@
   }
 
 
-  /* пересчёт счётчиков по всем видимым комментариям (только администратор) */
+  /* пересчёт счётчиков по всем видимым комментариям и сводок по всем оценкам (только администратор).
+     Читает ВСЕ видимые комментарии и ВСЕ оценки сайта: это самое дорогое действие для бесплатного лимита, нажимать редко. */
+  var RECOUNT_KEY = "sg:lastRecount";
+  function lastRecount() { try { var t = +store().getItem(RECOUNT_KEY); return t ? t : 0; } catch (e) { return 0; } }
+  function recountWhen() {
+    var t = lastRecount();
+    if (!t) return "Пересчёт на этом устройстве ещё не запускали.";
+    var d = new Date(t), p = function (x) { return (x < 10 ? "0" : "") + x; };
+    return "Последний пересчёт с этого устройства: " + p(d.getDate()) + "." + p(d.getMonth() + 1) + "." + d.getFullYear() + " " + p(d.getHours()) + ":" + p(d.getMinutes()) + ".";
+  }
   function recountBuzz() {
-    var cw = weekOf(Date.now()), by = {}, n = 0;
+    var cw = weekOf(Date.now()), by = {}, n = 0, rated = {}, rn = 0, reads = 0;
     return fb.f.getDocs(fb.f.query(fcol("comments"), fb.f.where("status", "==", "visible"))).then(function (s) {
+      reads += s.size;
       s.forEach(function (d) {
         var x = d.data(); if (!x.numberId) return;
         var o = by[x.numberId] || (by[x.numberId] = { total: 0, w: 0 });
@@ -2065,6 +2171,7 @@
       });
       return fb.f.getDocs(fcol("buzz"));
     }).then(function (old) {
+      reads += old.size;
       old.forEach(function (d) { if (!by[d.id]) by[d.id] = { total: 0, w: 0 }; });
       var ids = Object.keys(by), jobs = [];
       for (var i = 0; i < ids.length; i += 400) {
@@ -2073,7 +2180,34 @@
         jobs.push(b.commit());
       }
       return Promise.all(jobs);
-    }).then(function () { return "Готово: учтено комментариев — " + n + ", номеров — " + Object.keys(by).length + "."; });
+    }).then(function () {
+      return fb.f.getDocs(fcol("ratings"));
+    }).then(function (rs) {
+      reads += rs.size;
+      rs.forEach(function (d) {
+        var x = d.data(), id = x.numberId;
+        if (!id || !AGG_KEYS.every(function (k) { return typeof x[k] === "number" && x[k] >= 1 && x[k] <= 5; })) return;   // неполные оценки в сводку не входят
+        var o = rated[id] || (rated[id] = { n: 0, absent: 0, idea: 0, comp: 0, perf: 0, stage: 0, overall: 0 });
+        o.n++; rn++;
+        if (x.ctx === "absent") o.absent++;
+        AGG_KEYS.forEach(function (k) { o[k] += x[k]; });
+      });
+      return fb.f.getDocs(fcol("rateAgg"));
+    }).then(function (old) {
+      reads += old.size;
+      old.forEach(function (d) { if (!rated[d.id]) rated[d.id] = { n: 0, absent: 0, idea: 0, comp: 0, perf: 0, stage: 0, overall: 0 }; });
+      var ids = Object.keys(rated), jobs = [];
+      for (var i = 0; i < ids.length; i += 400) {
+        var b = fb.f.writeBatch(fb.db);
+        ids.slice(i, i + 400).forEach(function (id) { b.set(fdoc("rateAgg/" + id), rated[id]); });
+        jobs.push(b.commit());
+      }
+      return Promise.all(jobs);
+    }).then(function () {
+      try { store().setItem(RECOUNT_KEY, String(Date.now())); } catch (e) { }
+      cdrop("ragg:");
+      return "Готово: комментариев — " + n + " (номеров " + Object.keys(by).length + "), оценок — " + rn + " (номеров " + Object.keys(rated).length + "). Прочитано документов: " + reads + ".";
+    });
   }
 
   /* ------------------------------------------------------------ самое обсуждаемое: полоса на главной и страница /hot/ */

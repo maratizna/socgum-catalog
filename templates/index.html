@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% from "_dicon.html" import dicon with context %}
 {% block body_class %}page-index{% endblock %}
 {% block main %}
 <section class="intro">
@@ -55,13 +56,19 @@
       </label>
       {% endif %}
       {% if dirs_on or dirs_off %}
-      <label class="sel">Направление
-        <select id="f-direction">
+      <div class="sel dir-filter">
+        <span class="sel-l" id="dir-l">Направление</span>
+        <div class="dir-chips" role="group" aria-labelledby="dir-l" id="dir-chips">
+          <button type="button" class="dchip" data-v="" aria-pressed="true"><span>Все</span></button>
+          {% if dirs_on %}<span class="dir-g"><span class="dir-gl">На сцене</span>{% for d in dirs_on %}<button type="button" class="dchip" data-v="{{ d.slug }}" aria-pressed="false">{{ dicon(d.icon) }}<span>{{ d.name }}</span></button>{% endfor %}</span>{% endif %}
+          {% if dirs_off %}<span class="dir-g"><span class="dir-gl">Вне сцены</span>{% for d in dirs_off %}<button type="button" class="dchip" data-v="{{ d.slug }}" aria-pressed="false">{{ dicon(d.icon) }}<span>{{ d.name }}</span></button>{% endfor %}</span>{% endif %}
+        </div>
+        <select id="f-direction" hidden aria-hidden="true" tabindex="-1">
           <option value="">Все направления</option>
           {% if dirs_on %}<optgroup label="На сцене">{% for d in dirs_on %}<option value="{{ d.slug }}">{{ d.name }}</option>{% endfor %}</optgroup>{% endif %}
           {% if dirs_off %}<optgroup label="Вне сцены">{% for d in dirs_off %}<option value="{{ d.slug }}">{{ d.name }}</option>{% endfor %}</optgroup>{% endif %}
         </select>
-      </label>
+      </div>
       {% endif %}
       <label class="sel">Порядок
         <select id="sort">
@@ -94,7 +101,7 @@
 {% for d in dirs_on + dirs_off %}{% if d.materials.photos or d.materials.links %}
 <aside class="concert-panel dir-panel" data-direction="{{ d.slug }}" hidden>
   <div class="concert-text">
-    <h2>{{ d.name }}</h2>
+    <h2 class="dir-h">{{ dicon(d.icon) }}<span>{{ d.name }}</span></h2>
     {% if d.about %}<p>{{ d.about }}</p>{% endif %}
     {% set m = d.materials %}{% include "_materials.html" %}
   </div>

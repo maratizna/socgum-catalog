@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% from "_dicon.html" import dicon with context %}
 {% block body_class %}page-number{% endblock %}
 {% block main %}
 {% set can_play = video is not none %}
@@ -10,7 +11,7 @@
 
       <div class="stage" id="stage"
         {% if can_play %}data-oid="{{ video.oid }}" data-vid="{{ video.id }}" data-hash="{{ video.hash }}" data-host="{{ video.host }}"
-        data-start="{{ n.start if n.start is not none else 0 }}"{% endif %}>
+        data-start="{{ n.start if n.start is not none else 0 }}"{% if n.end is not none %} data-end="{{ n.end }}"{% endif %} data-nid="{{ n.id }}" data-title="{{ n.title }}"{% endif %}>
         <img class="stage-blur" src="{{ root }}img/{{ n.id }}/cover.webp" alt="" aria-hidden="true">
         <img class="stage-poster" fetchpriority="high" decoding="async" src="{{ root }}img/{{ n.id }}/cover.webp" width="{{ n.cover_size[0] }}" height="{{ n.cover_size[1] }}"
              alt="{% if n.has_cover %}Обложка номера «{{ n.title }}»{% endif %}">
@@ -24,6 +25,7 @@
         <p class="stage-note">Запись концерта пока не добавлена.</p>
         {% endif %}
       </div>
+      {% if can_play %}<p class="resume" id="resume" hidden></p>{% endif %}
       {% if n.social %}
       <p class="social-links">{% for s in n.social %}<a class="add-btn add-btn-s soc soc-{{ s.kind }}" href="{{ s.url }}" rel="noopener" target="_blank">{% include "_soc_icon.html" %}<span>{{ 'Группа концерта' if s.kind == 'vk' else ('Канал концерта' if s.kind == 'tg' else s.label) }}</span></a>{% endfor %}</p>
       {% endif %}
@@ -63,7 +65,7 @@
       <dl class="facts">
         <div><dt>Концерт</dt><dd><a href="{{ root or './' }}?c={{ n.concert.slug }}">{{ n.concert.name }}</a>{% if n.concert.date %}, {{ n.concert.date|ru_date }}{% endif %}{% if n.concert.topic %}. {{ n.concert.topic }}{% endif %}</dd></div>
         {% if n.concert.season %}<div><dt>Учебный год</dt><dd><a href="{{ root or './' }}?y={{ n.concert.season }}">{{ n.concert.season }}</a></dd></div>{% endif %}
-        {% if n.directions %}<div><dt>Направление</dt><dd>{% for d in n.directions %}<a href="{{ root or './' }}?d={{ d.slug }}">{{ d.name }}</a>{% if not loop.last %}, {% endif %}{% endfor %}</dd></div>{% endif %}
+        {% if n.directions %}<div><dt>Направление</dt><dd class="dirs">{% for d in n.directions %}<a class="dlink" href="{{ root or './' }}?d={{ d.slug }}">{{ dicon(d.icon) }}<span>{{ d.name }}</span></a>{% endfor %}</dd></div>{% endif %}
       </dl>
       {% if n.about %}<div class="about"><p>{{ n.about }}</p></div>{% endif %}
 
@@ -84,6 +86,13 @@
       <h2 id="cm-h">Комментарии</h2>
       <div id="comments" data-number="{{ n.id }}"{% if n.offstage %} data-offstage="1"{% endif %}{% if n.rate_dir and n.rate_dir.criteria %} data-rate='{{ n.rate_dir.criteria|tojson }}'{% endif %}{% if n.offstage and n.rate_dir and n.rate_dir.rate_note %} data-rate-note="{{ n.rate_dir.rate_note }}"{% elif n.offstage %} data-rate-note="Работу направления лучше всего видно тем, кто участвовал в концерте. Если вас не было на концерте, оценивайте то, что знаете, и отметьте это ниже."{% endif %} data-directors="{% for p in n.people.choreographers %}{{ p.slug }}{% if not loop.last %} {% endif %}{% endfor %}"></div>
     </section>
+    {% endif %}
+    {% if similar %}
+    <details class="similar" id="similar">
+      <summary><h2>Похожие номера <span class="people-n">{{ similar|length }}</span></h2></summary>
+      <div class="similar-body" id="similar-body"></div>
+    </details>
+    <script type="application/json" id="similar-json">{{ similar|tojson }}</script>
     {% endif %}
   </div>
 </article>

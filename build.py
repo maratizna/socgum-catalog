@@ -662,6 +662,23 @@ def parse_materials(rows, concerts, directions, numbers, report):
                 obj["materials"]["photos"].append({"src": u, "caption": caption})
 
 
+# Иконки направлений (файл assets/dir-icons.svg): подбираются по названию направления, порядок правил важен.
+ICON_RULES = [
+    ("вокально", "note"), ("вокал", "mic"), ("инструмент", "guitar"), ("барабан", "drum"), ("удар", "drum"),
+    ("хореограф", "dance"), ("танц", "dance"), ("театр", "ticket"), ("актер", "star"), ("оригинал", "spiral"),
+    ("smm", "megaphone"), ("сценар", "script"), ("админ", "clipboard"), ("раб", "hammer"), ("декор", "spray"),
+    ("футаж", "video"), ("видео", "video"), ("фото", "photo"), ("монтаж", "scissors"), ("мод", "hanger"), ("костюм", "hanger"),
+]
+
+
+def direction_icon(name):
+    k = norm(name)
+    for word, icon in ICON_RULES:
+        if word in k:
+            return icon
+    return None
+
+
 GRAPH_MAX = 40   # сколько людей показывать на графе связей человека
 
 
@@ -715,7 +732,8 @@ def build_model(wb, report):
             directions[norm(name)] = {"name": name, "slug": d_slug[r["_row"]], "about": r.get("about", ""),
                                       "offstage": "вне" in norm(r.get("kind", "")),
                                       "criteria": rate_criteria(r, "вне" in norm(r.get("kind", ""))),
-                                      "rate_note": (r.get("rnote") or "").strip() or None}
+                                      "rate_note": (r.get("rnote") or "").strip() or None,
+                                      "icon": direction_icon(name)}
 
     def suggest(value, options):
         close = difflib.get_close_matches(norm(value), list(options), n=1, cutoff=0.6)
@@ -874,7 +892,59 @@ def build_model(wb, report):
         order = sorted(cnt, key=lambda k: (-cnt[k], norm(ref[k]["name"])))
         p["graph"] = {"nodes": [{"n": ref[k]["name"], "s": ref[k]["slug"], "c": cnt[k]} for k in order[:GRAPH_MAX]],
                       "total": len(order)}
+
+    compute_similar(numbers)
     return concerts, directions, numbers, people
+
+
+SIMILAR_MAX = 6      # сколько похожих номеров показывать внизу страницы номера
+SIMILAR_MIN = 2.5    # слабое сходство (одно только направление или один участник) в подборку не берём
+
+
+def compute_similar(numbers):
+    """Похожие номера: общие постановщики, общие участники, тот же коллектив, то же направление. Считается при сборке, сервис не нужен.
+    Номера того же концерта и уже связанные вручную («тот же номер на другом концерте») не повторяются."""
+    items = list(numbers.values())
+    meta = {}
+    for o in items:
+        c = o["concert"]
+        meta[id(o)] = {
+            "ch": {id(p): p["name"] for p in o["people"]["choreographers"]},
+            "pf": {id(p): p["name"] for p in o["people"]["performers"]},
+            "coll": norm(o["collective"]) if o["collective"] else "",
+            "dirs": {d["slug"]: d["name"] for d in (o.get("directions") or [])},
+            "rec": (c["season_start"], c["date"].toordinal() if c["date"] else 0),
+        }
+
+    for n in items:
+        m = meta[id(n)]
+        skip = {id(x["n"]) for x in n["related"]}
+        scored = []
+        for o in items:
+            if o is n or id(o) in skip or o["concert"]["slug"] == n["concert"]["slug"]:
+                continue
+            q = meta[id(o)]
+            sh_ch = [name for k, name in m["ch"].items() if k in q["ch"]]
+            sh_pf = [name for k, name in m["pf"].items() if k in q["pf"]]
+            same_coll = bool(m["coll"]) and m["coll"] == q["coll"]
+            sh_dirs = [name for s, name in m["dirs"].items() if s in q["dirs"]]
+            score = 4.0 * len(sh_ch) + min(len(sh_pf), 5) + (3.0 if same_coll else 0)
+            if sh_dirs:
+                score += 4.0 if (n["offstage"] and o["offstage"]) else 1.5
+            if score < SIMILAR_MIN:
+                continue
+            why = []
+            if sh_ch:
+                why.append(("Тот же постановщик: " if len(sh_ch) == 1 else "Общие постановщики: ") + ", ".join(sh_ch[:3]))
+            if sh_pf:
+                why.append("Общие участники: " + ", ".join(sh_pf[:2]) + (f" и ещё {len(sh_pf) - 2}" if len(sh_pf) > 2 else ""))
+            if same_coll:
+                why.append("Тот же коллектив")
+            if sh_dirs and not why:
+                why.append("Направление: " + ", ".join(sh_dirs[:2]))
+            scored.append((-score, (-q["rec"][0], -q["rec"][1]), o["row"], o, "; ".join(why)))
+        scored.sort(key=lambda t: (t[0], t[1], t[2]))
+        n["similar"] = [{"n": t[3], "why": t[4]} for t in scored[:SIMILAR_MAX]]
 
 
 # ---------------------------------------------------------------- обложки
@@ -1034,8 +1104,8 @@ def build_site(concerts, directions, numbers, people, report, demo, source):
     today = dt.date.today().isoformat()
     fbc = cfg.get("firebase") or {}
     firebase = {k: fbc[k] for k in ("apiKey", "authDomain", "projectId", "appId") if fbc.get(k)} if fbc.get("apiKey") and fbc.get("projectId") else None
-    asset_v = hashlib.sha1(b"".join((ROOT / "assets" / f).read_bytes() for f in ("style.css", "app.js", "social.js", "graph.js"))).hexdigest()[:8]
-    ctx_common = dict(firebase=firebase, asset_v=asset_v, site_title=cfg["site_title"], site_url=site_url, home_url=cfg.get("home_url", ""),
+    asset_v = hashlib.sha1(b"".join((ROOT / "assets" / f).read_bytes() for f in ("style.css", "app.js", "social.js", "graph.js", "dir-icons.svg"))).hexdigest()[:8]
+    ctx_common = dict(firebase=firebase, asset_v=asset_v, dicon_href=f"assets/dir-icons.svg?v={asset_v}", site_title=cfg["site_title"], site_url=site_url, home_url=cfg.get("home_url", ""),
                       home_label=cfg.get("home_label", ""), demo=demo, brand_font=bool(brand_font),
                       lead=cfg.get("lead", ""), forms=list(FORMS))
 
@@ -1069,7 +1139,10 @@ def build_site(concerts, directions, numbers, people, report, demo, source):
             root="../../", n=n, page_title=f"{n['title']}: {cfg['site_title']}",
             canonical=f"{site_url}/n/{n['id']}/" if site_url else "",
             og_image=f"{site_url}/img/{n['id']}/og.jpg" if site_url else "", description=desc,
-            video=None if n["offstage"] else n["concert"]["video"], watch_links=[] if n["offstage"] else n["concert"]["links"], people_names=people_names, **ctx_common))
+            video=None if n["offstage"] else n["concert"]["video"], watch_links=[] if n["offstage"] else n["concert"]["links"], people_names=people_names,
+            similar=[{"id": x["n"]["id"], "t": x["n"]["title"],
+                      "c": x["n"]["concert"]["name"] + (", " + ru_date(x["n"]["concert"]["date"]) if x["n"]["concert"]["date"] else ""),
+                      "w": x["why"]} for x in n.get("similar", [])], **ctx_common))
 
     for p in people.values():
         write(TMP / "p" / p["slug"] / "index.html", env.get_template("person.html").render(
@@ -1099,7 +1172,7 @@ def build_site(concerts, directions, numbers, people, report, demo, source):
     write(TMP / "offline.html", env.get_template("offline.html").render(
         root=base_path, page_title=f"Нет соединения: {cfg['site_title']}", canonical="", og_image="", description="", **{**ctx_common, "firebase": None}))
     core = ["./", "offline.html", "catalog.json", "rate.json", "manifest.webmanifest",
-            f"assets/style.css?v={asset_v}", f"assets/app.js?v={asset_v}", f"assets/graph.js?v={asset_v}"]
+            f"assets/style.css?v={asset_v}", f"assets/app.js?v={asset_v}", f"assets/graph.js?v={asset_v}", f"assets/dir-icons.svg?v={asset_v}"]
     if firebase:
         core.append(f"assets/social.js?v={asset_v}")
     if brand_font:

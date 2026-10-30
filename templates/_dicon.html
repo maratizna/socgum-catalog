@@ -1,0 +1,2 @@
+{# Иконка направления из assets/dir-icons.svg. Рисуется цветом текста (currentColor). Подключение: {% from "_dicon.html" import dicon with context %} #}
+{% macro dicon(name, cls="") %}{% if name %}<svg class="di {{ cls }}" aria-hidden="true" focusable="false"><use href="{{ root }}{{ dicon_href }}#di-{{ name }}"/></svg>{% endif %}{% endmacro %}

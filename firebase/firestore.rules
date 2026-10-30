@@ -260,6 +260,35 @@ service cloud.firestore {
       allow delete: if signedIn() && (resource.data.uid == request.auth.uid || isAdmin());
     }
 
+    // Сводка оценок номера: rateAgg/{номер} = { n — число оценок, absent — «не был(а) на концерте», idea, comp, perf, stage, overall — суммы, ref }.
+    // Страница читает один этот документ вместо всех оценок номера. Читают все. Обычный человек может изменить сводку
+    // только на разницу между новой и прежней версией СВОЕЙ оценки в том же пакете (поле ref = «номер_аккаунт»):
+    // правила сверяют итог с самими документами оценок. Создать сводку может администратор (кнопка пересчёта) или первая оценка номера.
+    function raPath() { return /databases/$(database)/documents/ratings/$(request.resource.data.ref); }
+    function raPrev(k) { return resource == null ? 0 : resource.data.get(k, 0); }
+    function raOldV(k) { return exists(raPath()) ? get(raPath()).data[k] : 0; }
+    function raNewV(k) { return existsAfter(raPath()) ? getAfter(raPath()).data[k] : 0; }
+    function raStep(k) { return request.resource.data[k] == raPrev(k) + raNewV(k) - raOldV(k); }
+    function raOldAbs() { return (exists(raPath()) && get(raPath()).data.get('ctx', 'team') == 'absent') ? 1 : 0; }
+    function raNewAbs() { return (existsAfter(raPath()) && getAfter(raPath()).data.get('ctx', 'team') == 'absent') ? 1 : 0; }
+    function raOk(nid) {
+      return signedIn()
+        && request.resource.data.keys().hasOnly(['n', 'absent', 'idea', 'comp', 'perf', 'stage', 'overall', 'ref'])
+        && request.resource.data.keys().hasAll(['n', 'absent', 'idea', 'comp', 'perf', 'stage', 'overall', 'ref'])
+        && request.resource.data.ref is string
+        && request.resource.data.ref == nid + '_' + request.auth.uid
+        && request.resource.data.n >= 0 && request.resource.data.absent >= 0
+        && request.resource.data.n == raPrev('n') + (existsAfter(raPath()) ? 1 : 0) - (exists(raPath()) ? 1 : 0)
+        && request.resource.data.absent == raPrev('absent') + raNewAbs() - raOldAbs()
+        && raStep('idea') && raStep('comp') && raStep('perf') && raStep('stage') && raStep('overall');
+    }
+    match /rateAgg/{nid} {
+      allow read: if true;
+      allow create: if isAdmin() || (raOk(nid) && !exists(raPath()));
+      allow update: if isAdmin() || raOk(nid);
+      allow delete: if isAdmin();
+    }
+
     // Плейлисты: список номеров с названием. Читают все, создаёт и меняет только владелец (до 200 номеров в списке).
     match /playlists/{pid} {
       allow read: if true;
