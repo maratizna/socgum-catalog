@@ -39,17 +39,23 @@
 <main id="main">
 {% block main %}{% endblock %}
 </main>
+{% block after_main %}{% endblock %}
 {% if forms %}
 <section class="add-block" aria-labelledby="add-h">
   <h2 id="add-h">Нет вашего номера или концерта?</h2>
   <p>Добавьте его сами через форму Google (с телефона тоже). Заявку сначала проверит администратор, потом она появится на сайте.</p>
-  <div class="add-links">{% for f in forms %}<a class="add-btn" href="{{ f.url }}" rel="noopener" target="_blank">{{ f.label }}</a>{% endfor %}</div>
+  <div class="add-links"><button type="button" class="add-btn" id="add-open" aria-haspopup="dialog">Добавить</button></div>
+  <dialog class="add-dialog" id="add-dialog" aria-labelledby="add-dh">
+    <h2 id="add-dh">Что добавить?</h2>
+    <p>Откроется форма Google. Заявку сначала проверит администратор, потом она появится на сайте.</p>
+    <ul class="add-list">{% for f in forms %}<li><a class="add-btn" href="{{ f.url }}" rel="noopener" target="_blank">{{ f.label }}</a></li>{% endfor %}</ul>
+    <button type="button" class="linkbtn" id="add-close">Закрыть</button>
+  </dialog>
 </section>
 {% endif %}
 <footer class="site-foot">
   <p>{{ site_title }}</p>
   {% if firebase %}<p><a href="{{ root or './' }}hot/">Самое обсуждаемое</a></p>{% endif %}
-  {% block foot_extra %}{% endblock %}
   <p class="foot-app"><span id="offline-status"></span> <button type="button" id="pwa-install" class="linkbtn" hidden>Установить на телефон</button></p>
   {% if home_url %}<p><a href="{{ home_url }}">{{ home_label }}</a></p>{% endif %}
 </footer>
@@ -103,5 +109,15 @@
 </script>
 {% block scripts %}{% endblock %}
 {% if firebase %}<script type="module" src="{{ root }}assets/social.js?v={{ asset_v }}"></script>{% endif %}
+<script>
+(function () {
+  var o = document.getElementById("add-open"), d = document.getElementById("add-dialog"), c = document.getElementById("add-close");
+  if (!o || !d) return;
+  if (!d.showModal) { o.hidden = true; d.setAttribute("open", ""); d.className += " is-inline"; return; }
+  o.addEventListener("click", function () { d.showModal(); });
+  c.addEventListener("click", function () { d.close(); });
+  d.addEventListener("click", function (e) { if (e.target === d) d.close(); });
+})();
+</script>
 </body>
 </html>

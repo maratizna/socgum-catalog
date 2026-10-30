@@ -686,3 +686,14 @@ html[data-signed="1"] .head-ph{display:inline-block}
 .p-graph-list{margin:8px 14px 12px}
 .p-graph-list summary{cursor:pointer;color:var(--ash);font-size:.9rem}
 .p-graph-list ul{margin:8px 0 0;padding-left:20px}
+
+/* Случайный номер после основного содержимого; окно «Добавить» */
+.dice-row{max-width:var(--wrap);width:100%;margin:34px auto 0;padding:0 var(--pad)}
+.dice-row .foot-dice{justify-content:flex-start}
+.add-dialog{width:min(92vw,440px);padding:22px;border:1px solid var(--line);border-radius:var(--r);background:var(--coal);color:var(--ink)}
+.add-dialog::backdrop{background:rgba(0,0,0,.72)}
+.add-dialog h2{margin:0 0 8px;font-family:var(--font-display);font-size:1.1rem}
+.add-dialog p{margin:0 0 14px;color:var(--ash)}
+.add-list{list-style:none;margin:0 0 14px;padding:0;display:grid;gap:10px}
+.add-list .add-btn{display:block;text-align:center}
+.add-dialog.is-inline{position:static;margin:0}

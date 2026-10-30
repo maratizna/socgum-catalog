@@ -469,7 +469,7 @@ def form_links(rows):
             found.setdefault("A", url)
         elif "номер" in title:
             found.setdefault("B", url)
-    labels = {"A": "Добавить концерт", "B": "Добавить номер", "C": "Дополнить номер"}
+    labels = {"A": "Добавить концерт", "B": "Добавить номер или направление", "C": "Дополнить номер или направление"}
     return [{"label": labels[k], "url": found[k]} for k in ("A", "B", "C") if k in found]
 
 

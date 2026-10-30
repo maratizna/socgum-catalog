@@ -1,0 +1,21 @@
+{# Случайный номер: два кубика (5 и 4). Нужен root; страница подключает один раз. #}
+<section class="dice-row" aria-label="Случайный номер">
+  <p class="foot-dice"><button type="button" class="dice" id="dice" aria-label="Открыть случайный номер"><span class="dice-i" aria-hidden="true"><svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><rect x="2.5" y="2.5" width="19" height="19" rx="4" fill="none" stroke="currentColor" stroke-width="1.8"/><circle cx="8" cy="8" r="1.7" fill="currentColor"/><circle cx="16" cy="8" r="1.7" fill="currentColor"/><circle cx="12" cy="12" r="1.7" fill="currentColor"/><circle cx="8" cy="16" r="1.7" fill="currentColor"/><circle cx="16" cy="16" r="1.7" fill="currentColor"/></svg><svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><rect x="2.5" y="2.5" width="19" height="19" rx="4" fill="none" stroke="currentColor" stroke-width="1.8"/><circle cx="8" cy="8" r="1.7" fill="currentColor"/><circle cx="16" cy="8" r="1.7" fill="currentColor"/><circle cx="8" cy="16" r="1.7" fill="currentColor"/><circle cx="16" cy="16" r="1.7" fill="currentColor"/></svg></span><span class="dice-t">Случайный номер</span></button> <span class="dice-msg" id="dice-msg" role="status"></span></p>
+</section>
+<script>
+(function () {
+  var b = document.getElementById("dice"); if (!b) return;
+  var root = document.documentElement.dataset.root || "", msg = document.getElementById("dice-msg");
+  var reduce = window.matchMedia && matchMedia("(prefers-reduced-motion: reduce)").matches;
+  b.addEventListener("click", function () {
+    b.disabled = true; b.classList.add("is-rolling"); msg.textContent = "";
+    fetch(root + "catalog.json").then(function (r) { return r.json(); }).then(function (c) {
+      var here = (location.pathname.match(/\/n\/([^\/]+)\/?$/) || [])[1];
+      var ids = (c.numbers || []).map(function (n) { return n.id; }).filter(function (id) { return id !== here; });
+      if (!ids.length) throw new Error("empty");
+      var id = ids[Math.floor(Math.random() * ids.length)];
+      setTimeout(function () { location.href = root + "n/" + encodeURIComponent(id) + "/"; }, reduce ? 0 : 700);
+    }).catch(function () { b.disabled = false; b.classList.remove("is-rolling"); msg.textContent = "Не удалось выбрать номер. Проверьте соединение."; });
+  });
+})();
+</script>

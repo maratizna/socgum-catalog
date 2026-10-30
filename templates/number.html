@@ -88,4 +88,5 @@
   </div>
 </article>
 {% endblock %}
+{% block after_main %}{% include "_dice.html" %}{% endblock %}
 {% block scripts %}<script src="{{ root }}assets/app.js?v={{ asset_v }}" defer></script>{% endblock %}
