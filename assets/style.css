@@ -643,3 +643,21 @@ html[data-signed="1"] .head-ph{display:inline-block}
 .empty-concerts{margin:6px 0 12px}
 .empty-concerts p{margin:6px 0}
 .sg-item{row-gap:1px}
+
+/* Поделиться номером и кубики внизу */
+.share{margin:14px 0 0}
+.share-box{margin-top:12px;max-width:360px;display:grid;gap:10px}
+.share-box[hidden]{display:none}
+.share-card{display:block;width:100%;height:auto;aspect-ratio:4/5;border:1px solid var(--line);border-radius:var(--r);background:var(--night)}
+.share-text{width:100%;resize:none}
+.share-row{flex-wrap:wrap}
+.foot-dice{margin:0;display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+.dice{display:inline-flex;align-items:center;gap:10px;padding:6px 12px;border:1px solid var(--line);border-radius:99px;background:transparent;color:var(--ink);font:inherit;font-size:.9rem;cursor:pointer}
+.dice:hover{border-color:var(--ember)}
+.dice-i{display:inline-flex;gap:4px;color:var(--ember)}
+.dice-i svg{transition:transform .2s}
+.dice.is-rolling .dice-i svg:first-child{animation:dice-roll .7s ease-in-out}
+.dice.is-rolling .dice-i svg:last-child{animation:dice-roll .7s ease-in-out reverse}
+@keyframes dice-roll{0%{transform:rotate(0)}60%{transform:rotate(300deg) translateY(-4px)}100%{transform:rotate(360deg)}}
+.dice-msg{color:#ff9d8a;font-size:.85rem}
+@media (prefers-reduced-motion:reduce){.dice.is-rolling .dice-i svg{animation:none}}

@@ -30,6 +30,11 @@
       {% if n.tracks %}
       <p class="social-links track-links">{% for t in n.tracks %}<a class="add-btn add-btn-s soc soc-track" href="{{ t.url }}" rel="noopener" target="_blank"><svg class="soc-i" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 18V6l11-2v12" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/><circle cx="6.5" cy="18" r="2.8" fill="currentColor"/><circle cx="17.5" cy="16" r="2.8" fill="currentColor"/></svg><span>Слушать трек{% if n.tracks|length > 1 %}: {{ t.label }}{% endif %}</span></a>{% endfor %}</p>
       {% endif %}
+      <div class="share" id="share" data-title="{{ n.title }}" data-collective="{{ n.collective }}" data-concert="{{ n.concert.name }}{% if n.concert.date %}, {{ n.concert.date|ru_date }}{% endif %}"
+           data-site="{{ site_title }}" data-cover="{{ root }}img/{{ n.id }}/cover.webp"{% if can_play and n.start is not none %} data-t="{{ n.start }}" data-tl="{{ n.start|hms }}"{% endif %}>
+        <button type="button" class="add-btn add-btn-s share-btn" id="share-btn" aria-expanded="false" aria-controls="share-box">Поделиться</button>
+        <div class="share-box" id="share-box" hidden></div>
+      </div>
       {% set m = n.materials %}{% include "_materials.html" %}
       {% if n.related %}
       <section class="related" aria-labelledby="rel-h">

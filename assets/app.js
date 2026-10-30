@@ -490,3 +490,97 @@
   function all() { document.querySelectorAll("[data-gal]").forEach(init); }
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", all); else all();
 })();
+
+/* Поделиться номером: открытка (картинка), текст и ссылка на точное время записи */
+(function () {
+  var box0 = document.getElementById("share"); if (!box0) return;
+  var btn = document.getElementById("share-btn"), box = document.getElementById("share-box"), d = box0.dataset, built = false;
+  var W = 1080, H = 1350, PIC = 810;
+  function link() { var u = location.origin + location.pathname; return d.t ? u + "?t=" + d.t : u; }
+  function message() {
+    var head = "«" + d.title + "»" + (d.collective ? ", " + d.collective : "") + ". " + d.concert + ".";
+    return head + (d.tl ? "\nСмотреть с " + d.tl + ": " : "\n") + link();
+  }
+  function wrap(ctx, text, maxW, maxLines) {
+    var words = String(text).split(/\s+/), lines = [], cur = "";
+    words.forEach(function (w) {
+      var t = cur ? cur + " " + w : w;
+      if (ctx.measureText(t).width <= maxW || !cur) cur = t; else { lines.push(cur); cur = w; }
+    });
+    if (cur) lines.push(cur);
+    if (lines.length > maxLines) { lines = lines.slice(0, maxLines); var l = lines[maxLines - 1]; while (ctx.measureText(l + "…").width > maxW && l.length > 1) l = l.slice(0, -1); lines[maxLines - 1] = l + "…"; }
+    return lines;
+  }
+  function draw(canvas, img) {
+    var ctx = canvas.getContext("2d");
+    ctx.fillStyle = "#090500"; ctx.fillRect(0, 0, W, H);
+    if (img) {
+      var k = Math.max(W / img.width, PIC / img.height), w = img.width * k, h = img.height * k;
+      ctx.save(); ctx.beginPath(); ctx.rect(0, 0, W, PIC); ctx.clip(); ctx.drawImage(img, (W - w) / 2, (PIC - h) * 0.35, w, h); ctx.restore();
+    }
+    var g = ctx.createLinearGradient(0, PIC - 160, 0, PIC); g.addColorStop(0, "rgba(9,5,0,0)"); g.addColorStop(1, "#090500");
+    ctx.fillStyle = g; ctx.fillRect(0, PIC - 160, W, 160);
+    ctx.textBaseline = "alphabetic"; ctx.fillStyle = "#ff8b36";
+    ctx.font = '700 62px "Unbounded", "Arial Black", sans-serif';
+    var y = PIC + 40, lines = wrap(ctx, d.title, W - 120, 3);
+    lines.forEach(function (l, i) { ctx.fillText(l, 60, y + i * 76); });
+    y += lines.length * 76 + 4;
+    ctx.fillStyle = "#f6ebdd"; ctx.font = '600 38px "Golos Text", system-ui, sans-serif';
+    if (d.collective) { wrap(ctx, d.collective, W - 120, 1).forEach(function (l) { ctx.fillText(l, 60, y + 24); }); y += 52; }
+    ctx.fillStyle = "#a8978a"; ctx.font = '400 32px "Golos Text", system-ui, sans-serif';
+    wrap(ctx, d.concert, W - 120, 2).forEach(function (l, i) { ctx.fillText(l, 60, y + 24 + i * 42); });
+    ctx.fillStyle = "#a8978a"; ctx.font = '400 28px "Golos Text", system-ui, sans-serif';
+    ctx.fillText(d.site || "", 60, H - 48);
+    if (d.tl) {
+      var label = "Смотреть с " + d.tl; ctx.font = '600 30px "Golos Text", system-ui, sans-serif';
+      var pw = ctx.measureText(label).width + 48;
+      ctx.fillStyle = "#ff8b36"; ctx.beginPath();
+      if (ctx.roundRect) ctx.roundRect(W - 60 - pw, H - 92, pw, 56, 28); else ctx.rect(W - 60 - pw, H - 92, pw, 56);
+      ctx.fill(); ctx.fillStyle = "#1a0f05"; ctx.fillText(label, W - 60 - pw + 24, H - 53);
+    }
+  }
+  function blobOf(canvas) { return new Promise(function (res) { canvas.toBlob(res, "image/png"); }); }
+  function mk(tag, cls, text) { var n = document.createElement(tag); if (cls) n.className = cls; if (text != null) n.textContent = text; return n; }
+  function build() {
+    built = true;
+    var canvas = mk("canvas", "share-card"); canvas.width = W; canvas.height = H;
+    canvas.setAttribute("role", "img"); canvas.setAttribute("aria-label", "Открытка номера «" + d.title + "»");
+    var ta = mk("textarea", "c-input share-text"); ta.readOnly = true; ta.rows = 4; ta.value = message(); ta.setAttribute("aria-label", "Текст для отправки");
+    var status = mk("p", "c-hint share-status"); status.setAttribute("role", "status");
+    var row = mk("div", "c-row share-row");
+    function say(t) { status.textContent = t; }
+    function act(label, fn, primary) { var b = mk("button", primary ? "btn btn-s" : "add-btn add-btn-s", label); b.type = "button"; b.addEventListener("click", fn); row.appendChild(b); return b; }
+    var ready = Promise.all([
+      document.fonts ? document.fonts.load('700 62px "Unbounded"', d.title).catch(function () { }) : null,
+      document.fonts ? document.fonts.load('400 32px "Golos Text"', (d.collective || "") + d.concert + (d.tl || "") + "Смотреть с").catch(function () { }) : null,
+      new Promise(function (res) { var im = new Image(); im.onload = function () { res(im); }; im.onerror = function () { res(null); }; im.src = d.cover; })
+    ]).then(function (r) { draw(canvas, r[2]); });
+    if (navigator.share) act("Отправить", function () {
+      ready.then(function () { return blobOf(canvas); }).then(function (blob) {
+        var file = blob && new File([blob], "nomer.png", { type: "image/png" });
+        var data = { title: d.title, text: message() };
+        if (file && navigator.canShare && navigator.canShare({ files: [file] })) data.files = [file]; else data.url = link();
+        if (data.files) data.text = message(); else data.text = message().replace(link(), "").trim();
+        return navigator.share(data);
+      }).catch(function (e) { if (e && e.name !== "AbortError") say("Не удалось открыть меню отправки. Скопируйте текст."); });
+    }, true);
+    act("Скопировать текст", function () {
+      var done = function () { say("Текст со ссылкой скопирован."); };
+      if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(message()).then(done, function () { ta.select(); say("Выделили текст: нажмите «Копировать» в меню."); });
+      else { ta.select(); try { document.execCommand("copy"); done(); } catch (e) { say("Выделили текст: скопируйте его."); } }
+    }, !navigator.share);
+    act("Сохранить открытку", function () {
+      ready.then(function () { return blobOf(canvas); }).then(function (blob) {
+        if (!blob) { say("Не удалось собрать открытку."); return; }
+        var a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = "nomer-" + (location.pathname.split("/").filter(Boolean).pop() || "card") + ".png";
+        document.body.appendChild(a); a.click(); a.remove(); setTimeout(function () { URL.revokeObjectURL(a.href); }, 2000); say("Открытка сохранена.");
+      });
+    });
+    box.appendChild(canvas); box.appendChild(ta); box.appendChild(row); box.appendChild(status);
+  }
+  btn.addEventListener("click", function () {
+    var open = box.hidden;
+    if (open && !built) build();
+    box.hidden = !open; btn.setAttribute("aria-expanded", open ? "true" : "false");
+  });
+})();
