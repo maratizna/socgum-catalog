@@ -1072,7 +1072,7 @@ def build_site(concerts, directions, numbers, people, report, demo, source):
             brand_font = ext
             write(TMP / "assets" / "brand.css",
                   '@font-face{font-family:"Brand";src:url(fonts/brand.%s) format("%s");font-weight:700;font-display:swap}\n'
-                  ':root{--font-display:"Brand","Unbounded","Arial Black",sans-serif}\n' % (ext, ext))
+                  ':root{--font-brand:"Brand","Unbounded","Arial Black",sans-serif}\n' % (ext, ext))
             break
 
     # обложки
