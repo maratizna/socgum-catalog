@@ -635,3 +635,11 @@ html[data-signed="1"] .head-ph{display:inline-block}
 .hot-more{margin:6px 0 0;text-align:right}
 .hot-row .hot-wait{flex:1 0 100%}
 .hot-strip .hot-card{background:var(--coal-2)}
+
+.sg-item{flex-wrap:wrap}
+.sg-sub{flex:1 1 100%;margin-left:calc(5.6em + 12px);color:var(--ash);font-size:.82rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.sg-kind{min-width:7.4em}
+.sg-sub{margin-left:calc(7.4em + 12px)}
+.empty-concerts{margin:6px 0 12px}
+.empty-concerts p{margin:6px 0}
+.sg-item{row-gap:1px}

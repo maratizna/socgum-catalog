@@ -50,7 +50,7 @@
       <label class="sel">Концерт
         <select id="f-concert">
           <option value="">Все концерты</option>
-          {% for c in concerts %}<option value="{{ c.slug }}" data-season="{{ c.season }}" data-type="{{ c.ctype }}">{{ c.name }}{% if c.numbers|length %} ({{ c.numbers|length }}){% endif %}</option>{% endfor %}
+          {% for c in concerts %}<option value="{{ c.slug }}" data-season="{{ c.season }}" data-type="{{ c.ctype }}" data-label="{{ c.name }}" data-topic="{{ c.topic }}" data-n="{{ c.numbers|length }}">{{ c.name }}{% if c.numbers|length %} ({{ c.numbers|length }}){% endif %}</option>{% endfor %}
         </select>
       </label>
       {% endif %}
@@ -105,8 +105,8 @@
   {% for n in numbers %}
   <li class="card" data-id="{{ n.id }}" data-concert="{{ n.concert.slug }}" data-season="{{ n.concert.season }}" data-type="{{ n.concert.ctype }}"
       data-direction="{% for d in n.directions %}{{ d.slug }}{% if not loop.last %} {% endif %}{% endfor %}"
-      data-order="{{ loop.index0 }}" data-row="{{ n.row }}" data-title="{{ n.title }}" data-collective="{{ n.collective }}"
-      data-search="{{ ([n.title, n.collective, n.concert.name]
+      data-order="{{ loop.index0 }}" data-row="{{ n.row }}" data-title="{{ n.title }}" data-collective="{{ n.collective }}" data-cname="{{ n.concert.name }}"{% if n.offstage %} data-off="1"{% endif %}
+      data-search="{{ ([n.title, n.collective, n.concert.name, n.concert.topic, n.concert.season]
         + n.directions|map(attribute='name')|list
         + n.choreographers + n.performers)|join(' ') }}">
     {% include "_card.html" %}
@@ -118,6 +118,7 @@
 
 <div class="empty" id="empty" hidden>
   <p>По этим условиям номеров нет.</p>
+  <div id="empty-concerts" class="empty-concerts" hidden></div>
   <button type="button" class="btn" data-reset>Сбросить фильтры</button>
 </div>
 {% endblock %}

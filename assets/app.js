@@ -7,6 +7,7 @@
     return String(s || "").trim().replace(/\s+/g, " ").toLowerCase().replace(/ё/g, "е");
   }
   /* для поиска: без регистра, «ё» = «е», «й» = «и» */
+  function ruPlural(n, one, few, many) { var a = n % 10, b = n % 100; return a === 1 && b !== 11 ? one : (a >= 2 && a <= 4 && !(b >= 12 && b <= 14) ? few : many); }
   function nrm2(s) { return norm(s).replace(/й/g, "и"); }
   /* расстояние Дамерау — Левенштейна с остановкой, когда оно уже больше max */
   function lev(a, b, max) {
@@ -165,6 +166,22 @@
       if (resetBtn) resetBtn.hidden = !filtered;
       empty.hidden = visible !== 0;
       grid.hidden = visible === 0;
+      /* запрос совпал с концертом, у которого ещё нет номеров: подсказываем, что концерт есть */
+      var ec = document.getElementById("empty-concerts");
+      if (ec) {
+        ec.hidden = true; while (ec.firstChild) ec.removeChild(ec.firstChild);
+        if (visible === 0 && state.q && selConcert) {
+          var ws = nrm2(state.q).split(" ").filter(Boolean);
+          concertOpts.forEach(function (o) {
+            var hay = nrm2((o.dataset.label || "") + " " + (o.dataset.topic || ""));
+            if ((+o.dataset.n || 0) > 0 || !ws.length || !ws.every(function (w) { return hay.indexOf(w) !== -1; })) return;
+            var b = document.createElement("button"); b.type = "button"; b.className = "linkbtn";
+            b.textContent = "Концерт «" + (o.dataset.label || o.textContent.trim()) + "» есть в каталоге, но номеров в нём пока нет. Открыть концерт";
+            b.addEventListener("click", function () { state.q = ""; qInput.value = ""; state.t = ""; state.y = ""; state.c = o.value; apply(true); });
+            var p = document.createElement("p"); p.appendChild(b); ec.appendChild(p); ec.hidden = false;
+          });
+        }
+      }
 
       /* Карточка выбранного концерта: обложка, тема, ссылка на запись */
       panels.forEach(function (p) {
@@ -213,19 +230,37 @@
 
     /* ---- подсказки и недавние запросы: всё из страницы и из памяти устройства, сервис не используется */
     (function suggest() {
-      var box = document.getElementById("sugg"), KEY = "sg:recent", MONTH = 30 * 86400e3, MAXR = 8, MAXS = 8;
+      var box = document.getElementById("sugg"), KEY = "sg:recent", MONTH = 30 * 86400e3, MAXR = 8, MAXS = 10;
       if (!box) return;
       var people = []; try { people = JSON.parse(document.getElementById("people-json").textContent) || []; } catch (e) { }
       var items = [], seen = {};
-      function add(kind, label, extra) { var k = kind + "|" + nrm2(label); if (!label || seen[k]) return; seen[k] = 1; var o = { kind: kind, label: label, key: nrm2(label), toks: nrm2(label).split(/[^a-zа-я0-9]+/).filter(Boolean) }; for (var x in extra) o[x] = extra[x]; items.push(o); }
+      function add(kind, label, extra) {
+        var k = kind + "|" + nrm2(label) + "|" + nrm2((extra && extra.sub) || "");
+        if (!label || seen[k]) return; seen[k] = 1;
+        var hay = nrm2(label + " " + ((extra && extra.hay) || ""));
+        var o = { kind: kind, label: label, key: hay, toks: hay.split(/[^a-zа-я0-9]+/).filter(Boolean) };
+        for (var x in extra) o[x] = extra[x];
+        items.push(o);
+      }
+      /* направления: на сцене и вне сцены */
+      if (selDir) Array.prototype.forEach.call(selDir.querySelectorAll("option"), function (o) {
+        if (o.value) add("Направление", o.textContent.trim(), { dir: o.value, sub: "все концерты" });
+      });
       cards.forEach(function (c) {
         var a = c.querySelector(".card-link");
-        add("Номер", c.dataset.title, { href: a ? a.getAttribute("href") : "" });
+        /* работа направления вне сцены (SMM, сценарка, админка…) подписывается как направление, а не как номер */
+        add(c.dataset.off ? "Направление" : "Номер", c.dataset.title, { href: a ? a.getAttribute("href") : "", sub: c.dataset.cname || "" });
       });
       people.forEach(function (p) { add("Человек", p.n, { href: "p/" + p.s + "/" }); });
       cards.forEach(function (c) { add("Коллектив", c.dataset.collective, {}); });
-      if (selConcert) Array.prototype.forEach.call(selConcert.options, function (o) { if (o.value) add("Концерт", o.textContent.trim(), { concert: o.value }); });
-      var KIND_RANK = { "Номер": 0, "Человек": 1, "Коллектив": 2, "Концерт": 3 };
+      if (selConcert) Array.prototype.forEach.call(selConcert.options, function (o) {
+        if (!o.value) return;
+        var n = +o.dataset.n || 0;
+        add("Концерт", o.dataset.label || o.textContent.trim(), { concert: o.value, n: n, hay: o.dataset.topic || "",
+          sub: (o.dataset.topic ? o.dataset.topic + ", " : "") + (n ? n + " " + ruPlural(n, "номер", "номера", "номеров") : "номеров пока нет") });
+      });
+      var KIND_RANK = { "Направление": 0, "Номер": 1, "Человек": 2, "Коллектив": 3, "Концерт": 4 };
+      var KIND_CAP = { "Направление": 3, "Номер": 4, "Человек": 3, "Коллектив": 2, "Концерт": 4 };
 
       function recents() {
         var r = []; try { r = JSON.parse(localStorage.getItem(KEY) || "[]"); } catch (e) { }
@@ -268,7 +303,8 @@
         saveRecent(it.label);
         close();
         if (it.href && it.kind !== "Коллектив") { location.href = it.href; return; }
-        if (it.concert) { state.q = ""; qInput.value = ""; state.c = it.concert; if (selConcert) selConcert.value = it.concert; apply(true); return; }
+        if (it.dir) { state.q = ""; qInput.value = ""; state.t = ""; state.y = ""; state.c = ""; state.d = it.dir; apply(true); return; }
+        if (it.concert) { state.q = ""; qInput.value = ""; state.t = ""; state.y = ""; state.c = it.concert; if (selConcert) selConcert.value = it.concert; apply(true); return; }
         qInput.value = it.label; state.q = it.label; apply(true);
       }
       function render() {
@@ -287,13 +323,14 @@
         } else {
           var scored = [];
           items.forEach(function (it) { var s = score(it, words); if (s >= 0) scored.push([s, KIND_RANK[it.kind], it]); });
-          scored.sort(function (a, b) { return a[0] - b[0] || a[1] - b[1] || a[2].label.localeCompare(b[2].label, "ru"); });
-          list = scored.slice(0, MAXS).map(function (x) { return x[2]; });
+          scored.sort(function (a, b) { return a[0] - b[0] || a[1] - b[1] || (b[2].n > 0) - (a[2].n > 0) || a[2].label.localeCompare(b[2].label, "ru"); });
+          var used = {};
+          list = scored.filter(function (x) { var k = x[2].kind; used[k] = (used[k] || 0) + 1; return used[k] <= KIND_CAP[k]; }).slice(0, MAXS).map(function (x) { return x[2]; });
           if (!list.length) { close(); return; }
         }
         list.forEach(function (it, i) {
           var n = el("div", "sg-item"); n.id = "sg-" + i; n.setAttribute("role", "option"); n.setAttribute("aria-selected", "false");
-          n.append(el("span", "sg-kind", it.kind), el("span", "sg-text", it.label));
+          n.append(el("span", "sg-kind", it.kind), el("span", "sg-text", it.label), it.sub ? el("span", "sg-sub", it.sub) : document.createTextNode(""));
           n.addEventListener("mousedown", function (e) { e.preventDefault(); pick(it); });
           box.append(n);
         });
