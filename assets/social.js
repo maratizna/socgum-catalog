@@ -777,6 +777,8 @@
     var ratings = [], ratingBy = {}, firstTop = {};   // оценки зрителей этого номера; они же по аккаунтам; первый комментарий каждого автора (под ним показываем оценку)
     var sortMode = "old";
     try { var sv = store() && store().getItem("sg:sort"); if (sv === "new" || sv === "old" || sv === "top") sortMode = sv; } catch (e) { }
+    var SHOW_STEP = 5;            // сколько комментариев показываем сразу
+    var shownTop = SHOW_STEP;     // сколько уже раскрыто кнопкой «Показать ещё»
 
     var sumBox = el("div", { class: "rate-sum", hidden: true });
     var sortBar = el("div", { class: "c-sort", hidden: true });
@@ -1076,6 +1078,7 @@
         sortBar.append(el("button", { type: "button", class: "chip", "aria-pressed": sortMode === s[0] ? "true" : "false", text: s[1],
           onclick: function () {
             sortMode = s[0];
+            shownTop = SHOW_STEP;
             try { store() && store().setItem("sg:sort", sortMode); } catch (e) { }
             drawList();
           } }));
@@ -1101,10 +1104,18 @@
       top.sort(cmpFor(sortMode));
       drawSort(top.length);
       if (!top.length) list.append(emptyState("Пока нет комментариев", "Напишите первым: что запомнилось в номере, что понравилось, кому спасибо."));
-      top.forEach(function (c) {
+      /* Показываем по 5 комментариев: остальные раскрываются кнопкой. Чтения базы от этого не растут —
+         комментарии уже загружены, кнопка только рисует следующие. */
+      var shown = Math.min(top.length, shownTop);
+      top.slice(0, shown).forEach(function (c) {
         list.append(commentNode(c, false));
         (byParent[c.id] || []).forEach(function (r) { list.append(commentNode(r, true)); });
       });
+      if (top.length > shown) {
+        list.append(el("div", { class: "c-more" },
+          el("button", { type: "button", class: "btn btn-s", text: "Показать ещё", onclick: function () { shownTop = shown + SHOW_STEP; drawList(); } }),
+          el("span", { class: "c-hint", text: "показано " + shown + " из " + top.length })));
+      }
     }
 
     /* Итог после отправки: крупная сумма и «Спасибо», исчезает через 20 секунд */
@@ -1282,7 +1293,7 @@
             };
             return run(true, true, true);
           });
-        }).then(function () { replyTo = null; justDone = { k: 1, t: Date.now(), rate: doneInfo.rate, clear: doneInfo.clear, text: doneInfo.text, tot: doneInfo.tot }; dropComments(); return loadComments(true); }).then(draw, function (e) { send.disabled = false; note(form, errText(e), "err"); });
+        }).then(function () { replyTo = null; justDone = { k: 1, t: Date.now(), rate: doneInfo.rate, clear: doneInfo.clear, text: doneInfo.text, tot: doneInfo.tot }; if (doneInfo.text) shownTop = Infinity; dropComments(); return loadComments(true); }).then(draw, function (e) { send.disabled = false; note(form, errText(e), "err"); });
       } },
         replyTo && el("p", { class: "c-replyto" }, "Ответ для " + replyTo.authorName + " ",
           el("button", { type: "button", class: "linkbtn", text: "отменить", onclick: function () { replyTo = null; drawForm(); } })),

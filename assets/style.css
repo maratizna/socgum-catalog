@@ -173,6 +173,7 @@ html{scroll-padding-top:72px}
 .c-input,.edit-box input[type=url]{width:100%;background:var(--coal);border:1px solid var(--line);border-radius:var(--r);padding:11px 13px;resize:vertical}
 .c-input:hover{border-color:#5a4430}
 .c-row{display:flex;gap:14px;align-items:center;flex-wrap:wrap}
+.c-more{display:flex;gap:12px;align-items:center;flex-wrap:wrap;margin:-4px 0 18px}
 .c-replyto{color:var(--ash);font-size:.95rem}
 .badge{background:var(--ember);color:var(--night);border-radius:var(--r);padding:1px 8px;font-size:.8rem;font-weight:600}
 .badge-off{background:transparent;border:1px solid var(--line);color:var(--ash)}
