@@ -470,7 +470,7 @@
     return cached("user:ccount:" + uid, TTL.pub, fresh === true, function () {
       var q = fb.f.query(fcol("comments"), fb.f.where("uid", "==", uid), fb.f.where("status", "==", "visible"));
       if (fb.f.getCountFromServer) return fb.f.getCountFromServer(q).then(function (s) { return s.data().count; });
-      return loadUserComments(uid).then(function (l) { return l.length; });
+      return fb.f.getDocs(q).then(function (s) { return s.size; });
     });
   }
 
@@ -903,7 +903,7 @@
         ratings.forEach(function (r) { ratingBy[r.uid] = r; });
       }, function () { ratings = []; ratingBy = {}; });
     }
-    function dropComments() { cdrop("comments:" + nid); cdrop("likes:" + nid); cdrop("ratings:" + nid); cdrop("ragg:" + nid); cdrop("hot:"); cdrop("user:ccount:"); cdrop("user:comments2:"); }
+    function dropComments() { cdrop("comments:" + nid); cdrop("likes:" + nid); cdrop("ratings:" + nid); cdrop("ragg:" + nid); cdrop("hot:"); cdrop("user:ccount:"); cdrop("user:comments3:"); }
     function plural(n) {
       var m = n % 100, d = n % 10;
       return n + " " + (m > 10 && m < 20 ? "лайков" : d === 1 ? "лайк" : d > 1 && d < 5 ? "лайка" : "лайков");
@@ -1543,27 +1543,61 @@
     return t && t.toDate ? t.toDate().toLocaleString("ru-RU", { day: "numeric", month: "long", year: "numeric", hour: "2-digit", minute: "2-digit" }) : "";
   }
   function critOf(info, nid) { var r = info.rate[nid]; return r && r.k && r.k.length === 5 ? r.k : RATE_DEFAULT; }
-  function loadUserComments(uid, fresh) {
-    return cached("user:comments2:" + uid, TTL.pub, fresh === true, function () {
-      return fb.f.getDocs(fb.f.query(fcol("comments"), fb.f.where("uid", "==", uid), fb.f.where("status", "==", "visible"), fb.f.limit(200))).then(function (s) {
-        return s.docs.map(function (d) {
-          var x = d.data();
-          return { id: d.id, numberId: x.numberId, text: x.text, authorName: x.authorName, createdAt: x.createdAt, likeCount: x.likeCount || 0, parentId: x.parentId || "" };
-        });
-      });
+  var USER_PAGE = 5;
+  function mapComment(d) {
+    var x = d.data();
+    return { id: d.id, numberId: x.numberId, text: x.text, authorName: x.authorName, createdAt: x.createdAt, likeCount: x.likeCount || 0, parentId: x.parentId || "" };
+  }
+  function mapRating(d) {
+    var x = d.data(), o = { numberId: x.numberId, updatedAt: x.updatedAt };
+    if (x.ctx) o.ctx = x.ctx;
+    RATE_DEFAULT.forEach(function (k) { if (typeof x[k[0]] === "number") o[k[0]] = x[k[0]]; });
+    return o;
+  }
+  /* Постраничная загрузка списков на странице человека: по 5, «Показать ещё» догружает следующие.
+     Порядок — новые сверху. Без составного индекса Firestore откатываемся на загрузку всех, как раньше. */
+  function userPageQuery(col, uid, extraWhere, orderField, limit, afterMs) {
+    var q = fb.f.query(fcol(col), fb.f.where("uid", "==", uid));
+    extraWhere.forEach(function (f) { q = fb.f.query(q, fb.f.where(f[0], f[1], f[2])); });
+    q = fb.f.query(q, fb.f.orderBy(orderField, "desc"));
+    q = fb.f.query(q, fb.f.limit(limit));
+    if (afterMs) q = fb.f.query(q, fb.f.startAfter(fb.f.Timestamp.fromMillis(afterMs)));
+    return q;
+  }
+  function fetchUserPage(col, uid, extraWhere, orderField, mapFn, limit, afterMs) {
+    return fb.f.getDocs(userPageQuery(col, uid, extraWhere, orderField, limit, afterMs)).then(function (s) {
+      var list = s.docs.map(mapFn);
+      var last = list.length ? (orderField === "createdAt" ? tsMs(list[list.length - 1].createdAt) : tsMs(list[list.length - 1].updatedAt)) : (afterMs || 0);
+      return { list: list, lastMs: last, all: false };
+    }, function (e) {
+      if (e && (e.code === "failed-precondition" || /index/i.test(String(e.message || "")))) {
+        var q0 = fb.f.query(fcol(col), fb.f.where("uid", "==", uid));
+        extraWhere.forEach(function (f) { q0 = fb.f.query(q0, fb.f.where(f[0], f[1], f[2])); });
+        return fb.f.getDocs(q0).then(function (s) { return { list: s.docs.map(mapFn), lastMs: 0, all: true }; });
+      }
+      throw e;
     });
+  }
+  function loadUserComments(uid, fresh) {
+    return cached("user:comments3:" + uid, TTL.pub, fresh === true, function () {
+      return fetchUserPage("comments", uid, [["status", "==", "visible"]], "createdAt", mapComment, USER_PAGE, 0);
+    });
+  }
+  function loadUserCommentsMore(uid, afterMs) {
+    return fetchUserPage("comments", uid, [["status", "==", "visible"]], "createdAt", mapComment, USER_PAGE, afterMs);
   }
   function loadUserRatings(uid, fresh) {
     return cached("user:ratings:" + uid, TTL.pub, fresh === true, function () {
-      return fb.f.getDocs(fb.f.query(fcol("ratings"), fb.f.where("uid", "==", uid), fb.f.limit(300))).then(function (s) {
-        return s.docs.map(function (d) {
-          var x = d.data(), o = { numberId: x.numberId, updatedAt: x.updatedAt };
-          if (x.ctx) o.ctx = x.ctx;
-          RATE_DEFAULT.forEach(function (k) { if (typeof x[k[0]] === "number") o[k[0]] = x[k[0]]; });
-          return o;
-        });
-      });
+      return fb.f.getDocs(fb.f.query(fcol("ratings"), fb.f.where("uid", "==", uid), fb.f.limit(300))).then(function (s) { return s.docs.map(mapRating); });
     });
+  }
+  function loadUserRatingsFirst(uid, fresh) {
+    return cached("user:ratingspage:" + uid, TTL.pub, fresh === true, function () {
+      return fetchUserPage("ratings", uid, [], "updatedAt", mapRating, USER_PAGE, 0);
+    });
+  }
+  function loadUserRatingsMore(uid, afterMs) {
+    return fetchUserPage("ratings", uid, [], "updatedAt", mapRating, USER_PAGE, afterMs);
   }
   function loadUserPlaylists(uid, fresh) {
     return cached("user:pl:" + uid, TTL.comments, fresh === true, function () {
@@ -1590,11 +1624,14 @@
     return bad ? "Мат не проходит: слово «" + bad + "»." : "";
   }
 
+  function moreBtn(onClick) {
+    return el("div", { class: "c-more" }, el("button", { type: "button", class: "btn btn-s", text: "Показать ещё", onclick: onClick }));
+  }
   function panelComments(panel, uid, info, self) {
-    return Promise.all([loadUserComments(uid), loadUserRatings(uid).catch(function () { return []; })]).then(function (r) {
-      var list = (r[0] || []).slice().sort(function (a, b) { return tsMs(b.createdAt) - tsMs(a.createdAt); });
-      var rbn = {}; (r[1] || []).forEach(function (x) { rbn[x.numberId] = x; });
-      var first = {};   // оценка показывается под самым первым комментарием человека к номеру
+    var all = [], rbn = {}, lastMs = 0, done = false;
+    function draw() {
+      var list = all.slice().sort(function (a, b) { return tsMs(b.createdAt) - tsMs(a.createdAt); });
+      var first = {};   // оценка под самым первым комментарием человека к номеру
       list.slice().sort(function (a, b) { return tsMs(a.createdAt) - tsMs(b.createdAt); }).forEach(function (c) { if (!c.parentId && !first[c.numberId]) first[c.numberId] = c.id; });
       clear(panel);
       if (!list.length) { panel.append(self ? emptyState("Вы пока ничего не писали", "Откройте номер и напишите первый комментарий.", el("a", { class: "btn btn-s", href: ROOT || "./", text: "Выбрать номер" })) : emptyState("Комментариев пока нет")); return; }
@@ -1609,11 +1646,24 @@
           rt ? ratingNode(rt, critOf(info, c.numberId)) : null]));
       });
       panel.append(ul);
+      if (!done) panel.append(moreBtn(function () {
+        loadUserCommentsMore(uid, lastMs).then(function (p) {
+          var list2 = p.list || [];
+          if (list2.length) { all = all.concat(list2); lastMs = p.lastMs || 0; done = p.all || list2.length < USER_PAGE; draw(); }
+          else { done = true; draw(); }
+        }, function () { done = true; draw(); });
+      }));
+    }
+    return Promise.all([loadUserComments(uid), loadUserRatings(uid).catch(function () { return []; })]).then(function (r) {
+      var p = r[0]; all = p.list || []; lastMs = p.lastMs || 0; done = p.all || all.length < USER_PAGE;
+      (r[1] || []).forEach(function (x) { rbn[x.numberId] = x; });
+      draw();
     });
   }
   function panelRatings(panel, uid, info, self) {
-    return loadUserRatings(uid).then(function (arr) {
-      var list = (arr || []).slice().sort(function (a, b) { return tsMs(b.updatedAt) - tsMs(a.updatedAt); });
+    var all = [], lastMs = 0, done = false;
+    function draw() {
+      var list = all.slice().sort(function (a, b) { return tsMs(b.updatedAt) - tsMs(a.updatedAt); });
       clear(panel);
       if (!list.length) { panel.append(self ? emptyState("Вы пока ничего не оценили", "Откройте номер и нажмите «Оценить».", el("a", { class: "btn btn-s", href: ROOT || "./", text: "Выбрать номер" })) : emptyState("Оценок пока нет")); return; }
       var ul = el("div", { class: "c-list" });
@@ -1623,6 +1673,17 @@
           ratingNode(x, critOf(info, x.numberId))]));
       });
       panel.append(ul);
+      if (!done) panel.append(moreBtn(function () {
+        loadUserRatingsMore(uid, lastMs).then(function (p) {
+          var list2 = p.list || [];
+          if (list2.length) { all = all.concat(list2); lastMs = p.lastMs || 0; done = p.all || list2.length < USER_PAGE; draw(); }
+          else { done = true; draw(); }
+        }, function () { done = true; draw(); });
+      }));
+    }
+    loadUserRatingsFirst(uid).then(function (p) {
+      all = p.list || []; lastMs = p.lastMs || 0; done = p.all || all.length < USER_PAGE;
+      draw();
     }, function (e) { clear(panel).append(el("p", { class: "msg msg-err", text: "Оценки не загрузились: " + errText(e) })); });
   }
   function panelPlaylists(panel, uid, self, info) {
@@ -1858,7 +1919,7 @@
       if (self && approvedPids().length) { location.replace(ownPageUrl()); return; }
       var cl = self ? state.claims : claimsOf;
       var pend = Object.keys(cl || {}).filter(function (p) { return cl[p].status === "pending"; });
-      var list = (data || []).slice().sort(function (a, b) { return tsMs(b.createdAt) - tsMs(a.createdAt); });
+      var list = ((data && data.list) || []).slice().sort(function (a, b) { return tsMs(b.createdAt) - tsMs(a.createdAt); });
       var name = nicks[uid] || realNames[uid] || (list.length && list[0].authorName) || (self && myName()) || "Пользователь";
       document.title = document.title.replace(/^[^:]*:/, name + ":");
       var ttl = el("div", null, el("h1", { text: name }));
