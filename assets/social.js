@@ -777,8 +777,12 @@
     var ratings = [], ratingBy = {}, firstTop = {};   // оценки зрителей этого номера; они же по аккаунтам; первый комментарий каждого автора (под ним показываем оценку)
     var sortMode = "old";
     try { var sv = store() && store().getItem("sg:sort"); if (sv === "new" || sv === "old" || sv === "top") sortMode = sv; } catch (e) { }
-    var SHOW_STEP = 5;            // сколько комментариев показываем сразу
-    var shownTop = SHOW_STEP;     // сколько уже раскрыто кнопкой «Показать ещё»
+    var PAGE = 5;                 // сколько комментариев подгружаем за раз
+    var commentsDone = false;     // «Показать ещё» больше нечего грузить
+    var lastMs = 0;               // createdAt последнего загруженного комментария (для следующей страницы)
+    /* У номеров старше недели комментарии почти не меняются — кэшируем час вместо обычных десяти минут */
+    var nAge = parseInt(root.dataset.age || "0", 10) || 0;
+    function commentsTTL() { return nAge > 7 ? 3600e3 : TTL.comments; }
 
     var sumBox = el("div", { class: "rate-sum", hidden: true });
     var sortBar = el("div", { class: "c-sort", hidden: true });
@@ -788,18 +792,69 @@
     var noteBox = document.getElementById("director-note");
     root.append(sumBox, form, moments, sortBar, list);
 
-    function loadComments(fresh) {
+    function commentsKey() { return "comments:" + nid + (state.admin ? ":a" : state.user ? ":" + state.user.uid : ""); }
+    function docToComment(d) { var x = d.data(); x.id = d.id; return x; }
+    /* Первая страница или следующая. Порядок по createdAt, чтобы работала startAfter.
+       «Популярные» (по лайкам) не пагинируется: грузим целиком, как раньше. */
+    function commentsQuery(limit, afterMs) {
       var q = state.admin
         ? fb.f.query(fcol("comments"), fb.f.where("numberId", "==", nid))
         : fb.f.query(fcol("comments"), fb.f.where("numberId", "==", nid), fb.f.where("status", "==", "visible"));
-      return cached("comments:" + nid + (state.admin ? ":a" : state.user ? ":" + state.user.uid : ""), TTL.comments, fresh, function () {
-        return fb.f.getDocs(q).then(function (s) { return s.docs.map(function (d) { var x = d.data(); x.id = d.id; return x; }); });
-      }).then(function (list) {
-        comments = list;
-        comments.sort(function (a, b) { return ms(a) - ms(b); });
+      q = fb.f.query(q, fb.f.orderBy("createdAt", sortMode === "new" ? "desc" : "asc"));
+      q = fb.f.query(q, fb.f.limit(limit));
+      if (afterMs) q = fb.f.query(q, fb.f.startAfter(fb.f.Timestamp.fromMillis(afterMs)));
+      return q;
+    }
+    function fetchPage(limit, afterMs) {
+      return fb.f.getDocs(commentsQuery(limit, afterMs)).then(function (s) {
+        var list = s.docs.map(docToComment);
+        return { list: list, lastMs: list.length ? ms(list[list.length - 1]) : (afterMs || 0), all: false };
+      }, function (e) {
+        /* нет составного индекса (numberId+createdAt) — откатываемся к загрузке всех без сортировки */
+        if (e && (e.code === "failed-precondition" || /index/i.test(String(e.message || "")))) {
+          var q0 = state.admin
+            ? fb.f.query(fcol("comments"), fb.f.where("numberId", "==", nid))
+            : fb.f.query(fcol("comments"), fb.f.where("numberId", "==", nid), fb.f.where("status", "==", "visible"));
+          return fb.f.getDocs(q0).then(function (s) { return { list: s.docs.map(docToComment), lastMs: 0, all: true }; });
+        }
+        throw e;
+      });
+    }
+    function loadComments(fresh) {
+      comments = []; commentsDone = false; lastMs = 0;
+      var key = commentsKey();
+      var fetchFn;
+      if (sortMode === "top") {
+        var q0 = state.admin
+          ? fb.f.query(fcol("comments"), fb.f.where("numberId", "==", nid))
+          : fb.f.query(fcol("comments"), fb.f.where("numberId", "==", nid), fb.f.where("status", "==", "visible"));
+        fetchFn = function () { return fb.f.getDocs(q0).then(function (s) { return { list: s.docs.map(docToComment), lastMs: 0, all: true }; }); };
+      } else {
+        fetchFn = function () { return fetchPage(PAGE, 0); };
+      }
+      return cached(key, commentsTTL(), fresh, fetchFn).then(function (p) {
+        comments = p.list || [];
+        lastMs = p.lastMs || 0;
+        commentsDone = p.all || comments.length < PAGE;
         loaded = true; fail = "";
         return Promise.all([loadAvatars(comments.map(function (c) { return c.uid; })), loadMyLikes(fresh), loadRatings(fresh)]);
       }, function (e) { loaded = true; fail = errText(e); });
+    }
+    /* «Показать ещё» — догружаем следующую страницу и дописываем кэш. */
+    function loadMoreComments() {
+      if (commentsDone || sortMode === "top") return Promise.resolve();
+      return fetchPage(PAGE, lastMs).then(function (p) {
+        var list = p.list || [];
+        if (list.length) {
+          comments = comments.concat(list);
+          lastMs = p.lastMs || 0;
+          commentsDone = p.all || list.length < PAGE;
+          cput(commentsKey(), { list: comments, lastMs: lastMs });
+          return Promise.all([loadAvatars(list.map(function (c) { return c.uid; })), loadRatings(true)]);
+        }
+        commentsDone = true;
+        return null;
+      });
     }
     /* Лайки читаются только мои (чтобы закрасить сердечко); число лайков приходит вместе с комментарием.
        Полный список лайкнувших грузится лишь когда его раскрывают. */
@@ -1078,9 +1133,9 @@
         sortBar.append(el("button", { type: "button", class: "chip", "aria-pressed": sortMode === s[0] ? "true" : "false", text: s[1],
           onclick: function () {
             sortMode = s[0];
-            shownTop = SHOW_STEP;
             try { store() && store().setItem("sg:sort", sortMode); } catch (e) { }
-            drawList();
+            dropComments();
+            loadComments(true).then(draw);
           } }));
       });
     }
@@ -1103,18 +1158,17 @@
       top.slice().sort(function (a, b) { return ms(a) - ms(b); }).forEach(function (c) { if (!firstTop[c.uid]) firstTop[c.uid] = c.id; });
       top.sort(cmpFor(sortMode));
       drawSort(top.length);
-      if (!top.length) list.append(emptyState("Пока нет комментариев", "Напишите первым: что запомнилось в номере, что понравилось, кому спасибо."));
-      /* Показываем по 5 комментариев: остальные раскрываются кнопкой. Чтения базы от этого не растут —
-         комментарии уже загружены, кнопка только рисует следующие. */
-      var shown = Math.min(top.length, shownTop);
-      top.slice(0, shown).forEach(function (c) {
+      if (!top.length) { list.append(emptyState("Пока нет комментариев", "Напишите первым: что запомнилось в номере, что понравилось, кому спасибо.")); return; }
+      top.forEach(function (c) {
         list.append(commentNode(c, false));
         (byParent[c.id] || []).forEach(function (r) { list.append(commentNode(r, true)); });
       });
-      if (top.length > shown) {
+      if (!commentsDone) {
         list.append(el("div", { class: "c-more" },
-          el("button", { type: "button", class: "btn btn-s", text: "Показать ещё", onclick: function () { shownTop = shown + SHOW_STEP; drawList(); } }),
-          el("span", { class: "c-hint", text: "показано " + shown + " из " + top.length })));
+          el("button", { type: "button", class: "btn btn-s", text: "Показать ещё", onclick: function () {
+            var b = this; b.disabled = true; b.textContent = "Загружаем…";
+            loadMoreComments().then(draw);
+          } })));
       }
     }
 
@@ -1293,7 +1347,7 @@
             };
             return run(true, true, true);
           });
-        }).then(function () { replyTo = null; justDone = { k: 1, t: Date.now(), rate: doneInfo.rate, clear: doneInfo.clear, text: doneInfo.text, tot: doneInfo.tot }; if (doneInfo.text) shownTop = Infinity; dropComments(); return loadComments(true); }).then(draw, function (e) { send.disabled = false; note(form, errText(e), "err"); });
+        }).then(function () { replyTo = null; justDone = { k: 1, t: Date.now(), rate: doneInfo.rate, clear: doneInfo.clear, text: doneInfo.text, tot: doneInfo.tot }; if (doneInfo.text) { sortMode = "new"; try { store() && store().setItem("sg:sort", "new"); } catch (e) { } } dropComments(); return loadComments(true); }).then(draw, function (e) { send.disabled = false; note(form, errText(e), "err"); });
       } },
         replyTo && el("p", { class: "c-replyto" }, "Ответ для " + replyTo.authorName + " ",
           el("button", { type: "button", class: "linkbtn", text: "отменить", onclick: function () { replyTo = null; drawForm(); } })),

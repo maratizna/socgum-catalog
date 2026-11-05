@@ -271,6 +271,34 @@ def social_links(text):
     return out
 
 
+def playlist_entry(text):
+    """Ссылка на плейлист концерта -> параметры встраивания. None, если ссылка не распознана."""
+    url = html.unescape(str(text or "")).strip()
+    if not re.match(r"^https?://\S+$", url, re.I):
+        return None
+    parsed = urlparse(url)
+    host = parsed.netloc.lower().removeprefix("www.")
+    # ВКонтакте: https://vk.ru/music/playlist/<владелец>_<id>_<hash>  (hash необязателен)
+    if host.endswith(("vk.com", "vk.ru")):
+        m = re.search(r"/music/playlist/(-?\d+)_(\d+)(?:_([0-9a-fA-F]+))?", url)
+        if m:
+            return {"kind": "vk-playlist", "url": url, "label": "ВКонтакте",
+                    "owner": int(m.group(1)), "playlist": int(m.group(2)), "hash": m.group(3) or ""}
+        return None
+    # Яндекс Музыка: https://music.yandex.ru/album/<id>
+    if host.endswith(("music.yandex.ru", "music.yandex.com")):
+        m = re.search(r"/album/(\d+)", url)
+        if m:
+            return {"kind": "yandex-album", "url": url, "label": "Яндекс Музыка", "album": int(m.group(1))}
+        return None
+    # SoundCloud: https://soundcloud.com/<кто-то>/sets/<название>
+    if host.endswith("soundcloud.com"):
+        if "/sets/" in parsed.path:
+            return {"kind": "sc-set", "url": url, "label": "SoundCloud"}
+        return None
+    return None
+
+
 TRACK_KINDS = [
     (("music.yandex.ru", "music.yandex.com", "music.yandex.by", "music.yandex.kz"), "Яндекс Музыка"),
     (("disk.yandex.ru", "disk.yandex.com", "yadi.sk"), "Яндекс Диск"),
@@ -350,6 +378,7 @@ SPEC = {
         "name": ["название"], "date": ["дата"], "video": ["видео", "ссылка на видео"], "about": ["описание"],
         "id": ["id"], "season": ["учебный год", "поколение"], "year": ["год"], "topic": ["тема"],
         "cover": ["обложка"], "video2": ["видео 2", "видео2"], "ctype": ["тип концерта", "вид концерта"],
+        "playlist": ["плейлист", "плейлист концерта", "музыка"],
     },
     "Направления": {"name": ["название"], "about": ["описание"], "id": ["id"], "kind": ["тип", "вне сцены"],
                     "c1": ["критерий 1"], "c2": ["критерий 2"], "c3": ["критерий 3"], "c4": ["критерий 4"],
@@ -722,6 +751,7 @@ def build_model(wb, report):
             "about": r.get("about", ""), "numbers": [], "season": season, "season_start": season_start,
             "year": year, "topic": r.get("topic", ""), "cover_url": cover_url,
             "ctype": concert_type(r.get("ctype"), name, r.get("topic", "")),
+            "playlist": playlist_entry(r.get("playlist")),
         }
 
     # Направления
@@ -1104,7 +1134,7 @@ def build_site(concerts, directions, numbers, people, report, demo, source):
     today = dt.date.today().isoformat()
     fbc = cfg.get("firebase") or {}
     firebase = {k: fbc[k] for k in ("apiKey", "authDomain", "projectId", "appId") if fbc.get(k)} if fbc.get("apiKey") and fbc.get("projectId") else None
-    asset_v = hashlib.sha1(b"".join((ROOT / "assets" / f).read_bytes() for f in ("style.css", "app.js", "social.js", "graph.js", "dir-icons.svg"))).hexdigest()[:8]
+    asset_v = hashlib.sha1(b"".join((ROOT / "assets" / f).read_bytes() for f in ("style.css", "app.js", "social.js", "graph.js", "dir-icons.svg", "player.js"))).hexdigest()[:8]
     ctx_common = dict(firebase=firebase, asset_v=asset_v, dicon_href=f"assets/dir-icons.svg?v={asset_v}", site_title=cfg["site_title"], site_url=site_url, home_url=cfg.get("home_url", ""),
                       home_label=cfg.get("home_label", ""), demo=demo, brand_font=bool(brand_font),
                       lead=cfg.get("lead", ""), forms=list(FORMS))
@@ -1135,6 +1165,8 @@ def build_site(concerts, directions, numbers, people, report, demo, source):
     for n in numbers.values():
         people_names = ", ".join(p["name"] for p in n["people"]["choreographers"] + n["people"]["performers"])
         desc = n["about"] or (f"{n['collective']}. {n['concert']['name']}." if n["collective"] else n["concert"]["name"])
+        d = n["concert"]["date"]
+        n["age_days"] = (dt.date.today() - d).days if d else 0
         write(TMP / "n" / n["id"] / "index.html", env.get_template("number.html").render(
             root="../../", n=n, page_title=f"{n['title']}: {cfg['site_title']}",
             canonical=f"{site_url}/n/{n['id']}/" if site_url else "",

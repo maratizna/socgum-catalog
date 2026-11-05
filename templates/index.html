@@ -92,6 +92,9 @@
     <p class="concert-meta">{% if c.season %}{{ c.season }}{% endif %}{% if c.date %}{% if c.season %}, {% endif %}{{ c.date|ru_date }}{% endif %}</p>
     {% if c.about %}<p>{{ c.about }}</p>{% endif %}
     {% for l in c.links %}<a class="add-btn add-btn-s" href="{{ l.url }}" rel="noopener" target="_blank">Смотреть запись {{ l.label }}</a> {% endfor %}
+    {% if c.playlist %}
+    <div class="pl-concert" data-pl='{{ c.playlist|tojson }}'{% if c.cover_url %} data-cover="{{ c.cover_url }}"{% endif %}></div>
+    {% endif %}
     {% set m = c.materials %}{% include "_materials.html" %}
     {% if not c.numbers %}<p class="concert-empty">Номера этого концерта пока не добавлены. Добавить их можно через форму внизу страницы.</p>{% endif %}
   </div>
@@ -131,4 +134,4 @@
 {% endblock %}
 {% block after_main %}{% include "_dice.html" %}{% endblock %}
 {% block scripts %}<script src="{{ root }}assets/app.js?v={{ asset_v }}" defer></script>
-{% endblock %}
+<script src="{{ root }}assets/player.js?v={{ asset_v }}" defer></script>{% endblock %}

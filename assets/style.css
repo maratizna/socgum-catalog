@@ -740,3 +740,14 @@ h1,h2{text-wrap:balance}
 .wordmark,.site-title{font-family:var(--font-brand,var(--font-display));letter-spacing:.05em;word-spacing:.08em}
 .site-title{font-size:clamp(2.05rem,5.8vw,3.8rem);line-height:1.14}
 .wordmark{font-size:1.02rem}
+
+/* плейлист концерта */
+.pl-concert{margin:14px 0 0}
+.pl-card{display:flex;gap:12px;align-items:center;margin-bottom:6px}
+.pl-cover{width:56px;height:56px;object-fit:cover;border-radius:var(--r);flex:none;background:var(--coal-2)}
+.pl-body{min-width:0;display:flex;flex-direction:column;gap:4px;align-items:flex-start}
+.pl-title{margin:0;font-size:1rem}
+.pl-src{margin:0;color:var(--ash);font-size:.85rem}
+.pl-frame{margin-top:8px;width:100%}
+.pl-frame iframe{width:100%;border:0}
+.pl-note{margin:8px 0 0;color:var(--ash);font-size:.85rem}
