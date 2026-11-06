@@ -1557,6 +1557,16 @@
     if (ids.length > max) stack.append(el("span", { class: "pl-more", text: "+" + (ids.length - max) }));
     return stack;
   }
+  /* Обложка плейлиста крупным планом: первая обложка, сзади «листы», если номеров несколько */
+  function plDeck(ids) {
+    ids = ids || [];
+    var deck = el("span", { class: "pl-deck" + (ids.length > 2 ? " lot" : ids.length > 1 ? " many" : "") });
+    if (!ids.length) return deck;
+    var img = el("img", { src: ROOT + "img/" + encodeURIComponent(ids[0]) + "/card.webp", alt: "", width: "640", height: "480", loading: "lazy", decoding: "async" });
+    img.addEventListener("error", function () { img.remove(); deck.classList.add("is-empty"); });
+    deck.append(img, el("span", { class: "pl-count", text: String(ids.length) }));
+    return deck;
+  }
   function numLink(info, id, cls) { return el("a", { class: cls || null, href: ROOT + "n/" + encodeURIComponent(id) + "/", text: info.titles[id] || "Номер" }); }
   function tsMs(t) { return t && t.toMillis ? t.toMillis() : 0; }
   function tsText(t) {
@@ -1724,22 +1734,30 @@
         } }, el("div", { class: "c-row" }, inp, go), msg));
       }
       if (!list.length) { panel.append(self ? emptyState("Плейлистов пока нет", "Создайте первый, а номера добавляйте кнопкой «В плейлист» на странице номера.") : emptyState("Плейлистов пока нет")); return; }
+      var grid = el("div", { class: "pl-grid" });
       list.forEach(function (p) {
+        var ids = p.numberIds || [];
         var items = el("ol", { class: "pl-items" });
-        (p.numberIds || []).forEach(function (id) {
-          items.append(el("li", { class: "pl-item" }, numThumb(id), numLink(info, id),
+        ids.forEach(function (id) {
+          items.append(el("li", { class: "pl-item" }, numThumb(id), numLink(info, id, "pl-link"),
             self ? el("button", { type: "button", class: "linkbtn", text: "убрать", "aria-label": "Убрать из плейлиста", onclick: function () {
               plSetItems(p, p.numberIds.filter(function (x) { return x !== id; })).then(function () { draw(list); }, function (e) { toast(errText(e)); });
             } }) : null));
         });
-        panel.append(el("details", { class: "pl" },
-          el("summary", null, plStack(p.numberIds), el("span", { class: "pl-name", text: p.name }), " ", el("span", { class: "people-n", text: String((p.numberIds || []).length) })),
-          (p.numberIds || []).length ? items : el("p", { class: "c-hint", text: "В плейлисте пока нет номеров." }),
+        grid.append(el("details", { class: "pl" },
+          el("summary", null, plDeck(ids),
+            el("span", { class: "pl-face" },
+              el("span", { class: "pl-face-top" },
+                el("span", { class: "pl-name", text: p.name }),
+                el("span", { class: "pl-caret", "aria-hidden": "true", text: "▾" })),
+              el("span", { class: "people-n", text: ids.length ? plural(ids.length, "номер", "номера", "номеров") : "пустой" }))),
+          ids.length ? items : el("p", { class: "c-hint", text: "В плейлисте пока нет номеров." }),
           self ? el("button", { type: "button", class: "linkbtn", text: "Удалить плейлист", onclick: function () {
             if (!confirm("Удалить плейлист «" + p.name + "»?")) return;
             fb.f.deleteDoc(fdoc("playlists/" + p.id)).then(function () { dropPlaylists(); return loadUserPlaylists(uid, true); }).then(draw, function (e) { toast(errText(e)); });
           } }) : null));
       });
+      panel.append(grid);
     }
     return loadUserPlaylists(uid).then(draw, function (e) { clear(panel).append(el("p", { class: "msg msg-err", text: "Плейлисты не загрузились: " + errText(e) })); });
   }
