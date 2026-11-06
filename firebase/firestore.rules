@@ -16,7 +16,8 @@ service cloud.firestore {
     }
 
     // Лимиты в сутки и в месяц. Время считается по Самаре (UTC+4).
-    // Счётчики лежат в usage/{аккаунт}_d{день} (комментарии, лайки) и usage/{аккаунт}_m{месяц} (фото, смена имени).
+    // Счётчики лежат в usage/{аккаунт}_d{день} (комментарии, лайки, добавления в плейлисты)
+    // и usage/{аккаунт}_m{месяц} (фото, смена имени).
     function stamp() { return request.time + duration.value(4, 'h'); }
     function dayStamp() { return string(stamp().year()) + '-' + string(stamp().month()) + '-' + string(stamp().day()); }
     function monthStamp() { return string(stamp().year()) + '-' + string(stamp().month()); }
@@ -124,8 +125,8 @@ service cloud.firestore {
         && request.resource.data.uid == request.auth.uid
         && request.resource.data.updatedAt == request.time
         && ((key == request.auth.uid + '_d' + dayStamp()
-              && request.resource.data.keys().hasOnly(['uid', 'comments', 'likes', 'updatedAt'])
-              && useStep('comments', 10) && useStep('likes', 50))
+              && request.resource.data.keys().hasOnly(['uid', 'comments', 'likes', 'plAdds', 'updatedAt'])
+              && useStep('comments', 10) && useStep('likes', 50) && useStep('plAdds', 50))
             || (key == request.auth.uid + '_m' + monthStamp()
               && request.resource.data.keys().hasOnly(['uid', 'avatars', 'renames', 'updatedAt'])
               && useStep('avatars', 3) && useStep('renames', 5)));
@@ -290,6 +291,7 @@ service cloud.firestore {
     }
 
     // Плейлисты: список номеров с названием. Читают все, создаёт и меняет только владелец (до 200 номеров в списке).
+    // Добавление номеров — не больше 50 в день: счётчик дня растёт на число добавленных в том же пакете.
     match /playlists/{pid} {
       allow read: if true;
       allow create: if signedIn()
@@ -299,14 +301,18 @@ service cloud.firestore {
         && request.resource.data.name is string && request.resource.data.name.size() >= 1 && request.resource.data.name.size() <= 80
         && request.resource.data.numberIds is list && request.resource.data.numberIds.size() <= 200
         && request.resource.data.createdAt == request.time
-        && request.resource.data.updatedAt == request.time;
+        && request.resource.data.updatedAt == request.time
+        && (request.resource.data.numberIds.size() == 0
+            || getAfter(dayPath()).data.get('plAdds', 0) == prevCount(dayPath(), 'plAdds') + request.resource.data.numberIds.size());
       allow update: if signedIn() && resource.data.uid == request.auth.uid
         && request.resource.data.keys().hasOnly(['uid', 'ownerName', 'name', 'numberIds', 'createdAt', 'updatedAt'])
         && request.resource.data.uid == resource.data.uid
         && request.resource.data.createdAt == resource.data.createdAt
         && request.resource.data.name is string && request.resource.data.name.size() >= 1 && request.resource.data.name.size() <= 80
         && request.resource.data.numberIds is list && request.resource.data.numberIds.size() <= 200
-        && request.resource.data.updatedAt == request.time;
+        && request.resource.data.updatedAt == request.time
+        && (request.resource.data.numberIds.size() <= resource.data.numberIds.size()
+            || getAfter(dayPath()).data.get('plAdds', 0) == prevCount(dayPath(), 'plAdds') + request.resource.data.numberIds.size() - resource.data.numberIds.size());
       allow delete: if signedIn() && (resource.data.uid == request.auth.uid || isAdmin());
     }
 

@@ -189,9 +189,9 @@
   function fcol(name) { return fb.f.collection(fb.db, name); }
 
   /* ------------------------------------------------------------ лимиты
-     Счётчики лежат в usage/{аккаунт}_d{день} (комментарии, лайки) и usage/{аккаунт}_m{месяц} (фото, смена имени).
+     Счётчики лежат в usage/{аккаунт}_d{день} (комментарии, лайки, добавления в плейлисты) и usage/{аккаунт}_m{месяц} (фото, смена имени).
      День и месяц считаются по времени Самары (UTC+4), так же, как в правилах базы. */
-  var LIM = { comments: 10, likes: 50, avatars: 3, renames: 5 };
+  var LIM = { comments: 10, likes: 50, plAdds: 50, avatars: 3, renames: 5 };
   function sTime() { return new Date(Date.now() + 4 * 3600e3); }
   function dayStamp() { var d = sTime(); return d.getUTCFullYear() + "-" + (d.getUTCMonth() + 1) + "-" + d.getUTCDate(); }
   function monthStamp() { var d = sTime(); return d.getUTCFullYear() + "-" + (d.getUTCMonth() + 1); }
@@ -199,7 +199,7 @@
   function readUsage(kind) { return fb.f.getDoc(usageRef(kind)).then(function (s) { return s.exists() ? s.data() : {}; }); }
   function bumpUsage(batch, kind, cur, field) {
     var d = { uid: state.user.uid, updatedAt: fb.f.serverTimestamp() };
-    (kind === "d" ? ["comments", "likes"] : ["avatars", "renames"]).forEach(function (f) { d[f] = (cur[f] || 0) + (f === field ? 1 : 0); });
+    (kind === "d" ? ["comments", "likes", "plAdds"] : ["avatars", "renames"]).forEach(function (f) { d[f] = (cur[f] || 0) + (f === field ? 1 : 0); });
     batch.set(usageRef(kind), d);
   }
 
@@ -1639,13 +1639,33 @@
   function dropPlaylists() { cdrop("user:pl:"); }
   var PL_MAX = 30, PL_ITEMS = 200;
   function plCreate(name, ids) {
-    return fb.f.addDoc(fcol("playlists"), {
-      uid: state.user.uid, ownerName: state.user.displayName || "Без имени", name: name, numberIds: ids || [],
+    ids = ids || [];
+    var data = {
+      uid: state.user.uid, ownerName: state.user.displayName || "Без имени", name: name, numberIds: ids,
       createdAt: fb.f.serverTimestamp(), updatedAt: fb.f.serverTimestamp()
-    }).then(function (r) { dropPlaylists(); return r; });
+    };
+    if (!ids.length) return fb.f.addDoc(fcol("playlists"), data).then(function (r) { dropPlaylists(); return r; });
+    /* Создание сразу с номером — это тоже добавление: тот же дневной лимит, что и у plAddNumber */
+    return readUsage("d").then(function (cur) {
+      if ((cur.plAdds || 0) + ids.length > LIM.plAdds) throw new Error("Лимит: " + LIM.plAdds + " добавлений в плейлисты в день. Продолжить можно завтра.");
+      var b = fb.f.writeBatch(fb.db), ref = fb.f.doc(fcol("playlists"));
+      b.set(ref, data);
+      bumpUsage(b, "d", cur, "plAdds");
+      return b.commit().then(function () { dropPlaylists(); return ref; });
+    });
   }
   function plSetItems(p, ids) {
     return fb.f.updateDoc(fdoc("playlists/" + p.id), { numberIds: ids, updatedAt: fb.f.serverTimestamp() }).then(function () { dropPlaylists(); p.numberIds = ids; });
+  }
+  /* Добавление номера в плейлист — с дневным лимитом, как у лайков: счётчик usage растёт в том же пакете */
+  function plAddNumber(p, ids) {
+    return readUsage("d").then(function (cur) {
+      if ((cur.plAdds || 0) + 1 > LIM.plAdds) throw new Error("Лимит: " + LIM.plAdds + " добавлений в плейлисты в день. Продолжить можно завтра.");
+      var b = fb.f.writeBatch(fb.db);
+      b.update(fdoc("playlists/" + p.id), { numberIds: ids, updatedAt: fb.f.serverTimestamp() });
+      bumpUsage(b, "d", cur, "plAdds");
+      return b.commit();
+    }).then(function () { dropPlaylists(); p.numberIds = ids; });
   }
   function plNameError(v) {
     v = (v || "").trim();
@@ -1847,10 +1867,12 @@
         var cb = el("input", { type: "checkbox" }); cb.checked = has;
         cb.addEventListener("change", function () {
           if (busy) { cb.checked = !cb.checked; return; }
+          var adding = cb.checked;
           var ids = (p.numberIds || []).filter(function (x) { return x !== nid; });
-          if (cb.checked) { if (ids.length >= PL_ITEMS) { cb.checked = false; toast("В плейлисте может быть до " + PL_ITEMS + " номеров."); return; } ids.push(nid); }
+          if (adding) { if (ids.length >= PL_ITEMS) { cb.checked = false; toast("В плейлисте может быть до " + PL_ITEMS + " номеров."); return; } ids.push(nid); }
           busy = true;
-          plSetItems(p, ids).then(function () { busy = false; draw(); }, function (e) { busy = false; cb.checked = !cb.checked; toast(errText(e)); });
+          /* добавление идёт через лимит, убирание — без него */
+          (adding ? plAddNumber(p, ids) : plSetItems(p, ids)).then(function () { busy = false; draw(); }, function (e) { busy = false; cb.checked = !cb.checked; toast(errText(e)); });
         });
         box.append(el("label", { class: "pl-row" }, cb, plStack(p.numberIds), el("span", { text: p.name })));
       });
@@ -2578,7 +2600,8 @@
       if (!usage) { wrap.append(el("p", { class: "c-hint", text: "Загрузка…" })); return wrap; }
       var day = card("Сегодня", "Счётчики дня обнуляются в полночь по времени Самары (UTC+4).");
       day.append(limitRow("Комментарии", usage.d.comments || 0, LIM.comments, "Новые комментарии и ответы."),
-        limitRow("Лайки комментариям", usage.d.likes || 0, LIM.likes, "Лайки комментариям других людей."));
+        limitRow("Лайки комментариям", usage.d.likes || 0, LIM.likes, "Лайки комментариям других людей."),
+        limitRow("Добавления в плейлисты", usage.d.plAdds || 0, LIM.plAdds, "Добавление номеров в свои плейлисты."));
       var mon = card("В этом месяце", "Счётчики месяца обнуляются первого числа.");
       mon.append(limitRow("Смена фото", usage.m.avatars || 0, LIM.avatars, "Загрузка нового фото."),
         limitRow("Смена ника", usage.m.renames || 0, LIM.renames, "Имя на странице не меняется."));
