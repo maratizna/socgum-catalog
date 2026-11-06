@@ -351,6 +351,9 @@ a.btn{text-decoration:none;display:inline-block}
 
 /* ссылки на группы и соцсети */
 .social-links{display:flex;flex-wrap:wrap;gap:8px;margin:14px 0 0}
+/* кнопки под видео — одной строкой вдоль изображения, с переносом при переполнении */
+.num-actions{display:flex;flex-wrap:wrap;gap:10px;align-items:flex-start;margin:14px 0 0}
+.num-actions>.social-links,.num-actions>.share,.num-actions>.pl-add{margin:0}
 .soc{display:inline-flex;align-items:center;gap:8px}
 .soc-i{width:1.15em;height:1.15em;flex:none;color:var(--ember)}
 
