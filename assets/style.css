@@ -390,7 +390,16 @@ a.btn{text-decoration:none;display:inline-block}
 .pl-new .c-input{flex:1;min-width:180px}
 .pl{border:1px solid var(--line);border-radius:12px;padding:12px 16px;margin:0 0 10px}
 .pl summary{cursor:pointer;font-weight:600}
-.pl-items{margin:12px 0;padding-left:1.3em;display:grid;gap:6px}
+.pl-stack{display:inline-flex;align-items:center;vertical-align:middle;margin-right:6px;flex:none}
+.pl-stack img{width:28px;height:28px;border-radius:8px;object-fit:cover;border:2px solid var(--coal);background:var(--coal-2)}
+.pl-stack img+img{margin-left:-10px}
+.pl-pop .pl-stack img{border-color:var(--coal-2)}
+.pl-more{margin-left:6px;color:var(--ash);font-size:.85rem;font-weight:400}
+.pl-items{margin:12px 0;padding-left:0;display:grid;gap:8px;list-style:none}
+.pl-item{display:flex;align-items:center;gap:10px}
+.pl-thumb{display:block;width:56px;aspect-ratio:4/3;border-radius:var(--card-r-in);overflow:hidden;background:var(--coal-2);flex:none}
+.pl-thumb img{display:block;width:100%;height:100%;object-fit:cover}
+.pl-thumb:hover,.pl-thumb:focus-visible{box-shadow:0 0 0 2px var(--ember)}
 .pl-items .linkbtn{margin-left:10px}
 .pl-add{margin:14px 0 0;position:relative}
 .pl-pop{margin-top:10px;padding:14px;border:1px solid var(--line);border-radius:12px;background:var(--coal-2);display:grid;gap:10px;max-width:420px}
@@ -420,7 +429,7 @@ a.btn{text-decoration:none;display:inline-block}
 .pcard-cover{display:block;width:96px;aspect-ratio:4/3;border-radius:10px;overflow:hidden;background:var(--coal-2)}
 .pcard-cover img{display:block;width:100%;height:100%;object-fit:cover}
 .pcard-body{min-width:0}
-@media (max-width:420px){.pcard{grid-template-columns:76px 1fr;gap:10px}.pcard-cover{width:76px}}
+@media (max-width:420px){.pcard{grid-template-columns:76px 1fr;gap:10px}.pcard-cover{width:76px}.pl-thumb{width:44px}.pl-stack img{width:22px;height:22px}}
 @media (max-width:640px){.head-me .avatar{width:46px;height:46px}.head-search{width:42px;height:42px}}
 
 /* страница пользователя: заявка, «это ваша страница» */
