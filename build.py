@@ -1192,6 +1192,8 @@ def build_site(concerts, directions, numbers, people, report, demo, source):
             root="../", page_title=f"Настройки профиля: {cfg['site_title']}", canonical="", og_image="", description="", **ctx_common))
         write(TMP / "u" / "index.html", env.get_template("user.html").render(
             root="../", page_title=f"Пользователь: {cfg['site_title']}", canonical="", og_image="", description="", **ctx_common))
+        write(TMP / "list" / "index.html", env.get_template("list.html").render(
+            root="../", page_title=f"Плейлист: {cfg['site_title']}", canonical="", og_image="", description="", **ctx_common))
 
     # работа без сети: манифест приложения, страница «нет соединения», сервис-воркер
     write(TMP / "manifest.webmanifest", json.dumps({

@@ -1737,7 +1737,7 @@
     }, function (e) { clear(panel).append(el("p", { class: "msg msg-err", text: "Оценки не загрузились: " + errText(e) })); });
   }
   function panelPlaylists(panel, uid, self, info) {
-    var menuOpen = {}, editMode = {};   // по id плейлиста: открыто меню «⋯» / включён режим «убрать номера»
+    var menuOpen = {}, editMode = {}, openState = {};   // по id плейлиста: меню «⋯» / режим «убрать номера» / раскрытая карточка — переживают перерисовку
     function draw(list) {
       clear(panel);
       list = (list || []).slice().sort(function (a, b) { return tsMs(b.createdAt) - tsMs(a.createdAt); });
@@ -1755,24 +1755,28 @@
         } }, el("div", { class: "c-row" }, inp, go), msg));
       }
       if (!list.length) { panel.append(self ? emptyState("Плейлистов пока нет", "Создайте первый, а номера добавляйте кнопкой «В плейлист» на странице номера.") : emptyState("Плейлистов пока нет")); return; }
+      var MAX_ROWS = 6;   // длинные плейлисты показываем частично; все номера — на странице плейлиста
       var grid = el("div", { class: "pl-grid" });
       list.forEach(function (p) {
         var ids = p.numberIds || [];
         var items = el("ol", { class: "pl-items" });
-        ids.forEach(function (id) {
+        (ids.length > MAX_ROWS ? ids.slice(0, MAX_ROWS) : ids).forEach(function (id) {
           items.append(el("li", { class: "pl-item" }, numThumb(id), numLink(info, id, "pl-link"),
             self && editMode[p.id] ? el("button", { type: "button", class: "linkbtn", text: "убрать", "aria-label": "Убрать из плейлиста", onclick: function () {
               plSetItems(p, p.numberIds.filter(function (x) { return x !== id; })).then(function () { draw(list); }, function (e) { toast(errText(e)); });
             } }) : null));
         });
-        var card = el("details", { class: "pl" },
+        var card = el("details", { class: "pl", open: openState[p.id] ? true : null },
           el("summary", null, plDeck(ids),
             el("span", { class: "pl-face" },
               el("span", { class: "pl-face-top" },
                 el("span", { class: "pl-name", text: p.name }),
                 el("span", { class: "pl-caret", "aria-hidden": "true", text: "▾" })),
               el("span", { class: "people-n", text: ids.length ? ids.length + " " + plural(ids.length, "номер", "номера", "номеров") : "пустой" }))),
-          ids.length ? items : el("p", { class: "c-hint", text: "В плейлисте пока нет номеров." }));
+          ids.length ? items : el("p", { class: "c-hint", text: "В плейлисте пока нет номеров." }),
+          ids.length > MAX_ROWS ? el("p", { class: "pl-all" }, el("a", { class: "btn btn-s", href: ROOT + "list/?id=" + encodeURIComponent(p.id), text: "Открыть полностью — все " + ids.length + " " + plural(ids.length, "номер", "номера", "номеров") })) : null);
+        /* раскрытие карточки переживает перерисовки (меню «⋯», режим правки, «убрать») */
+        card.addEventListener("toggle", function () { openState[p.id] = card.open; });
         if (!self) { grid.append(card); return; }
         /* Меню «⋯»: режим «убрать номера» и удаление плейлиста */
         var kebab = el("button", { type: "button", class: "pl-kebab", text: "⋯", title: "Действия с плейлистом", "aria-label": "Действия с плейлистом", "aria-expanded": menuOpen[p.id] ? "true" : "false", onclick: function () {
@@ -1894,6 +1898,45 @@
     }
     views.push(function () { if (!state.user) { open = false; lists = null; } draw(); });
     draw();
+  }
+
+  /* ------------------------------------------------------------ страница плейлиста
+     Сюда ведёт «Открыть полностью» из карточки плейлиста: все номера с обложками. Плейлисты читают все, вход не нужен. */
+  function initPlPage() {
+    var box = document.getElementById("pl-page");
+    if (!box) return;
+    var pid = new URLSearchParams(location.search).get("id") || "";
+    function load() {
+      if (!pid) { clear(box).append(emptyState("Нет ссылки на плейлист", "Откройте страницу человека и выберите плейлист там.")); return Promise.resolve(); }
+      return Promise.all([fb.f.getDoc(fdoc("playlists/" + pid)), catalogInfo()]).then(function (r) {
+        var s = r[0], info = r[1];
+        if (!s.exists()) { clear(box).append(emptyState("Плейлист не найден", "Возможно, владелец удалил его.")); return; }
+        var p = s.data(), ids = p.numberIds || [], byId = {};
+        (info.numbers || []).forEach(function (n) { byId[n.id] = n; });
+        clear(box);
+        box.append(
+          el("h2", { class: "pl-page-title", text: p.name || "Плейлист" }),
+          el("p", { class: "c-hint" }, "Плейлист пользователя ",
+            el("a", { href: ROOT + "u/?id=" + encodeURIComponent(p.uid), text: p.ownerName || "Без имени" }),
+            " · " + ids.length + " " + plural(ids.length, "номер", "номера", "номеров")));
+        if (!ids.length) { box.append(emptyState("В плейлисте пока нет номеров", "Номера добавляются кнопкой «В плейлист» на странице номера.")); return; }
+        var grid = el("div", { class: "grid pl-page-grid" });
+        ids.forEach(function (id) {
+          var img = el("img", { src: ROOT + "img/" + encodeURIComponent(id) + "/card.webp", alt: "", width: "640", height: "480", loading: "lazy", decoding: "async" });
+          img.addEventListener("error", function () { img.style.visibility = "hidden"; });
+          var sub = byId[id] ? (byId[id].collective || byId[id].concert || "") : "";
+          grid.append(el("div", { class: "card" },
+            el("a", { class: "card-link", href: ROOT + "n/" + encodeURIComponent(id) + "/" },
+              el("span", { class: "card-cover" }, img),
+              el("span", { class: "card-title", text: (byId[id] && byId[id].title) || info.titles[id] || "Номер" })),
+            sub ? el("p", { class: "card-sub", text: sub }) : null));
+        });
+        box.append(grid);
+      }, function (e) {
+        clear(box).append(errorState("Плейлист не загрузился: " + errText(e), function () { clear(box).append(el("p", { class: "c-hint", text: "Загрузка…" })); load(); }));
+      });
+    }
+    load();
   }
 
   /* ------------------------------------------------------------ страница пользователя
@@ -2639,7 +2682,7 @@
   /* ------------------------------------------------------------ запуск */
   var slot = document.getElementById("auth-slot");
   load().then(function () {
-    initNumber(); initPlaylistAdd(); initPerson(); initAccount(); initUserPage(); initSettings(); initHot();
+    initNumber(); initPlaylistAdd(); initPerson(); initAccount(); initUserPage(); initPlPage(); initSettings(); initHot();
     views.unshift(drawAuth);
     fb.a.onAuthStateChanged(fb.auth, function (user) { loadMe(user).then(refreshViews); });
   }, function (e) {
