@@ -226,10 +226,14 @@
     qInput.value = state.q;
     sortSel.value = state.s;
     var timer;
-    qInput.addEventListener("input", function () {
+    function applyQuery() {
       clearTimeout(timer);
       timer = setTimeout(function () { state.q = qInput.value; apply(true); }, 120);
-    });
+    }
+    qInput.addEventListener("input", applyQuery);
+    /* выбор из автоподстановки браузера и вставка из его меню иногда не дают события «input» */
+    qInput.addEventListener("change", applyQuery);
+    qInput.addEventListener("paste", applyQuery);
     sortSel.addEventListener("change", function () { state.s = sortSel.value; apply(true); });
     if (selType) selType.addEventListener("change", function () { state.t = selType.value; apply(true); });
     if (selSeason) selSeason.addEventListener("change", function () { state.y = selSeason.value; apply(true); });
@@ -359,6 +363,17 @@
       qInput.addEventListener("input", render);
       qInput.addEventListener("focus", render);
       qInput.addEventListener("blur", function () { saveRecent(qInput.value); setTimeout(close, 120); });
+      /* Страховка для браузеров, которые при вставке из своего меню или выборе из автоподстановки
+         не шлют события: пока поле в фокусе, раз в 0,3 с подхватываем изменение текста сами */
+      var poll = null;
+      qInput.addEventListener("focus", function () {
+        if (poll) return;
+        poll = setInterval(function () {
+          if (qInput.value === state.q) return;
+          state.q = qInput.value; apply(true); render();
+        }, 300);
+      });
+      qInput.addEventListener("blur", function () { clearInterval(poll); poll = null; });
       qInput.addEventListener("keydown", function (e) {
         if (e.key === "ArrowDown") { if (!open) render(); else setActive(active + 1); e.preventDefault(); }
         else if (e.key === "ArrowUp" && open) { setActive(active < 0 ? -1 : active - 1); e.preventDefault(); }
