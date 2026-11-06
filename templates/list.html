@@ -4,6 +4,6 @@
 {% block main %}
 <section class="person">
   <p class="back"><a href="{{ root or './' }}">Все номера</a></p>
-  <div id="pl-page" class="user-page"><p class="c-hint">Загрузка…</p></div>
+  <div id="pl-page" class="user-page"><div class="loading-state" role="status"><span class="spinner" aria-hidden="true"></span><span>Загружаем плейлист…</span></div></div>
 </section>
 {% endblock %}

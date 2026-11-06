@@ -31,9 +31,16 @@
 
   /* ------------------------------------------------------------ кеш чтений
      Ответы сервиса держатся в памяти и в localStorage на ограниченное время, чтобы не ходить на сервер при каждом заходе.
-     Любая запись сбрасывает связанные ключи. Без localStorage всё работает, только без запоминания между страницами. */
-  /* сроки хранения в браузере; свои изменения человека сбрасывают нужные ключи сразу, не дожидаясь срока */
-  var TTL = { me: 3 * 86400e3, pub: 10 * 60e3, comments: 10 * 60e3, note: 2 * 60e3, avatar: 14 * 86400e3 };
+     Без localStorage всё работает, только без запоминания между страницами. */
+  /* Единая таблица TTL. Что сбрасывает кэш раньше срока:
+     me — вход/выход и действия администратора со страницами;
+     pub — сохранение профиля, заявки, админ-действия, свои комментарии/оценки;
+     comments — отправка/правка/удаление комментария, лайк, смена фото или ника;
+     commentsOld — то же, что comments, но для номеров старше 7 дней;
+     note — сохранение слова постановщика;
+     avatar — смена фото, ника или соцсетей, вход/выход;
+     likers — постановка или снятие лайка у этого комментария. */
+  var TTL = { me: 3 * 86400e3, pub: 10 * 60e3, comments: 10 * 60e3, commentsOld: 3600e3, note: 2 * 60e3, avatar: 14 * 86400e3, likers: 30e3 };
   var MEM = {};
   function store() { try { return window.localStorage; } catch (e) { return null; } }
   function pack(v) {
@@ -703,19 +710,47 @@
   /* Вес общего впечатления в сумме: четыре критерия по 1, общее впечатление ×1,2. Каждая оценка по-прежнему от 1 до 5. */
   var OVERALL_W = 1.2;
   var TOTAL_MAX = 4 * 5 + 5 * OVERALL_W;   // 26
-  /* ------------------------------------------------------------ состояния: пусто, ошибка, нужен вход */
-  function emptyState(title, text, action) {
-    return el("div", { class: "empty-state" }, el("p", { class: "empty-title", text: title }), text ? el("p", { class: "c-hint", text: text }) : null, action || null);
+  /* ------------------------------------------------------------ состояния: пусто, загрузка, ошибка, нужен вход */
+  function emptyState(title, text, action, icon) {
+    return el("div", { class: "empty-state" },
+      el("span", { class: "empty-icon", "aria-hidden": "true", text: icon || "○" }),
+      el("p", { class: "empty-title", text: title }), text ? el("p", { class: "c-hint", text: text }) : null, action || null);
+  }
+  function loadingState(text) {
+    return el("div", { class: "loading-state", role: "status", "aria-live": "polite" },
+      el("span", { class: "spinner", "aria-hidden": "true" }), el("span", { text: text || "Загружаем…" }));
+  }
+  function setLoading(btn, on, label) {
+    btn.disabled = !!on;
+    btn.setAttribute("aria-busy", on ? "true" : "false");
+    btn.textContent = on ? "Загружаем…" : (label || "Показать ещё");
+  }
+  /* Одна кнопка догрузки на все списки. Видимый текст один, aria-label уточняет, что именно подгружается. */
+  function moreBtn(onClick, label) {
+    var b = el("button", { type: "button", class: "btn btn-s btn-more", text: "Показать ещё", "aria-label": label || "Показать ещё" });
+    b.addEventListener("click", function () {
+      if (b.disabled) return;
+      setLoading(b, true);
+      Promise.resolve().then(onClick).catch(function (e) {
+        setLoading(b, false);
+        toast(errText(e));
+      });
+    });
+    return el("div", { class: "c-more more-row" }, b);
   }
   function errorState(text, retry) {
     var offline = typeof navigator !== "undefined" && navigator.onLine === false;
-    var box = el("div", { class: "error-state", role: "alert" }, el("p", { class: "empty-title", text: "Не получилось загрузить" }),
+    var box = el("div", { class: "error-state", role: "alert" }, el("span", { class: "empty-icon", "aria-hidden": "true", text: "!" }), el("p", { class: "empty-title", text: "Не получилось загрузить" }),
       el("p", { class: "c-hint", text: offline ? "Нет соединения с интернетом. Проверьте сеть и повторите." : text }));
-    if (retry) box.append(el("button", { type: "button", class: "btn btn-s", text: "Повторить", onclick: function (ev) { ev.target.disabled = true; ev.target.textContent = "Загружаем…"; retry(); } }));
+    if (retry) {
+      var b = el("button", { type: "button", class: "btn btn-s", text: "Повторить" });
+      b.addEventListener("click", function () { setLoading(b, true, "Повторить"); retry(); });
+      box.append(b);
+    }
     return box;
   }
   function signInPrompt(title, text) {
-    return el("div", { class: "login-card" }, el("p", { class: "empty-title", text: title }),
+    return el("div", { class: "login-card" }, el("span", { class: "empty-icon", "aria-hidden": "true", text: "→" }), el("p", { class: "empty-title", text: title }),
       el("p", { class: "c-hint", text: text || "Войдите через Google или по e-mail. Так мы знаем, кто пишет: можно оставлять комментарии и оценки, ставить лайки, собирать плейлисты и вести свою страницу. Читать каталог можно и без входа." }),
       el("button", { type: "button", class: "btn", text: "Войти", onclick: signIn }));
   }
@@ -782,7 +817,7 @@
     var lastMs = 0;               // createdAt последнего загруженного комментария (для следующей страницы)
     /* У номеров старше недели комментарии почти не меняются — кэшируем час вместо обычных десяти минут */
     var nAge = parseInt(root.dataset.age || "0", 10) || 0;
-    function commentsTTL() { return nAge > 7 ? 3600e3 : TTL.comments; }
+    function commentsTTL() { return nAge > 7 ? TTL.commentsOld : TTL.comments; }
 
     var sumBox = el("div", { class: "rate-sum", hidden: true });
     var sortBar = el("div", { class: "c-sort", hidden: true });
@@ -931,22 +966,26 @@
     }
     /* список лайкнувших: один запрос, только после раскрытия */
     function likersBox(c) {
-      var box = el("div", { class: "like-list" }, el("p", { class: "c-hint", text: "Загружаем…" }));
-      cached("likers:" + c.id, 30e3, false, function () {
-        return fb.f.getDocs(fb.f.query(fcol("likes"), fb.f.where("commentId", "==", c.id), fb.f.limit(200))).then(function (s) {
-          return s.docs.map(function (d) { var x = d.data(); return { uid: x.uid, userName: x.userName, createdAt: x.createdAt }; });
-        });
-      }).then(function (arr) {
-        arr.sort(function (a, b) { return ms(a) - ms(b); });
-        return loadAvatars(arr.map(function (a) { return a.uid; })).then(function () { return arr; });
-      }).then(function (arr) {
-        clear(box);
-        if (!arr.length) { box.append(el("p", { class: "c-hint", text: "Лайков пока нет." })); return; }
-        arr.forEach(function (a) {
-          box.append(el("a", { class: "c-who", href: ROOT + "u/?id=" + encodeURIComponent(a.uid), title: "Страница пользователя" },
-            avatarNode(a.uid, a.userName, "xs"), el("span", { text: a.userName || "Без имени" })));
-        });
-      }, function (e) { clear(box).append(el("p", { class: "msg msg-err", text: errText(e) })); });
+      var box = el("div", { class: "like-list" });
+      function fill() {
+        clear(box).append(loadingState("Загружаем лайки…"));
+        cached("likers:" + c.id, TTL.likers, false, function () {
+          return fb.f.getDocs(fb.f.query(fcol("likes"), fb.f.where("commentId", "==", c.id), fb.f.limit(200))).then(function (s) {
+            return s.docs.map(function (d) { var x = d.data(); return { uid: x.uid, userName: x.userName, createdAt: x.createdAt }; });
+          });
+        }).then(function (arr) {
+          arr.sort(function (a, b) { return ms(a) - ms(b); });
+          return loadAvatars(arr.map(function (a) { return a.uid; })).then(function () { return arr; });
+        }).then(function (arr) {
+          clear(box);
+          if (!arr.length) { box.append(el("p", { class: "c-hint", text: "Лайков пока нет." })); return; }
+          arr.forEach(function (a) {
+            box.append(el("a", { class: "c-who", href: ROOT + "u/?id=" + encodeURIComponent(a.uid), title: "Страница пользователя" },
+              avatarNode(a.uid, a.userName, "xs"), el("span", { text: a.userName || "Без имени" })));
+          });
+        }, function (e) { clear(box).append(errorState(errText(e), fill)); });
+      }
+      fill();
       return box;
     }
     /* комментарий удаляется вместе со своими лайками одним пакетом */
@@ -1080,7 +1119,7 @@
       if (canEdit(c) && !editing[c.id]) actions.append(el("button", { type: "button", class: "linkbtn", text: "Править", onclick: function () { startEdit(c); } }));
       if (mine || state.admin) actions.append(el("button", { type: "button", class: "linkbtn", text: "Удалить", onclick: function () { if (confirm("Удалить комментарий насовсем?")) act(deleteComment(c)); } }));
       var rt = !isReply && firstTop[c.uid] === c.id && ratingBy[c.uid], rline = rt ? ratingNode(rt) : null;
-      return el("article", { class: "comment" + (isReply ? " reply" : "") + (c.status === "hidden" ? " is-hidden" : ""), id: "c-" + c.id },
+      return el("article", { class: "comment" + (isReply ? " reply" : "") + (c.status === "hidden" ? " is-hidden" : "") + (justDone && justDone.cid === c.id ? " is-new" : ""), id: "c-" + c.id, tabindex: justDone && justDone.cid === c.id ? "-1" : null },
         head, editing[c.id] ? editBox(c) : el("p", { class: "c-text" }, richText(c.text, canSeek)), rline, actions, n > 0 && openLikers[c.id] ? likersBox(c) : null);
     }
     function act(p) { return p.then(function () { dropComments(); return loadComments(true); }).then(draw, function (e) { toast(errText(e)); }); }
@@ -1147,7 +1186,7 @@
 
     function drawList() {
       clear(list);
-      if (!loaded) { sortBar.hidden = true; list.append(el("p", { class: "c-empty", text: "Загружаем комментарии…" })); return; }
+      if (!loaded) { sortBar.hidden = true; list.append(loadingState("Загружаем комментарии…")); return; }
       if (fail) { sortBar.hidden = true; list.append(errorState(fail, function () { loadComments(true).then(draw); })); return; }
       var top = comments.filter(function (c) { return !c.parentId; });
       var byParent = {};
@@ -1158,18 +1197,19 @@
       top.slice().sort(function (a, b) { return ms(a) - ms(b); }).forEach(function (c) { if (!firstTop[c.uid]) firstTop[c.uid] = c.id; });
       top.sort(cmpFor(sortMode));
       drawSort(top.length);
-      if (!top.length) { list.append(emptyState("Пока нет комментариев", "Напишите первым: что запомнилось в номере, что понравилось, кому спасибо.")); return; }
+      if (!top.length) {
+        list.append(emptyState("Пока нет комментариев", "Напишите первым: что запомнилось в номере, что понравилось, кому спасибо.",
+          el("button", { type: "button", class: "btn btn-s", text: state.user ? "Написать первым" : "Войти и написать", onclick: function () {
+            var ta = form.querySelector("textarea");
+            if (ta) { ta.focus(); form.scrollIntoView({ block: "center", behavior: "smooth" }); } else signIn();
+          } }), "✎"));
+        return;
+      }
       top.forEach(function (c) {
         list.append(commentNode(c, false));
         (byParent[c.id] || []).forEach(function (r) { list.append(commentNode(r, true)); });
       });
-      if (!commentsDone) {
-        list.append(el("div", { class: "c-more" },
-          el("button", { type: "button", class: "btn btn-s", text: "Показать ещё", onclick: function () {
-            var b = this; b.disabled = true; b.textContent = "Загружаем…";
-            loadMoreComments().then(draw);
-          } })));
-      }
+      if (!commentsDone) list.append(moreBtn(function () { return loadMoreComments().then(draw); }, "Показать ещё комментарии"));
     }
 
     /* Итог после отправки: крупная сумма и «Спасибо», исчезает через 20 секунд */
@@ -1288,6 +1328,7 @@
           if (bad) { note(form, "Мат не проходит: слово «" + bad + "». Уберите его и отправьте снова.", "err"); ta.focus(); return; }
         }
         var doneInfo = { rate: wantRate, clear: wantClear, text: !!text, tot: wantRate ? ratingTotal(draft) : null };
+        var newComment = null;
         justDone = null;
         send.disabled = true;
         var buz = null;
@@ -1300,7 +1341,9 @@
           if (text) {
             /* номер комментария за день входит в его ключ: так правила базы не дают обойти лимит */
             cref = fdoc("comments/" + dayStamp() + "_" + uid + "_" + n);
-            cdata = { numberId: nid, uid: uid, authorName: myName(), text: text, createdAt: fb.f.serverTimestamp(), status: "visible" };
+            cdata = { numberId: nid, uid: uid, authorName: myName(), text: text, createdAt: fb.f.serverTimestamp(), status: "visible", likeCount: 0 };
+            newComment = cdata;
+            newComment.id = cref.path.split("/").pop();
             if (replyTo) cdata.parentId = replyTo.id;
             var pid = myPersonForComment();
             if (pid) cdata.authorPersonId = pid;
@@ -1347,7 +1390,14 @@
             };
             return run(true, true, true);
           });
-        }).then(function () { replyTo = null; justDone = { k: 1, t: Date.now(), rate: doneInfo.rate, clear: doneInfo.clear, text: doneInfo.text, tot: doneInfo.tot }; if (doneInfo.text) { sortMode = "new"; try { store() && store().setItem("sg:sort", "new"); } catch (e) { } } dropComments(); return loadComments(true); }).then(draw, function (e) { send.disabled = false; note(form, errText(e), "err"); });
+        }).then(function () {
+          replyTo = null;
+          justDone = { k: 1, t: Date.now(), rate: doneInfo.rate, clear: doneInfo.clear, text: doneInfo.text, tot: doneInfo.tot, cid: newComment ? newComment.id : "" };
+          dropComments();
+          return loadComments(true).then(function () {
+            if (newComment && !comments.some(function (c) { return c.id === newComment.id; })) comments.push(newComment);
+          });
+        }).then(draw, function (e) { send.disabled = false; note(form, errText(e), "err"); });
       } },
         replyTo && el("p", { class: "c-replyto" }, "Ответ для " + replyTo.authorName + " ",
           el("button", { type: "button", class: "linkbtn", text: "отменить", onclick: function () { replyTo = null; drawForm(); } })),
@@ -1387,7 +1437,19 @@
       noteBox.hidden = !noteBox.firstChild;
     }
 
-    function draw() { drawSummary(); drawMoments(); drawList(); drawForm(); drawNote(); }
+    function revealNewComment() {
+      var cid = justDone && justDone.cid;
+      if (!cid) return;
+      justDone.cid = "";
+      setTimeout(function () {
+        var n = document.getElementById("c-" + cid);
+        if (!n) return;
+        try { history.replaceState(null, "", location.pathname + location.search + "#c-" + cid); } catch (e) { }
+        n.scrollIntoView({ block: "center", behavior: "smooth" });
+        try { n.focus({ preventScroll: true }); } catch (e) { n.focus(); }
+      }, 0);
+    }
+    function draw() { drawSummary(); drawMoments(); drawList(); drawForm(); drawNote(); revealNewComment(); }
     /* Комментарии, оценки и мои лайки читаются из базы только когда блок почти виден на экране (или в него нажали):
        тот, кто просто смотрит видео и уходит, не тратит ни одного чтения. Слово постановщика стоит рядом с видео, его читаем сразу. */
     var armed = false, armCb = null, armObs = null;
@@ -1560,7 +1622,7 @@
   /* Обложка плейлиста крупным планом: первая обложка, сзади «листы», если номеров несколько */
   function plDeck(ids) {
     ids = ids || [];
-    var deck = el("span", { class: "pl-deck" + (ids.length > 2 ? " lot" : ids.length > 1 ? " many" : "") });
+    var deck = el("span", { class: "pl-deck" + (ids.length > 2 ? " lot" : ids.length > 1 ? " many" : ""), "aria-hidden": "true" });
     if (!ids.length) return deck;
     var img = el("img", { src: ROOT + "img/" + encodeURIComponent(ids[0]) + "/card.webp", alt: "", width: "640", height: "480", loading: "lazy", decoding: "async" });
     img.addEventListener("error", function () { img.remove(); deck.classList.add("is-empty"); });
@@ -1674,17 +1736,30 @@
     return bad ? "Мат не проходит: слово «" + bad + "»." : "";
   }
 
-  function moreBtn(onClick) {
-    return el("div", { class: "c-more" }, el("button", { type: "button", class: "btn btn-s", text: "Показать ещё", onclick: onClick }));
-  }
+  /* «Показать ещё» создаётся общим moreBtn() выше: одинаковый вид, состояние загрузки и aria-label. */
   function panelComments(panel, uid, info, self) {
-    var all = [], rbn = {}, lastMs = 0, done = false;
+    var all = [], rbn = {}, lastMs = 0, done = false, loadErr = "";
+    function loadMore() {
+      return loadUserCommentsMore(uid, lastMs).then(function (p) {
+        var list2 = p.list || [];
+        loadErr = "";
+        if (list2.length) { all = all.concat(list2); lastMs = p.lastMs || 0; done = p.all || list2.length < USER_PAGE; }
+        else done = true;
+        draw();
+      }, function (e) { loadErr = errText(e); draw(); });
+    }
     function draw() {
       var list = all.slice().sort(function (a, b) { return tsMs(b.createdAt) - tsMs(a.createdAt); });
       var first = {};   // оценка под самым первым комментарием человека к номеру
       list.slice().sort(function (a, b) { return tsMs(a.createdAt) - tsMs(b.createdAt); }).forEach(function (c) { if (!c.parentId && !first[c.numberId]) first[c.numberId] = c.id; });
       clear(panel);
-      if (!list.length) { panel.append(self ? emptyState("Вы пока ничего не писали", "Откройте номер и напишите первый комментарий.", el("a", { class: "btn btn-s", href: ROOT || "./", text: "Выбрать номер" })) : emptyState("Комментариев пока нет")); return; }
+      if (!list.length) {
+        panel.append(self
+          ? emptyState("Вы пока ничего не писали", "Откройте номер и напишите первый комментарий.", el("a", { class: "btn btn-s", href: ROOT || "./", text: "Выбрать номер" }), "✎")
+          : emptyState("Комментариев пока нет", "Когда человек напишет о номерах, комментарии появятся здесь.", el("a", { class: "btn btn-s", href: ROOT || "./", text: "Выбрать номер" }), "✎"));
+        return;
+      }
+      panel.append(el("p", { class: "c-hint", text: "Порядок: сначала новые." }));
       var ul = el("div", { class: "c-list" });
       list.forEach(function (c) {
         var rt = first[c.numberId] === c.id && rbn[c.numberId];
@@ -1696,13 +1771,8 @@
           rt ? ratingNode(rt, critOf(info, c.numberId)) : null]));
       });
       panel.append(ul);
-      if (!done) panel.append(moreBtn(function () {
-        loadUserCommentsMore(uid, lastMs).then(function (p) {
-          var list2 = p.list || [];
-          if (list2.length) { all = all.concat(list2); lastMs = p.lastMs || 0; done = p.all || list2.length < USER_PAGE; draw(); }
-          else { done = true; draw(); }
-        }, function () { done = true; draw(); });
-      }));
+      if (loadErr) panel.append(errorState(loadErr, function () { loadErr = ""; loadMore(); }));
+      else if (!done) panel.append(moreBtn(loadMore, "Показать ещё комментарии"));
     }
     return Promise.all([loadUserComments(uid), loadUserRatings(uid).catch(function () { return []; })]).then(function (r) {
       var p = r[0]; all = p.list || []; lastMs = p.lastMs || 0; done = p.all || all.length < USER_PAGE;
@@ -1711,11 +1781,35 @@
     });
   }
   function panelRatings(panel, uid, info, self) {
-    var all = [], lastMs = 0, done = false;
+    var all = [], lastMs = 0, done = false, loadErr = "";
+    function loadMore() {
+      return loadUserRatingsMore(uid, lastMs).then(function (p) {
+        var list2 = p.list || [];
+        loadErr = "";
+        if (list2.length) { all = all.concat(list2); lastMs = p.lastMs || 0; done = p.all || list2.length < USER_PAGE; }
+        else done = true;
+        draw();
+      }, function (e) { loadErr = errText(e); draw(); });
+    }
+    function reloadFirst() {
+      loadErr = "";
+      clear(panel).append(loadingState("Загружаем оценки…"));
+      return loadUserRatingsFirst(uid, true).then(function (p) {
+        all = p.list || []; lastMs = p.lastMs || 0; done = p.all || all.length < USER_PAGE;
+        draw();
+      }, function (e) { loadErr = errText(e); draw(); });
+    }
     function draw() {
       var list = all.slice().sort(function (a, b) { return tsMs(b.updatedAt) - tsMs(a.updatedAt); });
       clear(panel);
-      if (!list.length) { panel.append(self ? emptyState("Вы пока ничего не оценили", "Откройте номер и нажмите «Оценить».", el("a", { class: "btn btn-s", href: ROOT || "./", text: "Выбрать номер" })) : emptyState("Оценок пока нет")); return; }
+      if (loadErr && !all.length) { panel.append(errorState("Оценки не загрузились: " + loadErr, reloadFirst)); return; }
+      if (!list.length && !loadErr) {
+        panel.append(self
+          ? emptyState("Вы пока ничего не оценили", "Откройте номер и нажмите «Оценить».", el("a", { class: "btn btn-s", href: ROOT || "./", text: "Выбрать номер" }), "☆")
+          : emptyState("Оценок пока нет", "Когда человек оценит номера, они появятся здесь.", el("a", { class: "btn btn-s", href: ROOT || "./", text: "Выбрать номер" }), "☆"));
+        return;
+      }
+      panel.append(el("p", { class: "c-hint", text: "Порядок: сначала новые." }));
       var ul = el("div", { class: "c-list" });
       list.forEach(function (x) {
         ul.append(pcard(x.numberId, [
@@ -1723,24 +1817,37 @@
           ratingNode(x, critOf(info, x.numberId))]));
       });
       panel.append(ul);
-      if (!done) panel.append(moreBtn(function () {
-        loadUserRatingsMore(uid, lastMs).then(function (p) {
-          var list2 = p.list || [];
-          if (list2.length) { all = all.concat(list2); lastMs = p.lastMs || 0; done = p.all || list2.length < USER_PAGE; draw(); }
-          else { done = true; draw(); }
-        }, function () { done = true; draw(); });
-      }));
+      if (loadErr) panel.append(errorState(loadErr, function () { loadErr = ""; return all.length ? loadMore() : reloadFirst(); }));
+      else if (!done) panel.append(moreBtn(loadMore, "Показать ещё оценки"));
     }
     loadUserRatingsFirst(uid).then(function (p) {
       all = p.list || []; lastMs = p.lastMs || 0; done = p.all || all.length < USER_PAGE;
       draw();
-    }, function (e) { clear(panel).append(el("p", { class: "msg msg-err", text: "Оценки не загрузились: " + errText(e) })); });
+    }, function (e) { loadErr = errText(e); draw(); });
   }
   function panelPlaylists(panel, uid, self, info) {
-    var menuOpen = {}, editMode = {}, openState = {};   // по id плейлиста: меню «⋯» / режим «убрать номера» / раскрытая карточка — переживают перерисовку
+    var menuOpen = {}, editMode = {}, openState = {}, curList = [], loadErr = "";   // состояния по id переживают перерисовку
+    function closeMenus() {
+      if (!Object.keys(menuOpen).some(function (id) { return menuOpen[id]; })) return;
+      menuOpen = {}; draw(curList);
+    }
+    if (!panel._plDocBound) {
+      panel._plDocBound = true;
+      document.addEventListener("click", function (e) {
+        if (!e.target.closest || !e.target.closest(".pl-wrap")) closeMenus();
+      });
+      document.addEventListener("keydown", function (e) { if (e.key === "Escape") closeMenus(); });
+    }
+    function reload() {
+      loadErr = "";
+      clear(panel).append(loadingState("Загружаем плейлисты…"));
+      return loadUserPlaylists(uid, true).then(draw, function (e) { loadErr = errText(e); draw([]); });
+    }
     function draw(list) {
+      curList = list || [];
       clear(panel);
-      list = (list || []).slice().sort(function (a, b) { return tsMs(b.createdAt) - tsMs(a.createdAt); });
+      list = curList.slice().sort(function (a, b) { return tsMs(b.createdAt) - tsMs(a.createdAt); });
+      if (loadErr) { panel.append(errorState("Плейлисты не загрузились: " + loadErr, reload)); return; }
       if (self) {
         var inp = el("input", { class: "c-input", type: "text", maxlength: "80", placeholder: "Название нового плейлиста", "aria-label": "Название плейлиста" });
         var msg = el("p", { class: "msg msg-err", hidden: true });
@@ -1754,7 +1861,12 @@
           plCreate(inp.value.trim(), []).then(function () { return loadUserPlaylists(uid, true); }).then(draw, function (e) { go.disabled = false; msg.textContent = errText(e); msg.hidden = false; });
         } }, el("div", { class: "c-row" }, inp, go), msg));
       }
-      if (!list.length) { panel.append(self ? emptyState("Плейлистов пока нет", "Создайте первый, а номера добавляйте кнопкой «В плейлист» на странице номера.") : emptyState("Плейлистов пока нет")); return; }
+      if (!list.length) {
+        panel.append(self
+          ? emptyState("Плейлистов пока нет", "Создайте первый, а номера добавляйте кнопкой «В плейлист» на странице номера.", null, "≡")
+          : emptyState("Плейлистов пока нет", "Когда человек соберёт плейлисты, они появятся здесь.", el("a", { class: "btn btn-s", href: ROOT || "./", text: "Выбрать номер" }), "≡"));
+        return;
+      }
       var MAX_ROWS = 6;   // длинные плейлисты показываем частично; все номера — на странице плейлиста
       var grid = el("div", { class: "pl-grid" });
       list.forEach(function (p) {
@@ -1767,7 +1879,7 @@
             } }) : null));
         });
         var card = el("details", { class: "pl", open: openState[p.id] ? true : null },
-          el("summary", null, plDeck(ids),
+          el("summary", { "aria-label": "Плейлист «" + p.name + "», " + (ids.length ? ids.length + " " + plural(ids.length, "номер", "номера", "номеров") : "пустой") }, plDeck(ids),
             el("span", { class: "pl-face" },
               el("span", { class: "pl-face-top" },
                 el("span", { class: "pl-name", text: p.name }),
@@ -1779,10 +1891,11 @@
         card.addEventListener("toggle", function () { openState[p.id] = card.open; });
         if (!self) { grid.append(card); return; }
         /* Меню «⋯»: режим «убрать номера» и удаление плейлиста */
-        var kebab = el("button", { type: "button", class: "pl-kebab", text: "⋯", title: "Действия с плейлистом", "aria-label": "Действия с плейлистом", "aria-expanded": menuOpen[p.id] ? "true" : "false", onclick: function () {
-          menuOpen[p.id] = !menuOpen[p.id]; draw(list);
+        var menuId = "pl-menu-" + p.id;
+        var kebab = el("button", { type: "button", class: "pl-kebab", text: "⋯", title: "Действия с плейлистом", "aria-label": "Действия с плейлистом «" + p.name + "»", "aria-haspopup": "menu", "aria-controls": menuId, "aria-expanded": menuOpen[p.id] ? "true" : "false", onclick: function () {
+          menuOpen[p.id] = !menuOpen[p.id]; draw(curList);
         } });
-        var menu = menuOpen[p.id] ? el("div", { class: "pl-menu", role: "menu" },
+        var menu = menuOpen[p.id] ? el("div", { class: "pl-menu", id: menuId, role: "menu", "aria-label": "Действия с плейлистом" },
           el("button", { type: "button", class: "pl-menu-item", role: "menuitem", text: editMode[p.id] ? "Готово" : "Убрать номера", onclick: function () {
             editMode[p.id] = !editMode[p.id]; menuOpen[p.id] = false; draw(list);
           } }),
@@ -1795,7 +1908,7 @@
       });
       panel.append(grid);
     }
-    return loadUserPlaylists(uid).then(draw, function (e) { clear(panel).append(el("p", { class: "msg msg-err", text: "Плейлисты не загрузились: " + errText(e) })); });
+    return loadUserPlaylists(uid).then(draw, function (e) { loadErr = errText(e); draw([]); });
   }
 
   /* host — блок страницы. Если внутри уже лежит панель «Номера» (#p-nums), она становится первой вкладкой. */
@@ -1823,21 +1936,31 @@
     host.insertBefore(bar, host.firstChild); st.nodes.push(bar);
     defs.forEach(function (d) {
       if (!d.panel) { d.panel = el("div", { class: "ptabs-panel", id: "pt-" + d.id, role: "tabpanel", hidden: true }); host.append(d.panel); st.nodes.push(d.panel); }
-      d.btn = el("button", { type: "button", class: "ptab", role: "tab", "aria-selected": "false", text: d.label, onclick: function () { st.show(d.id); } });
+      d.tabId = "ptab-" + d.id;
+      d.panel.setAttribute("aria-labelledby", d.tabId);
+      d.btn = el("button", { type: "button", class: "ptab", id: d.tabId, role: "tab", "aria-controls": d.panel.id, "aria-selected": "false", tabindex: "-1", text: d.label, onclick: function () { st.show(d.id); } });
       bar.append(d.btn);
+    });
+    bar.addEventListener("keydown", function (e) {
+      if (e.key !== "ArrowLeft" && e.key !== "ArrowRight") return;
+      e.preventDefault();
+      var i = defs.map(function (d) { return d.id; }).indexOf(st.cur);
+      i = (i + (e.key === "ArrowRight" ? 1 : -1) + defs.length) % defs.length;
+      st.show(defs[i].id); defs[i].btn.focus();
     });
     st.show = function (id, force) {
       if (!force) st.cur = id;
       defs.forEach(function (d) {
         var on = d.id === st.cur;
         d.btn.setAttribute("aria-selected", on ? "true" : "false");
+        d.btn.setAttribute("tabindex", on ? "0" : "-1");
         d.btn.classList.toggle("is-on", on);
         d.panel.hidden = !on;
       });
       var d = defs.filter(function (x) { return x.id === id; })[0];
       if (!d || d.id === "nums" || (st.loaded[id] && !force)) return;
       st.loaded[id] = true;
-      clear(d.panel).append(el("p", { class: "c-hint", text: "Загрузка…" }));
+      clear(d.panel).append(loadingState("Загружаем вкладку…"));
       catalogInfo().then(function (info) {
         if (id === "comments") return panelComments(d.panel, st.uid, info, st.self);
         if (id === "ratings") return panelRatings(d.panel, st.uid, info, st.self);
@@ -1854,9 +1977,14 @@
     var host = document.getElementById("pl-add");
     if (!host) return;
     var nid = host.dataset.number, open = false, lists = null, busy = false;
+    function setOpen(v) { open = v; draw(); }
+    function onDocClick(e) { if (open && !host.contains(e.target)) setOpen(false); }
+    function onKey(e) { if (open && e.key === "Escape") { e.stopPropagation(); setOpen(false); } }
     function draw() {
+      document.removeEventListener("click", onDocClick);
+      document.removeEventListener("keydown", onKey);
       clear(host);
-      var btn = el("button", { type: "button", class: "add-btn add-btn-s", "aria-expanded": open ? "true" : "false", text: "В плейлист", onclick: function () {
+      var btn = el("button", { type: "button", class: "add-btn add-btn-s", "aria-expanded": open ? "true" : "false", "aria-haspopup": "dialog", "aria-controls": "pl-pop", text: "В плейлист", onclick: function () {
         if (!state.user) { toast("Войдите, чтобы собирать плейлисты."); return; }
         open = !open;
         if (open && !lists) { loadUserPlaylists(state.user.uid, true).then(function (l) { lists = l; draw(); }, function (e) { open = false; toast(errText(e)); draw(); }); }
@@ -1864,11 +1992,13 @@
       } });
       host.append(btn);
       if (!open || !state.user) return;
-      var box = el("div", { class: "pl-pop" });
-      if (!lists) { box.append(el("p", { class: "c-hint", text: "Загрузка…" })); host.append(box); return; }
+      var box = el("div", { class: "pl-pop pop-panel", id: "pl-pop", role: "dialog", "aria-label": "В плейлист" },
+        el("div", { class: "pop-head" }, el("strong", { text: "В плейлист" }),
+          el("button", { type: "button", class: "pop-close", "aria-label": "Закрыть", text: "×", onclick: function () { setOpen(false); } })));
+      if (!lists) { box.append(loadingState("Загружаем плейлисты…")); host.append(box); document.addEventListener("click", onDocClick); document.addEventListener("keydown", onKey); return; }
       lists.forEach(function (p) {
         var has = (p.numberIds || []).indexOf(nid) !== -1;
-        var cb = el("input", { type: "checkbox" }); cb.checked = has;
+        var cb = el("input", { type: "checkbox", "aria-label": "Сохранить в плейлист «" + p.name + "»" }); cb.checked = has;
         cb.addEventListener("change", function () {
           if (busy) { cb.checked = !cb.checked; return; }
           var adding = cb.checked;
@@ -1895,6 +2025,8 @@
       } }, el("div", { class: "c-row" }, inp, go), msg),
         el("p", { class: "c-hint" }, "Плейлисты видны всем на вашей странице."));
       host.append(box);
+      document.addEventListener("click", onDocClick);
+      document.addEventListener("keydown", onKey);
     }
     views.push(function () { if (!state.user) { open = false; lists = null; } draw(); });
     draw();
@@ -1907,10 +2039,10 @@
     if (!box) return;
     var pid = new URLSearchParams(location.search).get("id") || "";
     function load() {
-      if (!pid) { clear(box).append(emptyState("Нет ссылки на плейлист", "Откройте страницу человека и выберите плейлист там.")); return Promise.resolve(); }
+      if (!pid) { clear(box).append(emptyState("Нет ссылки на плейлист", "Откройте страницу человека и выберите плейлист там.", el("a", { class: "btn btn-s", href: ROOT || "./", text: "Выбрать номер" }), "≡")); return Promise.resolve(); }
       return Promise.all([fb.f.getDoc(fdoc("playlists/" + pid)), catalogInfo()]).then(function (r) {
         var s = r[0], info = r[1];
-        if (!s.exists()) { clear(box).append(emptyState("Плейлист не найден", "Возможно, владелец удалил его.")); return; }
+        if (!s.exists()) { clear(box).append(emptyState("Плейлист не найден", "Возможно, владелец удалил его.", el("a", { class: "btn btn-s", href: ROOT || "./", text: "Выбрать номер" }), "≡")); return; }
         var p = s.data(), ids = p.numberIds || [], byId = {};
         (info.numbers || []).forEach(function (n) { byId[n.id] = n; });
         clear(box);
@@ -1919,7 +2051,7 @@
           el("p", { class: "c-hint" }, "Плейлист пользователя ",
             el("a", { href: ROOT + "u/?id=" + encodeURIComponent(p.uid), text: p.ownerName || "Без имени" }),
             " · " + ids.length + " " + plural(ids.length, "номер", "номера", "номеров")));
-        if (!ids.length) { box.append(emptyState("В плейлисте пока нет номеров", "Номера добавляются кнопкой «В плейлист» на странице номера.")); return; }
+        if (!ids.length) { box.append(emptyState("В плейлисте пока нет номеров", "Номера добавляются кнопкой «В плейлист» на странице номера.", el("a", { class: "btn btn-s", href: ROOT || "./", text: "Выбрать номер" }), "≡")); return; }
         var grid = el("div", { class: "grid pl-page-grid" });
         ids.forEach(function (id) {
           var img = el("img", { src: ROOT + "img/" + encodeURIComponent(id) + "/card.webp", alt: "", width: "640", height: "480", loading: "lazy", decoding: "async" });
@@ -1933,7 +2065,7 @@
         });
         box.append(grid);
       }, function (e) {
-        clear(box).append(errorState("Плейлист не загрузился: " + errText(e), function () { clear(box).append(el("p", { class: "c-hint", text: "Загрузка…" })); load(); }));
+        clear(box).append(errorState("Плейлист не загрузился: " + errText(e), function () { clear(box).append(loadingState("Загружаем плейлист…")); load(); }));
       });
     }
     load();
@@ -1946,7 +2078,7 @@
     var box = document.getElementById("user-page");
     if (!box) return;
     var uid = new URLSearchParams(location.search).get("id") || "";
-    var data = null, info = null, claimsOf = {}, done = false, moved = false;
+    var data = null, info = null, claimsOf = {}, done = false, moved = false, loadErr = "";
     var tabsHost = el("div", { class: "ptabs" });
 
     function load(fresh) {
@@ -1957,7 +2089,7 @@
             var o = {}; s.forEach(function (d) { o[d.id] = d.data(); }); return o;
           });
         }).catch(function () { return {}; }),
-        loadUserComments(uid).catch(function () { return null; }),
+        loadUserComments(uid).catch(function (e) { loadErr = errText(e); return null; }),
         loadAvatars([uid]),
         catalogInfo()
       ]).then(function (r) {
@@ -2028,9 +2160,15 @@
     function draw() {
       clear(box);
       if (!uid) { box.append(el("p", { class: "c-hint", text: "Не указан пользователь." })); return; }
-      if (!done || moved) { box.append(el("p", { class: "c-hint", text: "Загрузка…" })); return; }
+      if (!done || moved) { box.append(loadingState("Загружаем страницу…")); return; }
+      if (loadErr) {
+        box.append(errorState("Страница не загрузилась: " + loadErr, function () {
+          loadErr = ""; cdrop("user:comments3:" + uid); load(true).then(draw);
+        }));
+        return;
+      }
       var self = !!(state.user && state.user.uid === uid);
-      if (self && !state.ready) { box.append(el("p", { class: "c-hint", text: "Загрузка…" })); return; }
+      if (self && !state.ready) { box.append(loadingState("Загружаем страницу…")); return; }
       if (self && approvedPids().length) { location.replace(ownPageUrl()); return; }
       var cl = self ? state.claims : claimsOf;
       var pend = Object.keys(cl || {}).filter(function (p) { return cl[p].status === "pending"; });
@@ -2290,7 +2428,7 @@
 
     function draw() {
       clear(box);
-      if (!state.ready) { box.append(el("p", { class: "c-hint", text: "Загрузка…" })); return; }
+      if (!state.ready) { box.append(loadingState("Загружаем кабинет…")); return; }
       if (!state.user) {
         box.append(signInPrompt("Войдите, чтобы вести свою страницу"));
         return;
@@ -2483,16 +2621,15 @@
       var openStrip = function () {
         if (done || !strip.open) return;
         done = true;
-        clear(row).append(el("li", { class: "hot-wait" }, el("span", { class: "c-hint", text: "Загружаем…" })));
+        clear(row).append(el("li", { class: "hot-wait" }, loadingState("Загружаем обсуждаемое…")));
         loadHot("a", 5).then(function (arr) {
           var cards = (arr || []).map(function (it) { return hotCard(meta, it); }).filter(Boolean);
           clear(row);
-          if (!cards.length) { row.append(el("li", { class: "hot-wait" }, el("span", { class: "c-hint", text: "Пока никто не комментировал. Откройте номер и напишите первым." }))); return; }
+          if (!cards.length) { row.append(el("li", { class: "hot-wait" }, emptyState("Пока никто не комментировал", "Откройте номер и напишите первым.", el("a", { class: "btn btn-s", href: ROOT || "./", text: "Выбрать номер" }), "✎"))); return; }
           cards.forEach(function (c) { row.append(el("li", null, c)); });
         }, function (e) {
           done = false;
-          clear(row).append(el("li", { class: "hot-wait" }, el("span", { class: "msg msg-err", text: "Не удалось загрузить: " + errText(e) + " " }),
-            el("button", { type: "button", class: "linkbtn", text: "Повторить", onclick: openStrip })));
+          clear(row).append(el("li", { class: "hot-wait" }, errorState("Не удалось загрузить: " + errText(e), openStrip)));
         });
       };
       strip.addEventListener("toggle", openStrip);
@@ -2500,13 +2637,13 @@
     if (page) {
       var wk = document.getElementById("hot-week"), all = document.getElementById("hot-all");
       var fill = function (box, kind, lim, emptyTitle, emptyText) {
-        clear(box).append(el("p", { class: "c-hint", text: "Загружаем…" }));
+        clear(box).append(loadingState("Загружаем обсуждаемое…"));
         return loadHot(kind, lim).then(function (arr) {
           var items = (arr || []).filter(function (it) { return meta[it.id]; }).map(function (it, i) {
             return el("li", null, el("span", { class: "hot-rank", text: String(i + 1) }), hotCard(meta, it));
           });
           clear(box);
-          if (!items.length) { box.append(emptyState(emptyTitle, emptyText)); return; }
+          if (!items.length) { box.append(emptyState(emptyTitle, emptyText, el("a", { class: "btn btn-s", href: ROOT || "./", text: "Выбрать номер" }), "✎")); return; }
           var ol = el("ol", { class: "hot-list" });
           items.forEach(function (li) { ol.append(li); });
           box.append(ol);
@@ -2639,8 +2776,13 @@
     }
     function limitsPanel() {
       var wrap = el("div", { class: "set-panel" });
-      if (usageErr) { wrap.append(card("Лимиты", "Не удалось загрузить лимиты. Обновите страницу чуть позже.")); return wrap; }
-      if (!usage) { wrap.append(el("p", { class: "c-hint", text: "Загрузка…" })); return wrap; }
+      if (usageErr) {
+        var bad = card("Лимиты", "Не удалось загрузить лимиты.");
+        bad.append(el("button", { type: "button", class: "btn btn-s", text: "Повторить", onclick: function () { usageErr = false; usage = null; loadUsage().then(draw); } }));
+        wrap.append(bad);
+        return wrap;
+      }
+      if (!usage) { wrap.append(loadingState("Загружаем лимиты…")); return wrap; }
       var day = card("Сегодня", "Счётчики дня обнуляются в полночь по времени Самары (UTC+4).");
       day.append(limitRow("Комментарии", usage.d.comments || 0, LIM.comments, "Новые комментарии и ответы."),
         limitRow("Лайки комментариям", usage.d.likes || 0, LIM.likes, "Лайки комментариям других людей."),
@@ -2662,7 +2804,7 @@
     }
     function draw() {
       clear(box);
-      if (!state.ready) { box.append(el("p", { class: "c-hint", text: "Загрузка…" })); return; }
+      if (!state.ready) { box.append(loadingState("Загружаем настройки…")); return; }
       if (!state.user) {
         box.append(signInPrompt("Войдите, чтобы открыть настройки профиля", "Здесь фото, ник, соцсети и лимиты вашего профиля. Войти можно через Google или по e-mail."));
         return;

@@ -242,7 +242,16 @@
       apply(true);
     });
     if (selDir) selDir.addEventListener("change", function () { state.d = selDir.value; apply(true); });
-    if (more) more.addEventListener("click", function () { shown += PAGE; apply(false, true); });
+    if (more) more.addEventListener("click", function () {
+      if (more.disabled) return;
+      more.disabled = true;
+      more.setAttribute("aria-busy", "true");
+      more.textContent = "Загружаем…";
+      shown += PAGE;
+      apply(false, true);
+      more.disabled = false;
+      more.removeAttribute("aria-busy");
+    });
     document.querySelectorAll("[data-reset]").forEach(function (btn) {
       btn.addEventListener("click", function () {
         state.q = ""; state.t = ""; state.y = ""; state.c = ""; state.d = "";
@@ -607,6 +616,7 @@
     var box = document.createElement("div");
     box.className = "lightbox";
     box.setAttribute("role", "dialog");
+    box.setAttribute("aria-modal", "true");
     box.setAttribute("aria-label", "Фото на весь экран");
     var im = document.createElement("img");
     im.src = img.currentSrc || img.src;
@@ -710,11 +720,26 @@
         document.body.appendChild(a); a.click(); a.remove(); setTimeout(function () { URL.revokeObjectURL(a.href); }, 2000); say("Открытка сохранена.");
       });
     });
-    box.appendChild(canvas); box.appendChild(ta); box.appendChild(row); box.appendChild(status);
+    var head = mk("div", "pop-head");
+    var title = mk("strong", "", "Поделиться номером");
+    var closeBtn = mk("button", "pop-close", "×");
+    closeBtn.type = "button"; closeBtn.setAttribute("aria-label", "Закрыть"); closeBtn.addEventListener("click", function () { setOpen(false); });
+    head.appendChild(title); head.appendChild(closeBtn);
+    box.appendChild(head); box.appendChild(canvas); box.appendChild(ta); box.appendChild(row); box.appendChild(status);
   }
-  btn.addEventListener("click", function () {
-    var open = box.hidden;
+  function setOpen(open) {
     if (open && !built) build();
-    box.hidden = !open; btn.setAttribute("aria-expanded", open ? "true" : "false");
-  });
+    box.hidden = !open;
+    btn.setAttribute("aria-expanded", open ? "true" : "false");
+    document.removeEventListener("click", outside);
+    document.removeEventListener("keydown", esc);
+    if (open) {
+      document.addEventListener("click", outside);
+      document.addEventListener("keydown", esc);
+      var x = box.querySelector(".pop-close"); if (x) x.focus();
+    }
+  }
+  function outside(e) { if (!box.hidden && !box0.contains(e.target)) setOpen(false); }
+  function esc(e) { if (!box.hidden && e.key === "Escape") { e.stopPropagation(); setOpen(false); btn.focus(); } }
+  btn.addEventListener("click", function () { setOpen(box.hidden); });
 })();

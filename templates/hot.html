@@ -7,11 +7,11 @@
   <section aria-labelledby="hw-h">
     <h2 id="hw-h">На этой неделе</h2>
     <p class="c-hint">Неделя идёт с понедельника. Пять номеров с наибольшим числом новых комментариев.</p>
-    <div id="hot-week"><p class="c-hint">Загружаем…</p></div>
+    <div id="hot-week"><div class="loading-state" role="status"><span class="spinner" aria-hidden="true"></span><span>Загружаем номера недели…</span></div></div>
   </section>
   <section aria-labelledby="ha-h">
     <h2 id="ha-h">За всё время</h2>
-    <div id="hot-all"><p class="c-hint">Загружаем…</p></div>
+    <div id="hot-all"><div class="loading-state" role="status"><span class="spinner" aria-hidden="true"></span><span>Загружаем обсуждаемые номера…</span></div></div>
   </section>
 </article>
 {% set hj = {} %}{% for n in numbers %}{% set _ = hj.update({n.id: [n.title, n.collective, n.concert.name]}) %}{% endfor %}

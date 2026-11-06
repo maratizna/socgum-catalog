@@ -35,8 +35,8 @@
         {% endif %}
         <div class="share" id="share" data-title="{{ n.title }}" data-collective="{{ n.collective }}" data-concert="{{ n.concert.name }}{% if n.concert.date %}, {{ n.concert.date|ru_date }}{% endif %}"
              data-site="{{ site_title }}" data-cover="{{ root }}img/{{ n.id }}/cover.webp"{% if can_play and n.start is not none %} data-t="{{ n.start }}" data-tl="{{ n.start|hms }}"{% endif %}>
-          <button type="button" class="add-btn add-btn-s share-btn" id="share-btn" aria-expanded="false" aria-controls="share-box">Поделиться</button>
-          <div class="share-box" id="share-box" hidden></div>
+          <button type="button" class="add-btn add-btn-s share-btn" id="share-btn" aria-expanded="false" aria-controls="share-box" aria-haspopup="dialog">Поделиться</button>
+          <div class="share-box pop-panel" id="share-box" role="dialog" aria-label="Поделиться номером" hidden></div>
         </div>
         {% if firebase %}
         <div id="pl-add" class="pl-add" data-number="{{ n.id }}"></div>

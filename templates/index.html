@@ -124,12 +124,14 @@
   {% endfor %}
 </ul>
 
-<p class="more-row"><button type="button" class="add-btn" id="more" hidden>Показать ещё</button></p>
+<p class="more-row"><button type="button" class="btn btn-s btn-more" id="more" aria-label="Показать ещё номера" hidden>Показать ещё</button></p>
 
-<div class="empty" id="empty" hidden>
-  <p>По этим условиям номеров нет.</p>
+<div class="empty-state" id="empty" hidden>
+  <span class="empty-icon" aria-hidden="true">♪</span>
+  <p class="empty-title">Номеров не нашлось</p>
+  <p class="c-hint">По этим условиям номеров нет. Попробуйте другой запрос или сбросьте фильтры.</p>
   <div id="empty-concerts" class="empty-concerts" hidden></div>
-  <button type="button" class="btn" data-reset>Сбросить фильтры</button>
+  <button type="button" class="btn btn-s" data-reset>Сбросить фильтры</button>
 </div>
 {% endblock %}
 {% block after_main %}{% include "_dice.html" %}{% endblock %}
