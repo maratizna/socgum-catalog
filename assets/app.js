@@ -581,6 +581,49 @@
   }
 })();
 
+/* Онбординг первого визита: три подсказки на главной, показывается один раз */
+(function () {
+  var box = document.getElementById("onboard");
+  if (!box) return;
+  var KEY = "sg:onboarded";
+  try { if (window.localStorage.getItem(KEY)) return; } catch (e) { }
+  box.hidden = false;
+  var btn = document.getElementById("onboard-x");
+  function dismiss() {
+    box.hidden = true;
+    try { window.localStorage.setItem(KEY, "1"); } catch (e) { }
+  }
+  if (btn) btn.addEventListener("click", dismiss);
+})();
+
+/* Обложка номера на весь экран: кнопка-лупа поверх постера */
+(function () {
+  var btn = document.getElementById("cover-zoom");
+  if (!btn) return;
+  btn.addEventListener("click", function (e) {
+    e.stopPropagation();
+    var poster = document.querySelector(".stage-poster");
+    if (!poster || !poster.src) return;
+    var box = document.createElement("div");
+    box.className = "lightbox";
+    box.setAttribute("role", "dialog");
+    box.setAttribute("aria-modal", "true");
+    box.setAttribute("aria-label", "Обложка на весь экран");
+    var im = document.createElement("img");
+    im.src = poster.currentSrc || poster.src;
+    im.alt = poster.alt || "";
+    var x = document.createElement("button");
+    x.type = "button"; x.className = "lightbox-x"; x.setAttribute("aria-label", "Закрыть"); x.textContent = "×";
+    box.appendChild(im); box.appendChild(x);
+    function close() { box.remove(); document.removeEventListener("keydown", key); btn.focus(); }
+    function key(e) { if (e.key === "Escape") close(); }
+    box.addEventListener("click", close);
+    document.addEventListener("keydown", key);
+    document.body.appendChild(box);
+    x.focus();
+  });
+})();
+
 /* Доп. материалы: фото-галерея (листается свайпом, кнопками и стрелками) и просмотр на весь экран */
 (function () {
   function init(g) {

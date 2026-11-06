@@ -1249,6 +1249,31 @@
       var ta = el("textarea", { class: "c-input", rows: "3", maxlength: "2000", placeholder: canSeek ? "Ваш комментарий. Время вида 1:23:45 станет ссылкой на этот момент записи." : "Ваш комментарий", "aria-label": "Комментарий" });
       var send = el("button", { type: "submit", class: "btn", text: "Отправить" });
 
+      /* Черновик комментария: текст хранится в браузере (не в базе) и переживает уход со страницы.
+         Ключ привязан к номеру и к тому, ответ это или обычный комментарий. После отправки черновик стирается. */
+      var draftKey = "draft:" + nid + (replyTo ? ":re:" + replyTo.id : "");
+      (function () {
+        try {
+          var st = store(); if (!st) return;
+          var saved = st.getItem(draftKey);
+          if (saved && !ta.value) { ta.value = saved; toast("Черновик восстановлен — текст сохранился на этом устройстве."); }
+        } catch (e) { }
+      })();
+      var draftTimer = 0;
+      function saveDraft() {
+        clearTimeout(draftTimer);
+        draftTimer = setTimeout(function () {
+          try {
+            var st = store(); if (!st) return;
+            if (ta.value.trim()) st.setItem(draftKey, ta.value); else st.removeItem(draftKey);
+          } catch (e) { }
+        }, 400);
+      }
+      function clearDraft() {
+        clearTimeout(draftTimer);
+        try { var st = store(); if (st) st.removeItem(draftKey); } catch (e) { }
+      }
+
       function setCount() { return Object.keys(draft).length; }
       function same() { return RATE.every(function (k) { return (draft[k[0]] || 0) === ((prev && prev[k[0]]) || 0); }) && (!OFFSTAGE || ctxv === ((prev && prev.ctx) || "")); }
       function rateChanged() { return !same(); }
@@ -1315,7 +1340,7 @@
         el("strong", { text: "Мат не проходит. " }),
         "Комментарий с нецензурными словами не отправится: перепишите его. Пишите о номере и по делу, без оскорблений.");
 
-      ta.addEventListener("input", syncSend);
+      ta.addEventListener("input", function () { syncSend(); saveDraft(); });
       var f = el("form", { onsubmit: function (ev) {
         ev.preventDefault();
         var text = ta.value.trim(), full = setCount() === RATE.length;
@@ -1391,6 +1416,7 @@
             return run(true, true, true);
           });
         }).then(function () {
+          clearDraft();
           replyTo = null;
           justDone = { k: 1, t: Date.now(), rate: doneInfo.rate, clear: doneInfo.clear, text: doneInfo.text, tot: doneInfo.tot, cid: newComment ? newComment.id : "" };
           dropComments();

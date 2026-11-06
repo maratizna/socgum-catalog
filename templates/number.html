@@ -15,6 +15,11 @@
         <img class="stage-blur" src="{{ root }}img/{{ n.id }}/cover.webp" alt="" aria-hidden="true">
         <img class="stage-poster" fetchpriority="high" decoding="async" src="{{ root }}img/{{ n.id }}/cover.webp" width="{{ n.cover_size[0] }}" height="{{ n.cover_size[1] }}"
              alt="{% if n.has_cover %}Обложка номера «{{ n.title }}»{% endif %}">
+        {% if n.has_cover %}
+        <button class="stage-zoom" id="cover-zoom" type="button" aria-label="Открыть обложку на весь экран" title="Открыть обложку">
+          <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path d="M4 9V4h5M20 15v5h-5M4 4l6 6M20 20l-6-6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+        </button>
+        {% endif %}
         {% if can_play %}
         <button class="play" type="button" data-t="{{ n.start if n.start is not none else 0 }}">
           Смотреть{% if n.start is not none %} с {{ n.start|hms }}{% endif %}
@@ -43,23 +48,6 @@
         {% endif %}
       </div>
       {% set m = n.materials %}{% include "_materials.html" %}
-      {% if n.related %}
-      <section class="related" aria-labelledby="rel-h">
-        <h2 class="mat-h" id="rel-h">{{ 'Этот номер на другом концерте' if n.related|length == 1 else 'Этот номер на других концертах' }}</h2>
-        <p class="rel-note">Это отдельный номер: состав участников может отличаться.</p>
-        <ul class="rel-list">
-          {% for x in n.related %}
-          <li><a class="rel-card" href="{{ root }}n/{{ x.n.id }}/">
-            <img src="{{ root }}img/{{ x.n.id }}/card.webp" width="96" height="72" alt="" loading="lazy" decoding="async">
-            <span class="rel-t"><b>{{ x.n.title }}</b>
-              <small>{{ x.n.concert.name }}{% if x.n.concert.date %}, {{ x.n.concert.date|ru_date }}{% endif %}</small>
-              {% if x.n.performers %}<small>Участников: {{ x.n.performers|length }}</small>{% endif %}
-              {% if x.caption %}<small>{{ x.caption }}</small>{% endif %}</span>
-          </a></li>
-          {% endfor %}
-        </ul>
-      </section>
-      {% endif %}
       {% if firebase %}
       <div id="director-note" class="director-note" hidden></div>
       {% endif %}
@@ -84,19 +72,38 @@
         <ul>{% for p in n.people.performers %}<li><a href="{{ root }}p/{{ p.slug }}/">{{ p.name }}</a></li>{% endfor %}</ul>
       </details>
       {% endif %}
+
+      {% if n.related %}
+      <section class="related" aria-labelledby="rel-h">
+        <h2 class="mat-h" id="rel-h">{{ 'Другое исполнение этого номера' if n.related|length == 1 else 'Другие исполнения этого номера' }}</h2>
+        <p class="rel-note">Тот же номер на другом концерте. Это отдельный номер: состав участников может отличаться.</p>
+        <ul class="rel-list">
+          {% for x in n.related %}
+          <li><a class="rel-card" href="{{ root }}n/{{ x.n.id }}/">
+            <img src="{{ root }}img/{{ x.n.id }}/card.webp" width="96" height="72" alt="" loading="lazy" decoding="async">
+            <span class="rel-t"><b>{{ x.n.title }}</b>
+              <small>{{ x.n.concert.name }}{% if x.n.concert.date %}, {{ x.n.concert.date|ru_date }}{% endif %}</small>
+              {% if x.n.collective and x.n.collective != n.collective %}<small>Коллектив: {{ x.n.collective }}</small>{% endif %}
+              {% if x.n.performers %}<small>Участников: {{ x.n.performers|length }}</small>{% endif %}
+              {% if x.caption %}<small>{{ x.caption }}</small>{% endif %}</span>
+          </a></li>
+          {% endfor %}
+        </ul>
+      </section>
+      {% endif %}
+      {% if similar %}
+      <details class="similar" id="similar">
+        <summary><h2 class="mat-h">Похожие номера <span class="people-n">{{ similar|length }}</span></h2></summary>
+        <div class="similar-body" id="similar-body"></div>
+      </details>
+      <script type="application/json" id="similar-json">{{ similar|tojson }}</script>
+      {% endif %}
     </aside>
     {% if firebase %}
     <section class="comments" aria-labelledby="cm-h">
       <h2 id="cm-h">Комментарии</h2>
       <div id="comments" data-number="{{ n.id }}" data-age="{{ n.age_days }}"{% if n.offstage %} data-offstage="1"{% endif %}{% if n.rate_dir and n.rate_dir.criteria %} data-rate='{{ n.rate_dir.criteria|tojson }}'{% endif %}{% if n.offstage and n.rate_dir and n.rate_dir.rate_note %} data-rate-note="{{ n.rate_dir.rate_note }}"{% elif n.offstage %} data-rate-note="Работу направления лучше всего видно тем, кто участвовал в концерте. Если вас не было на концерте, оценивайте то, что знаете, и отметьте это ниже."{% endif %} data-directors="{% for p in n.people.choreographers %}{{ p.slug }}{% if not loop.last %} {% endif %}{% endfor %}"></div>
     </section>
-    {% endif %}
-    {% if similar %}
-    <details class="similar" id="similar">
-      <summary><h2>Похожие номера <span class="people-n">{{ similar|length }}</span></h2></summary>
-      <div class="similar-body" id="similar-body"></div>
-    </details>
-    <script type="application/json" id="similar-json">{{ similar|tojson }}</script>
     {% endif %}
   </div>
 </article>

@@ -69,6 +69,13 @@ html{scroll-padding-top:72px}
 .intro{padding:clamp(20px,5vw,56px) 0 clamp(20px,3vw,32px)}
 .lead{max-width:62ch;margin-top:14px;color:var(--ash);font-size:1.125rem}
 
+/* онбординг первого визита */
+.onboard{margin:0 0 22px;border:1px solid var(--line);border-left:3px solid var(--ember);border-radius:var(--r);background:var(--coal);padding:14px 16px;display:flex;gap:16px;align-items:center;justify-content:space-between;flex-wrap:wrap}
+.onboard[hidden]{display:none}
+.onboard-list{margin:0;padding-left:18px;display:grid;gap:6px;color:var(--ash);font-size:.95rem}
+.onboard-x{flex:none;background:var(--ember);color:var(--night);border:0;border-radius:var(--r);padding:10px 18px;font-weight:700;cursor:pointer;font-family:inherit}
+.onboard-x:hover{background:var(--ember-hi)}
+
 /* фильтры */
 .filters{display:grid;gap:14px;margin-bottom:26px}
 .filter-row{display:flex;gap:12px;flex-wrap:wrap}
@@ -104,7 +111,7 @@ html{scroll-padding-top:72px}
 .back{margin:18px 0 22px;font-size:.95rem}
 .back a{color:var(--ash)}
 .back a:hover{color:var(--ink)}
-.number-grid{display:grid;grid-template-columns:minmax(0,1fr) minmax(280px,360px);grid-template-areas:"main side" "talk side" "sim sim";grid-template-rows:auto 1fr auto;column-gap:clamp(24px,4vw,56px);row-gap:0;align-items:start}
+.number-grid{display:grid;grid-template-columns:minmax(0,1fr) minmax(280px,360px);grid-template-areas:"main side" "talk side";grid-template-rows:auto 1fr;column-gap:clamp(24px,4vw,56px);row-gap:0;align-items:start}
 .number-main{grid-area:main}
 .number-side{grid-area:side}
 .number-grid>.comments{grid-area:talk}
@@ -129,7 +136,7 @@ html{scroll-padding-top:72px}
 .person .count{margin:22px 0 22px}
 
 @media (max-width:820px){
-  .number-grid{grid-template-columns:minmax(0,1fr);grid-template-areas:"main" "side" "talk" "sim";grid-template-rows:auto;row-gap:26px}
+  .number-grid{grid-template-columns:minmax(0,1fr);grid-template-areas:"main" "side" "talk";grid-template-rows:auto;row-gap:26px}
   .sort{width:100%}
   .sort select{flex:1}
   .grid{grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:28px 14px}
@@ -633,6 +640,9 @@ html[data-signed="1"] .head-ph{display:inline-block}
 
 /* Доп. материалы: галерея, ссылки, связанные номера */
 .materials,.related{margin:18px 0 0}
+.number-side .related{margin:0}
+.number-side .rel-card{padding:6px}
+.number-side .rel-card img{width:72px;height:54px}
 .mat-h{font-size:1.05rem;margin:0 0 10px}
 .gal{position:relative;max-width:640px}
 .gal-track{display:flex;overflow-x:auto;scroll-snap-type:x mandatory;gap:10px;border-radius:var(--r);scrollbar-width:none;-webkit-overflow-scrolling:touch}
@@ -785,8 +795,8 @@ html[data-signed="1"] .head-ph{display:inline-block}
 .resume[hidden]{display:none}
 .resume-note{color:var(--ash);font-size:.9rem}
 
-/* похожие номера */
-.number-grid>.similar{grid-area:sim;margin-top:34px;border-top:1px solid var(--line);padding-top:6px}
+/* похожие номера и другие исполнения — в правой колонке */
+.similar{border-top:1px solid var(--line);padding-top:6px}
 .similar>summary{display:flex;align-items:center;justify-content:space-between;gap:12px;cursor:pointer;list-style:none;padding:10px 0}
 .similar>summary::-webkit-details-marker{display:none}
 .similar>summary h2{margin:0;font-size:1.15rem}
@@ -794,7 +804,12 @@ html[data-signed="1"] .head-ph{display:inline-block}
 .similar[open]>summary::after{transform:rotate(180deg)}
 .similar>summary:focus-visible{outline:2px solid var(--ember);outline-offset:2px}
 .similar-body{padding:6px 0 4px}
-.similar .rel-list{grid-template-columns:repeat(auto-fill,minmax(min(100%,300px),1fr))}
+.similar .rel-list{grid-template-columns:1fr}
+
+/* кнопка «открыть обложку» поверх постера */
+.stage-zoom{position:absolute;top:12px;right:12px;width:40px;height:40px;display:flex;align-items:center;justify-content:center;border:1px solid rgba(255,255,255,.25);border-radius:50%;background:rgba(9,5,0,.55);color:#fff;cursor:pointer;backdrop-filter:blur(4px)}
+.stage-zoom:hover{background:rgba(9,5,0,.8);border-color:var(--ember)}
+.stage-zoom:focus-visible{outline:2px solid var(--ember);outline-offset:2px}
 h1,h2{text-wrap:balance}
 
 /* мобильная проверка 360 px: ничего не выходит за экран, вкладки прокручиваются, попапы остаются в границах */

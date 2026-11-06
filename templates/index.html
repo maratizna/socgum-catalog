@@ -7,6 +7,15 @@
   <p class="lead">{{ lead }}</p>
 </section>
 
+<div class="onboard" id="onboard" hidden>
+  <ul class="onboard-list">
+    <li>Ищите номер по названию, коллективу, участнику или постановщику — строка поиска чуть ниже.</li>
+    <li>Комментируйте и оценивайте номера: вход через Google в один клик, без отдельной регистрации.</li>
+    <li>Собирайте свои плейлисты номеров и делитесь ими с друзьями.</li>
+  </ul>
+  <button type="button" class="onboard-x" id="onboard-x">Понятно</button>
+</div>
+
 {% if firebase %}
 <details class="hot-strip" id="hot-strip">
   <summary><span id="hot-h">Самое обсуждаемое</span></summary>
