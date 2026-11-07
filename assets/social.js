@@ -1375,7 +1375,7 @@
           if (text) {
             /* номер комментария за день входит в его ключ: так правила базы не дают обойти лимит */
             cref = fdoc("comments/" + dayStamp() + "_" + uid + "_" + n);
-            cdata = { numberId: nid, uid: uid, authorName: myName(), text: text, createdAt: fb.f.serverTimestamp(), status: "visible", likeCount: 0 };
+            cdata = { numberId: nid, uid: uid, authorName: myName(), text: text, createdAt: fb.f.serverTimestamp(), status: "visible" };
             newComment = cdata;
             newComment.id = cref.path.split("/").pop();
             if (replyTo) cdata.parentId = replyTo.id;
