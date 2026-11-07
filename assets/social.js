@@ -825,7 +825,10 @@
     var form = el("div", { class: "c-form" });
     var moments = el("details", { class: "moments", open: true });
     var noteBox = document.getElementById("director-note");
-    root.append(sumBox, form, moments, sortBar, list);
+    /* Порядок: оценка и поле комментария → итоги оценок → сами комментарии. */
+    var commentsTitle = document.getElementById("cm-h");
+    root.append(form, sumBox, moments, sortBar, list);
+    if (commentsTitle) root.insertBefore(commentsTitle, sortBar);
 
     function commentsKey() { return "comments:" + nid + (state.admin ? ":a" : state.user ? ":" + state.user.uid : ""); }
     function docToComment(d) { var x = d.data(); x.id = d.id; return x; }
@@ -1235,7 +1238,8 @@
       clear(form);
       if (!state.ready) return;
       if (!state.user) {
-        form.append(signInPrompt("Хотите оценить номер или написать комментарий?"));
+        form.append(el("h2", { class: "rate-title", text: "Оценить номер" }),
+          signInPrompt("Хотите оценить номер или написать комментарий?"));
         return;
       }
       var uid = state.user.uid;
@@ -1282,8 +1286,9 @@
         send.textContent = hasText ? (rc ? "Отправить с оценкой" : "Отправить") : (rc ? "Сохранить оценку" : (cleared ? "Убрать оценку" : "Отправить"));
       }
 
-      var rateBox = null;
+      var rateBox = null, rateTitle = null;
       if (!replyTo) {
+        rateTitle = el("h2", { class: "rate-title", text: "Оценить номер" });
         var sumLine = el("span", { class: "rate-state" }), totalLine = el("p", { class: "rate-total" });
         var painters = [];
         var showState = function () {
@@ -1436,7 +1441,7 @@
       } },
         replyTo && el("p", { class: "c-replyto" }, "Ответ для " + replyTo.authorName + " ",
           el("button", { type: "button", class: "linkbtn", text: "отменить", onclick: function () { replyTo = null; drawForm(); } })),
-        rateBox, el("div", { class: "c-compose" }, rules, ta), el("div", { class: "c-row" }, send,
+        rateTitle, rateBox, el("div", { class: "c-compose" }, rules, ta), el("div", { class: "c-row" }, send,
           el("span", { class: "c-hint", text: "Вы пишете как " + fullName(myName(), myPersonForComment()) + (myDirectorPerson() ? ", постановщик" : "") + ". Не больше " + LIM.comments + " комментариев в день." })));
       form.append(f);
       syncSend();

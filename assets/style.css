@@ -245,8 +245,9 @@ a.btn{text-decoration:none;display:inline-block}
 .like-list{display:flex;flex-wrap:wrap;gap:8px 18px;padding:6px 0 0;font-size:.9rem}
 
 /* оценки номера */
-.rate-sum{background:var(--coal);border:1px solid var(--line);border-radius:var(--r);padding:16px 18px;margin-bottom:18px}
+.rate-sum{background:var(--coal);border:1px solid var(--line);border-radius:var(--r);padding:16px 18px;margin:18px 0}
 .rate-sum h3{font-family:var(--font-display);font-size:1rem;margin:0 0 12px}
+.rate-title{margin:0}
 .rate-sum-grid{display:grid;grid-template-columns:auto 1fr;gap:14px 32px;align-items:center}
 .rate-big{margin:0;display:grid;line-height:1.1}
 .rate-big strong{font-family:var(--font-display);font-size:clamp(2.2rem,6vw,3rem);color:var(--ember)}
