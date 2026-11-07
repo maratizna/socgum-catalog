@@ -1134,7 +1134,7 @@
       if (agg) {
         /* итоги из одного документа rateAgg: в нём все оценки полные (пять из пяти) */
         nAll = Math.max(0, agg.n || 0);
-        if (!nAll) { sumBox.hidden = true; return; }
+        if (!nAll) { sumBox.hidden = true; root.classList.add("no-ratings"); return; }
         absentN = Math.max(0, agg.absent || 0);
         RATE.forEach(function (k) {
           sum[k[0]] = Math.max(0, agg[k[0]] || 0); cnt[k[0]] = nAll;
@@ -1142,7 +1142,7 @@
         });
         tcnt = nAll;
       } else {
-        if (!ratings.length) { sumBox.hidden = true; return; }
+        if (!ratings.length) { sumBox.hidden = true; root.classList.add("no-ratings"); return; }
         nAll = ratings.length;
         ratings.forEach(function (r) {
           if (r.ctx === "absent") absentN++;
@@ -1165,6 +1165,7 @@
           bars),
         OFFSTAGE && absentN ? el("p", { class: "rate-ctx-note", text: "Не были на концерте: " + absentN + " из " + nAll }) : "");
       sumBox.hidden = false;
+      root.classList.remove("no-ratings");
     }
     function drawSort(topCount) {
       clear(sortBar);

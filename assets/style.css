@@ -165,6 +165,9 @@ html{scroll-padding-top:72px}
 .admin-box{display:grid;gap:10px;justify-items:start;border-left:3px solid var(--line);padding-left:14px}
 .director-note{background:var(--coal);border-left:3px solid var(--ember);border-radius:var(--r);padding:16px 18px;margin-top:22px;display:grid;gap:10px}
 .comments{margin-top:34px}
+#comments.no-ratings #cm-h{margin:22px 0 0}
+#comments.no-ratings .c-sort{margin-top:8px}
+#comments.no-ratings .c-list{margin-top:8px}
 .c-list{display:grid;gap:14px;margin:14px 0 22px}
 .comment{background:var(--coal);border:1px solid var(--line);border-radius:var(--r);padding:12px 14px;display:grid;gap:6px;scroll-margin-top:20px}
 .comment:target{border-color:var(--ember)}
