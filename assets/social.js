@@ -1369,19 +1369,6 @@
         (text ? readUsage("d") : Promise.resolve({})).then(function (cur) {
           return (text ? readBuzz(nid) : Promise.resolve(null)).then(function (b0) { buz = b0; return cur; });
         }).then(function (cur) {
-          var n = (cur.comments || 0) + 1;
-          if (text && n > LIM.comments) throw new Error("Лимит: " + LIM.comments + " комментариев в день. Следующий можно оставить завтра.");
-          var cdata = null, cref = null;
-          if (text) {
-            /* номер комментария за день входит в его ключ: так правила базы не дают обойти лимит */
-            cref = fdoc("comments/" + dayStamp() + "_" + uid + "_" + n);
-            cdata = { numberId: nid, uid: uid, authorName: myName(), text: text, createdAt: fb.f.serverTimestamp(), status: "visible" };
-            newComment = cdata;
-            newComment.id = cref.path.split("/").pop();
-            if (replyTo) cdata.parentId = replyTo.id;
-            var pid = myPersonForComment();
-            if (pid) cdata.authorPersonId = pid;
-          }
           var rref = fdoc("ratings/" + nid + "_" + uid), aref = fdoc("rateAgg/" + nid);
           /* Перед сохранением оценки читаем её прежнюю версию и сводку номера: итоги меняются на разницу (старая → новая) */
           var pre = (wantRate || wantClear) ? Promise.all([
@@ -1396,9 +1383,24 @@
           }) : Promise.resolve([null, null]);
           return pre.then(function (pv) {
             var oldR = pv[0], aggDoc = pv[1], canCreateAgg = !!pv[2];
+            /* Данные комментария собираются заново перед каждой попыткой: имя и страница автора могли устареть */
+            var prepare = function (cur) {
+              var data = { cdata: null, cref: null };
+              if (!text) return data;
+              var n = (cur.comments || 0) + 1;
+              if (n > LIM.comments) throw new Error("Лимит: " + LIM.comments + " комментариев в день. Следующий можно оставить завтра.");
+              /* номер комментария за день входит в его ключ: так правила базы не дают обойти лимит */
+              data.cref = fdoc("comments/" + dayStamp() + "_" + uid + "_" + n);
+              var cdata = { numberId: nid, uid: uid, authorName: myName(), text: text, createdAt: fb.f.serverTimestamp(), status: "visible" };
+              if (replyTo) cdata.parentId = replyTo.id;
+              var pid = myPersonForComment();
+              if (pid) cdata.authorPersonId = pid;
+              data.cdata = cdata;
+              return data;
+            };
             /* Один пакет: комментарий, оценка и сводка вместе. withCtx — с пометкой «откуда знаю работу» (для направлений вне сцены) */
-            var go = function (withCtx, withBuzz, withAgg) {
-              var b = fb.f.writeBatch(fb.db);
+            var go = function (cur, data, withCtx, withBuzz, withAgg) {
+              var b = fb.f.writeBatch(fb.db), cref = data.cref, cdata = data.cdata;
               if (text) {
                 b.set(cref, cdata); bumpUsage(b, "d", cur, "comments");
                 if (withBuzz) buzzSet(b, nid, buz, 1, Date.now(), cref.path.split("/").pop());
@@ -1413,16 +1415,43 @@
               if (withAgg && (wantRate || wantClear)) aggWrite(b, rd, oldR, aggDoc, canCreateAgg, aref, nid + "_" + uid);
               return b.commit();
             };
-            var run = function (withCtx, withBuzz, withAgg) {
-              return go(withCtx, withBuzz, withAgg).catch(function (e) {
+            var run = function (cur, data, withCtx, withBuzz, withAgg) {
+              return go(cur, data, withCtx, withBuzz, withAgg).catch(function (e) {
                 /* пока правила базы не обновлены, сводка оценок, счётчик обсуждаемого и поле ctx отклоняются: сохраняем без них */
-                if (isDenied(e) && withAgg) return run(withCtx, withBuzz, false);
-                if (isDenied(e) && withBuzz && text) return run(withCtx, false, false);
-                if (isDenied(e) && withCtx && wantRate && OFFSTAGE) return run(false, false, false);
+                if (isDenied(e) && withAgg) return run(cur, data, withCtx, withBuzz, false);
+                if (isDenied(e) && withBuzz && text) return run(cur, data, withCtx, false, false);
+                if (isDenied(e) && withCtx && wantRate && OFFSTAGE) return run(cur, data, false, false, false);
                 throw e;
               });
             };
-            return run(true, true, true);
+            /* Правила проверяют имя и подтверждённую страницу автора по базе. В памяти браузера они могут быть
+               устаревшими (например, старая заявка после переименования страницы), поэтому при отказе перечитываем
+               профиль, заявки и лимиты и пробуем ещё раз. Последняя попытка — без привязки к странице автора:
+               лучше опубликовать текст, чем не опубликовать его вовсе. */
+            var attempt = function (cur, step) {
+              var data;
+              try { data = prepare(cur); } catch (e) { return Promise.reject(e); }
+              var ok = function () { return data; };
+              return run(cur, data, true, true, true).then(ok, function (e) {
+                if (!text || !isDenied(e) || !state.user) throw e;
+                if (step === 0) {
+                  return loadMe(state.user, true)
+                    .then(function () { return readUsage("d"); })
+                    .then(function (cur2) { return attempt(cur2, 1); });
+                }
+                if (step === 1 && data.cdata.authorPersonId) {
+                  delete data.cdata.authorPersonId;
+                  return run(cur, data, true, true, true).then(ok);
+                }
+                throw e;
+              });
+            };
+            return attempt(cur, 0).then(function (data) {
+              if (data.cdata) {
+                newComment = data.cdata;
+                newComment.id = data.cref.path.split("/").pop();
+              }
+            });
           });
         }).then(function () {
           clearDraft();
