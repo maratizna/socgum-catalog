@@ -1336,9 +1336,18 @@
         showState();
       }
 
-      var rules = el("p", { class: "c-rules" },
-        el("strong", { text: "Мат не проходит. " }),
-        "Комментарий с нецензурными словами не отправится: перепишите его. Пишите о номере и по делу, без оскорблений.");
+      /* Правила — шапка самого поля комментария, а не отдельная плашка.
+         Один визуальный контейнер с textarea: общий фон, рамка и разделитель. */
+      var rules = el("div", { class: "c-rules" },
+        el("div", { class: "c-rules-h" },
+          el("span", { class: "c-rules-ico", "aria-hidden": "true" }),
+          el("strong", { text: "Правила написания рецензий" })),
+        el("ul", { class: "c-rules-list" },
+          el("li", { text: "без мата" }),
+          el("li", { text: "без оскорблений" }),
+          el("li", { text: "без рекламы и ссылок" }),
+          el("li", { text: "без нейрослопа, пишите самостоятельно" }),
+          el("li", { text: "содержательные" })));
 
       ta.addEventListener("input", function () { syncSend(); saveDraft(); });
       var f = el("form", { onsubmit: function (ev) {
@@ -1427,7 +1436,7 @@
       } },
         replyTo && el("p", { class: "c-replyto" }, "Ответ для " + replyTo.authorName + " ",
           el("button", { type: "button", class: "linkbtn", text: "отменить", onclick: function () { replyTo = null; drawForm(); } })),
-        rateBox, rules, ta, el("div", { class: "c-row" }, send,
+        rateBox, el("div", { class: "c-compose" }, rules, ta), el("div", { class: "c-row" }, send,
           el("span", { class: "c-hint", text: "Вы пишете как " + fullName(myName(), myPersonForComment()) + (myDirectorPerson() ? ", постановщик" : "") + ". Не больше " + LIM.comments + " комментариев в день." })));
       form.append(f);
       syncSend();

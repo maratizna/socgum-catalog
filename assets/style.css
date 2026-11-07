@@ -302,8 +302,22 @@ a.btn{text-decoration:none;display:inline-block}
 .rt-total:hover::after,.rt-chip:hover::after,.rt-total:focus-visible::after,.rt-chip:focus-visible::after,.rt-total.is-open::after,.rt-chip.is-open::after{opacity:1;visibility:visible}
 
 /* правило над полем комментария и сортировка */
-.c-rules{margin:0;padding:8px 12px;border-left:3px solid var(--ember);background:var(--coal);color:var(--ash);font-size:.92rem}
-.c-rules strong{color:var(--ink)}
+/* Правила рецензии — шапка самого поля комментария, а не отдельная плашка.
+   Общий фон и рамка с textarea, между ними только тонкий разделитель. */
+.c-compose{border:1px solid var(--line);border-radius:var(--r);background:var(--coal);overflow:hidden}
+.c-compose:hover{border-color:#5a4430}
+.c-compose:focus-within{border-color:var(--ember);box-shadow:0 0 0 1px rgba(255,139,54,.25)}
+.c-rules{margin:0;padding:13px 15px 11px;border-bottom:1px solid var(--line);background:var(--coal);color:var(--ash)}
+.c-rules-h{display:flex;align-items:center;gap:9px;margin:0 0 7px}
+.c-rules-h strong{color:var(--ink);font-size:.95rem;font-weight:600;line-height:1.35}
+.c-rules-ico{position:relative;flex:none;width:20px;height:18px}
+.c-rules-ico::before{content:"";position:absolute;inset:0;background:var(--ink);clip-path:polygon(50% 0,100% 100%,0 100%)}
+.c-rules-ico::after{content:"!";position:absolute;left:50%;top:56%;transform:translate(-50%,-50%);color:var(--coal);font-size:12px;font-weight:700;line-height:1}
+.c-rules-list{margin:0;padding-left:29px;color:var(--ash);font-size:.88rem;line-height:1.5;list-style:disc}
+.c-rules-list li{margin:1px 0}
+.c-rules-list li::marker{color:var(--ash)}
+.c-compose .c-input{display:block;width:100%;min-height:112px;padding:12px 15px;border:0;border-radius:0;background:transparent;resize:vertical}
+.c-compose .c-input:focus{outline:none}
 .c-sort{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-top:16px}
 .c-sort-label{color:var(--ash);font-size:.95rem;margin-right:2px}
 .c-sort+.c-list{margin-top:10px}
