@@ -1442,7 +1442,7 @@
         replyTo && el("p", { class: "c-replyto" }, "Ответ для " + replyTo.authorName + " ",
           el("button", { type: "button", class: "linkbtn", text: "отменить", onclick: function () { replyTo = null; drawForm(); } })),
         rateTitle, rateBox, el("div", { class: "c-compose" }, rules, ta), el("div", { class: "c-row" }, send,
-          el("span", { class: "c-hint", text: "Вы пишете как " + fullName(myName(), myPersonForComment()) + (myDirectorPerson() ? ", постановщик" : "") + ". Не больше " + LIM.comments + " комментариев в день." })));
+          el("span", { class: "c-hint", text: "Не больше " + LIM.comments + " комментариев в день." })));
       form.append(f);
       syncSend();
       note(form, "");
