@@ -1055,3 +1055,7 @@ textarea.ed-in{min-height:110px;resize:vertical;line-height:1.5}
 .add-link:hover{color:var(--ink)}
 select.add-in{appearance:none;background-image:linear-gradient(45deg,transparent 50%,var(--ash) 50%),linear-gradient(135deg,var(--ash) 50%,transparent 50%);background-position:calc(100% - 18px) 50%,calc(100% - 12px) 50%;background-size:6px 6px,6px 6px;background-repeat:no-repeat;padding-right:38px}
 @media (max-width:860px){.add-modes{grid-template-columns:1fr}.add-mode{min-height:0}}
+
+/* подсказка про работы направлений в шаге выбора */
+.add-works-hint{margin:16px 0 6px}
+.num-add[hidden]{display:none}

@@ -2970,6 +2970,10 @@
     mainEl.insertBefore(bar, mainEl.querySelector(".num-actions") || null);
 
     function adminOn() { return !!(state.ready && state.user && state.admin); }
+    function toggleAddLink() {
+      var a = document.getElementById("num-add");
+      if (a) a.hidden = adminOn();
+    }
     function splitNames(v) { return String(v || "").split(/[,;]+/).map(function (s) { return s.trim(); }).filter(Boolean); }
     function cName(c) { return (c && (c.name || c.title)) || ""; }
     function dirNames(d) {
@@ -2987,6 +2991,7 @@
     }
 
     function drawBar() {
+      toggleAddLink();
       if (!adminOn()) { bar.hidden = true; return; }
       bar.hidden = false;
       if (E.open) return;
@@ -3269,15 +3274,16 @@
       { k: "choreographers", label: "Постановщики", type: "area", hint: "Через запятую." },
       { k: "about", label: "Описание", type: "area", hint: "Как проходит номер, откуда музыка — что важно знать зрителю." }
     ];
-    var D = { data: null, dataErr: false, mode: "", team: false, qc: "", concert: "", cur: null, busy: false, done: false };
+    var D = { data: null, dataErr: false, mode: "", team: false, qc: "", concert: "", cur: null, busy: false, done: false, patchId: "" };
     var MODES = {
-      concert: ["Концерт", "≈ 1 минута", "Название, дата, ссылка на запись, описание и обложка. Концерт появится в каталоге."],
-      number: ["Номер и команда направления", "≈ 2 минуты", "Новый номер к концерту или команда внесценического направления: SMM, сценарка, админка, декор, рабы сцены, футажи."],
-      patch: ["Дополнить номер", "≈ 2 минуты", "Дописать участников, постановщиков, время, обложку и описание к номеру, который уже есть."]
+      concert: ["Добавить концерт", "≈ 1 минута", "Название, дата, ссылка на запись, описание и обложка. Концерт появится в каталоге."],
+      number: ["Добавить номер или команду направления", "≈ 2 минуты", "Новый номер к концерту или команда внесценического направления: SMM, сценарка, админка, декор, рабы сцены, футажи."],
+      patch: ["Дополнить номер или работу направления", "≈ 2 минуты", "Дописать участников, постановщиков, время, обложку и описание — к номеру концерта или к работе внесценического направления."]
     };
 
     function modeNow() {
       var h = String(location.hash || "").replace("#", "");
+      if (h.indexOf("patch=") === 0) { D.patchId = decodeURIComponent(h.slice(6)); return "patch"; }
       if (h === "concert" || h === "patch") return h;
       if (h === "number" || h === "team") return "number";
       return "";
@@ -3582,24 +3588,46 @@
       sec.append(concertPicks());
       return sec;
     }
+    function isOffstageDir(d) { return OFFSTAGE.indexOf(String(d || "")) >= 0; }
+    function works() { return allNumbers().filter(function (n) { return isOffstageDir(n.direction); }); }
+
+    function numberRow(n, extras) {
+      var m = missing(n);
+      var sub = [n.concert, n.direction, n.start ? "с " + n.start : ""].filter(Boolean).join(" · ");
+      return el("li", null, el("button", { type: "button", class: "add-row" + (D.cur && D.cur.id === n.id ? " is-on" : ""),
+        onclick: function () { D.cur = n; D.done = false; draw(); } },
+        el("span", { class: "add-row-main" },
+          el("b", { class: "add-row-t", text: n.title || "Без названия" }),
+          el("span", { class: "add-row-s", text: sub + (extras ? " · " + extras : "") })),
+        m.length ? chips(m) : el("span", { class: "add-chip add-chip-ok", text: "всё заполнено" })));
+    }
+
     function numberStep() {
       var sec = el("section", { class: "add-step" });
-      sec.append(stepHead("2", "Номер", "бейджи показывают, чего не хватает"));
-      if (!D.concert) { sec.append(el("p", { class: "add-hint", text: "Сначала выберите концерт — покажем его номера." })); return sec; }
-      var list = numbersOf(D.concert);
-      if (!list.length) { sec.append(el("p", { class: "add-hint", text: "У этого концерта пока нет номеров на сайте. Напишите администратору — их добавят." })); return sec; }
-      var ul = el("ul", { class: "add-rows" });
-      list.forEach(function (n) {
-        var m = missing(n);
-        var btn = el("button", { type: "button", class: "add-row" + (D.cur && D.cur.id === n.id ? " is-on" : ""),
-          onclick: function () { D.cur = n; D.done = false; draw(); } },
-          el("span", { class: "add-row-main" },
-            el("b", { class: "add-row-t", text: n.title || "Без названия" }),
-            el("span", { class: "add-row-s", text: [n.direction, n.start ? "с " + n.start : ""].filter(Boolean).join(" · ") })),
-          m.length ? chips(m) : el("span", { class: "add-chip add-chip-ok", text: "всё заполнено" }));
-        ul.append(el("li", null, btn));
-      });
-      sec.append(ul);
+      sec.append(stepHead("2", "Номер или работа направления", "бейджи показывают, чего не хватает"));
+      var shown = 0;
+      if (D.concert) {
+        var list = numbersOf(D.concert);
+        if (list.length) {
+          var ul = el("ul", { class: "add-rows" });
+          list.forEach(function (n) { ul.append(numberRow(n)); });
+          sec.append(ul);
+          shown += list.length;
+        } else {
+          sec.append(el("p", { class: "add-hint", text: "У этого концерта пока нет номеров на сайте. Напишите администратору — их добавят." }));
+        }
+      }
+      var ws = works().filter(function (n) { return !D.concert || n.concert !== D.concert; });
+      if (ws.length) {
+        sec.append(el("p", { class: "add-hint add-works-hint", text: D.concert
+          ? "Или работа внесценического направления — из любого концерта:"
+          : "Можно сразу выбрать работу внесценического направления:" }));
+        var uw = el("ul", { class: "add-rows" });
+        ws.forEach(function (n) { uw.append(numberRow(n)); });
+        sec.append(uw);
+        shown += ws.length;
+      }
+      if (!shown) sec.append(el("p", { class: "add-hint", text: "Сначала выберите концерт — покажем его номера и работы направлений." }));
       return sec;
     }
     function picked() {
@@ -3615,7 +3643,7 @@
       }
       var body = el("div", { class: "add-picked-body" },
         el("h2", { class: "add-picked-t", text: n.title || "Без названия" }),
-        el("p", { class: "add-picked-s", text: [n.concert, n.direction, [n.start, n.end].filter(Boolean).join("–")].filter(Boolean).join(" · ") }));
+        el("p", { class: "add-picked-s", text: [isOffstageDir(n.direction) ? "работа направления" : "", n.direction, n.concert, [n.start, n.end].filter(Boolean).join("–")].filter(Boolean).join(" · ") }));
       var m = missing(n);
       if (m.length) body.append(chips(m, "add-chip-warn"));
       if (n.url) body.append(el("a", { class: "add-link", href: n.url, target: "_blank", rel: "noopener", text: "Открыть страницу на сайте ↗" }));
@@ -3625,21 +3653,25 @@
     function patchForm() {
       var n = D.cur;
       var c = concertByName(n.concert);
+      var offstage = isOffstageDir(n.direction);
       var form = el("form", { class: "add-form" });
-      var timing = el("div", { class: "add-timing" });
-      timing.append(
-        el("div", { class: "add-timing-head" },
-          el("b", { text: "Время номера в записи" }),
-          c && c.video ? el("a", { class: "add-link", href: c.video, target: "_blank", rel: "noopener", text: "Открыть запись концерта ↗" }) : null));
-      var row = el("div", { class: "add-time-row" });
-      [["start", "Начало", "0:52:10"], ["end", "Конец", "0:58:10"]].forEach(function (x) {
-        var inp = el("input", { class: "add-in add-time", type: "text", inputmode: "numeric", placeholder: x[2] });
-        inp.dataset.k = x[0]; inp.dataset.was = n[x[0]] || ""; inp.value = n[x[0]] || "";
-        row.append(el("label", { class: "add-field" }, el("span", { class: "add-label", text: x[1] }), inp));
-      });
-      timing.append(row);
-      timing.append(el("p", { class: "add-hint", text: "Включите запись, остановите на начале номера и впишите время: принимаем 0:52:10 и 52:10." }));
-      form.append(timing);
+      var canTime = !!c && (!!c.video || has(n, "start") || has(n, "end"));
+      if (canTime) {
+        var timing = el("div", { class: "add-timing" });
+        timing.append(
+          el("div", { class: "add-timing-head" },
+            el("b", { text: offstage ? "Время работы в записи концерта" : "Время номера в записи" }),
+            c && c.video ? el("a", { class: "add-link", href: c.video, target: "_blank", rel: "noopener", text: "Открыть запись концерта ↗" }) : null));
+        var row = el("div", { class: "add-time-row" });
+        [["start", "Начало", "0:52:10"], ["end", "Конец", "0:58:10"]].forEach(function (x) {
+          var inp = el("input", { class: "add-in add-time", type: "text", inputmode: "numeric", placeholder: x[2] });
+          inp.dataset.k = x[0]; inp.dataset.was = n[x[0]] || ""; inp.value = n[x[0]] || "";
+          row.append(el("label", { class: "add-field" }, el("span", { class: "add-label", text: x[1] }), inp));
+        });
+        timing.append(row);
+        timing.append(el("p", { class: "add-hint", text: "Включите запись, остановите на начале номера и впишите время: принимаем 0:52:10 и 52:10." }));
+        form.append(timing);
+      }
 
       var grid = el("div", { class: "add-grid" });
       FIELDS.forEach(function (f) {
@@ -3713,6 +3745,15 @@
 
       if (D.dataErr) { box.append(errorState("Не удалось загрузить каталог.", function () { D.dataErr = false; loadData().then(function () { draw(); }); })); return; }
       if (!D.data) { box.append(loadingState("Загружаем каталог…")); loadData().then(function () { draw(doneTitle); }); return; }
+      if (D.patchId && !D.cur) {
+        var want = String(D.patchId);
+        var found = allNumbers().filter(function (n) { return n.id === want; })[0];
+        if (found) { D.cur = found; D.concert = found.concert || ""; D.qc = ""; }
+        D.patchId = "";
+        try { history.replaceState(null, "", "#patch"); } catch (e) { }
+        draw(doneTitle);
+        return;
+      }
       box.append(identSection());
 
       if (D.mode === "concert") { box.append(concertFormView()); return; }
@@ -3726,7 +3767,7 @@
       var wrap = el("div", { class: "add-work" });
       wrap.append(backLink("← Добавить в каталог"));
       wrap.append(concertStep());
-      if (D.concert) wrap.append(numberStep());
+      wrap.append(numberStep());
       if (D.cur && D.done) wrap.append(none("Заявка отправлена",
         "Администратор проверит дополнение и нажмёт «Обновить сайт» — правку увидят все.",
         "patch", false));
@@ -3736,7 +3777,11 @@
 
     window.addEventListener("hashchange", function () {
       var m = modeNow();
-      if (m && m !== D.mode) { D.mode = m; D.done = false; draw(); }
+      if (m && m !== D.mode) {
+        D.mode = m; D.done = false;
+        if (!D.patchId) { D.cur = null; D.concert = ""; D.qc = ""; }
+        draw();
+      }
     });
     views.push(draw);
     draw();

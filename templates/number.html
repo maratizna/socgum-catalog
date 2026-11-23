@@ -44,6 +44,7 @@
           <div class="share-box pop-panel" id="share-box" role="dialog" aria-label="Поделиться номером" hidden></div>
         </div>
         {% if firebase %}
+        <a class="add-btn add-btn-s num-add" id="num-add" href="{{ root or './' }}add/#patch={{ n.id }}">{{ 'Дополнить работу направления' if n.offstage else 'Дополнить номер' }}</a>
         <div id="pl-add" class="pl-add" data-number="{{ n.id }}"></div>
         {% endif %}
       </div>
