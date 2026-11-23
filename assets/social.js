@@ -671,7 +671,8 @@
     page: '<svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><circle cx="12" cy="8" r="4" fill="none" stroke="currentColor" stroke-width="2"/><path d="M4.5 20c.8-3.6 3.7-5.5 7.5-5.5s6.7 1.9 7.5 5.5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>',
     gear: '<svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><circle cx="12" cy="12" r="3.2" fill="none" stroke="currentColor" stroke-width="2"/><path d="M12 2.8v3M12 18.2v3M2.8 12h3M18.2 12h3M5.5 5.5l2.1 2.1M16.4 16.4l2.1 2.1M18.5 5.5l-2.1 2.1M7.6 16.4l-2.1 2.1" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>',
     admin: '<svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><path d="M12 3l7.5 3v5.5c0 4.6-3.1 8.2-7.5 9.5-4.4-1.3-7.5-4.9-7.5-9.5V6z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/></svg>',
-    pencil: '<svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><path d="M4 20h4L18.5 9.5l-4-4L4 16v4z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/><path d="M13.5 6.5l4 4" stroke="currentColor" stroke-width="2"/></svg>'
+    pencil: '<svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><path d="M4 20h4L18.5 9.5l-4-4L4 16v4z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/><path d="M13.5 6.5l4 4" stroke="currentColor" stroke-width="2"/></svg>',
+    plus: '<svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><circle cx="12" cy="12" r="9" fill="none" stroke="currentColor" stroke-width="2"/><path d="M12 8v8M8 12h8" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>'
   };
   function umItem(href, icon, text, extra) {
     var a = el("a", { class: "um-item", role: "menuitem", href: href });
@@ -699,6 +700,7 @@
         el("div", { class: "um-head" }, avatarNode(uid, nm, "s"),
           el("div", { class: "um-who" }, el("b", { text: nm }), state.admin ? el("span", { class: "c-hint", text: "Администратор" }) : null)),
         umItem(ownPageUrl(), "page", "Моя страница"),
+        umItem(ROOT + "add/", "plus", "Добавить номер"),
         umItem(ROOT + "settings/", "gear", "Настройки профиля"));
       var admItem = null;
       if (state.admin) { admItem = umItem(ROOT + "account/", "admin", "Кабинет администратора"); menu.append(admItem, umItem(ROOT + "admin/", "pencil", "Правка каталога")); }
@@ -2935,6 +2937,284 @@
     draw();
   }
 
+  /* ------------------------------------------------------------ дополнение номера
+     Страница /add/. Любой вошедший может предложить дополнение к номеру: коллектив,
+     участники, постановщики, время, обложка, описание. Заявка уходит документом в
+     submissions/{id}; администратор принимает её в /admin/, после чего сборка на GitHub
+     переносит поля в Google Таблицу (tools/apply_edits.py) и сайт пересобирается. */
+  function initAdd() {
+    var box = document.getElementById("add");
+    if (!box) return;
+
+    var FIELDS = [
+      { k: "collective", label: "Коллектив", ph: "Например: Limerence", hint: "Сольный номер — оставьте пустым." },
+      { k: "cover", label: "Обложка", ph: "ссылка на картинку", hint: "Прямая ссылка или имя файла в папке covers. Сжать картинку можно на squoosh.app." },
+      { k: "performers", label: "Участники", type: "area", hint: "Через запятую, имена так же, как на странице человека: Алиев Марат, Куницына Арина." },
+      { k: "choreographers", label: "Постановщики", type: "area", hint: "Через запятую." },
+      { k: "about", label: "Описание", type: "area", hint: "Как проходит номер, откуда музыка — что важно знать зрителю." }
+    ];
+    var D = { data: null, dataErr: false, qc: "", concert: "", cur: null, busy: false, done: false };
+
+    function loadData() {
+      return fetch(ROOT + "admin.json", { cache: "no-store" }).then(function (r) {
+        if (!r.ok) throw new Error("admin.json: " + r.status);
+        return r.json();
+      }).then(function (d) { D.data = d; D.dataErr = false; }, function (e) { D.dataErr = true; console.error(e); });
+    }
+    function concerts() { return (D.data && D.data.concerts) || []; }
+    function allNumbers() { return (D.data && D.data.numbers) || []; }
+    function numbersOf(name) {
+      return allNumbers().filter(function (n) { return !name || n.concert === name; });
+    }
+    function concertByName(name) {
+      var c = concerts().filter(function (x) { return x.name === name; })[0];
+      return c || null;
+    }
+    function has(n, k) { return String(n[k] || "").trim() !== ""; }
+    function missing(n) {
+      var out = [];
+      if (!has(n, "collective")) out.push("нет коллектива");
+      if (!has(n, "performers")) out.push("нет участников");
+      if (!has(n, "choreographers")) out.push("нет постановщиков");
+      if (!has(n, "start") && !has(n, "end")) out.push("нет времени");
+      if (!has(n, "cover")) out.push("нет обложки");
+      if (!has(n, "about")) out.push("нет описания");
+      return out;
+    }
+    function chips(list, cls) {
+      var w = el("span", { class: "add-badges" });
+      list.forEach(function (t) { w.append(el("span", { class: "add-chip" + (cls ? " " + cls : ""), text: t })); });
+      return w;
+    }
+
+    function identValue(k) {
+      var u = state.user;
+      if (k === "name") return myName();
+      if (k === "email") return (u && u.email) || "";
+      if (k === "nick") return nicks[u.uid] || "";
+      if (k === "links") {
+        var l = userLinks[u.uid] || {};
+        return Object.keys(l).map(function (x) { return l[x]; }).filter(Boolean).join(", ");
+      }
+      return "";
+    }
+    function identRow(k, label, ph) {
+      var inp = el("input", { class: "add-in", type: "text", placeholder: ph || "" });
+      inp.dataset.idk = k;
+      inp.value = identValue(k);
+      return el("label", { class: "add-field" }, el("span", { class: "add-label", text: label }), inp);
+    }
+
+    function stepHead(num, title, hint) {
+      return el("div", { class: "add-step-head" },
+        el("span", { class: "add-step-num", text: num }),
+        el("h2", { class: "add-step-title", text: title }),
+        hint ? el("span", { class: "add-step-hint", text: hint }) : null);
+    }
+
+    function concertStep() {
+      var sec = el("section", { class: "add-step" });
+      sec.append(stepHead("1", "Концерт", "поиск по названию, году и направлению"));
+      var inp = el("input", { class: "add-in add-search", type: "search", placeholder: "Например: гала, студвесна, 2025" });
+      inp.value = D.qc;
+      inp.addEventListener("input", function () {
+        D.qc = inp.value;
+        var list = sec.querySelector(".add-picks");
+        if (list) list.replaceWith(concertPicks());
+      });
+      sec.append(inp);
+      sec.append(concertPicks());
+      return sec;
+    }
+    function concertPicks() {
+      var q = norm(D.qc);
+      var list = concerts().filter(function (c) { return !q || norm(c.name + " " + (c.season || "") + " " + (c.year || "")).indexOf(q) >= 0; });
+      var ul = el("ul", { class: "add-picks" });
+      if (!list.length) { ul.append(el("li", { class: "add-empty", text: "Ничего не нашлось. Попробуйте год или часть названия." })); return ul; }
+      list.slice(0, 12).forEach(function (c) {
+        var n = numbersOf(c.name).length;
+        var b = el("button", { type: "button", class: "add-pick" + (D.concert === c.name ? " is-on" : ""),
+          onclick: function () { D.concert = c.name; D.cur = null; D.done = false; draw(); } },
+          el("span", { class: "add-pick-t", text: c.name || "Без названия" }),
+          el("span", { class: "add-pick-s", text: [c.season ? "учебный год " + c.season : "", n ? n + " " + plural(n, "номер", "номера", "номеров") : "номера не заведены"].filter(Boolean).join(" · ") }));
+        ul.append(el("li", null, b));
+      });
+      return ul;
+    }
+
+    function numberStep() {
+      var sec = el("section", { class: "add-step" });
+      sec.append(stepHead("2", "Номер", "бейджи показывают, чего не хватает"));
+      if (!D.concert) { sec.append(el("p", { class: "add-hint", text: "Сначала выберите концерт — покажем его номера." })); return sec; }
+      var list = numbersOf(D.concert);
+      if (!list.length) { sec.append(el("p", { class: "add-hint", text: "У этого концерта пока нет номеров на сайте. Напишите администратору — их добавят." })); return sec; }
+      var ul = el("ul", { class: "add-rows" });
+      list.forEach(function (n) {
+        var m = missing(n);
+        var btn = el("button", { type: "button", class: "add-row" + (D.cur && D.cur.id === n.id ? " is-on" : ""),
+          onclick: function () { D.cur = n; D.done = false; draw(); } },
+          el("span", { class: "add-row-main" },
+            el("b", { class: "add-row-t", text: n.title || "Без названия" }),
+            el("span", { class: "add-row-s", text: [n.direction, n.start ? "с " + n.start : ""].filter(Boolean).join(" · ") })),
+          m.length ? chips(m) : el("span", { class: "add-chip add-chip-ok", text: "всё заполнено" }));
+        ul.append(el("li", null, btn));
+      });
+      sec.append(ul);
+      return sec;
+    }
+
+    function picked() {
+      var n = D.cur;
+      var card = el("article", { class: "add-picked" });
+      var cover;
+      if (has(n, "cover")) {
+        var src = n.cover;
+        if (src.indexOf("http") !== 0) src = ROOT + "covers/" + src;
+        cover = el("img", { class: "add-picked-img", src: src, alt: "" });
+      } else {
+        cover = el("span", { class: "add-picked-img add-picked-img-empty", text: "нет обложки" });
+      }
+      var body = el("div", { class: "add-picked-body" },
+        el("h2", { class: "add-picked-t", text: n.title || "Без названия" }),
+        el("p", { class: "add-picked-s", text: [n.concert, n.direction, [n.start, n.end].filter(Boolean).join("–")].filter(Boolean).join(" · ") }));
+      var m = missing(n);
+      if (m.length) body.append(chips(m, "add-chip-warn"));
+      if (n.url) body.append(el("a", { class: "add-link", href: n.url, target: "_blank", rel: "noopener", text: "Открыть страницу на сайте ↗" }));
+      card.append(cover, body);
+      return card;
+    }
+
+    function formBlock() {
+      var n = D.cur;
+      var c = concertByName(n.concert);
+      var form = el("form", { class: "add-form" });
+      var timing = el("div", { class: "add-timing" });
+      timing.append(
+        el("div", { class: "add-timing-head" },
+          el("b", { text: "Время номера в записи" }),
+          c && c.video ? el("a", { class: "add-link", href: c.video, target: "_blank", rel: "noopener", text: "Открыть запись концерта ↗" }) : null));
+      [
+        [{ k: "start", label: "Начало", ph: "0:52:10" }, { k: "end", label: "Конец", ph: "0:58:10" }]
+      ].forEach(function (pair) {
+        var row = el("div", { class: "add-time-row" });
+        pair.forEach(function (f) {
+          var inp = el("input", { class: "add-in add-time", type: "text", inputmode: "numeric", placeholder: f.ph });
+          inp.dataset.k = f.k; inp.dataset.was = n[f.k] || ""; inp.value = n[f.k] || "";
+          row.append(el("label", { class: "add-field" }, el("span", { class: "add-label", text: f.label }), inp));
+        });
+        timing.append(row);
+      });
+      timing.append(el("p", { class: "add-hint", text: "Включите запись, остановите на начале номера и впишите время: принимаем 0:52:10 и 52:10." }));
+      form.append(timing);
+
+      var grid = el("div", { class: "add-grid" });
+      FIELDS.forEach(function (f) {
+        var inp;
+        if (f.type === "area") {
+          inp = el("textarea", { class: "add-in add-area", rows: f.k === "about" ? 4 : 2, placeholder: "" });
+        } else {
+          inp = el("input", { class: "add-in", type: "text", placeholder: f.ph || "" });
+        }
+        inp.dataset.k = f.k;
+        inp.dataset.was = n[f.k] || "";
+        inp.value = n[f.k] || "";
+        grid.append(el("label", { class: "add-field" + (f.type === "area" ? " add-field-wide" : "") },
+          el("span", { class: "add-label", text: f.label }), inp,
+          f.hint ? el("span", { class: "add-hint", text: f.hint }) : null));
+      });
+      form.append(grid);
+      form.append(el("div", { class: "add-actions" },
+        el("button", { type: "submit", class: "btn", text: "Отправить заявку" }),
+        el("span", { class: "msg", role: "status" })));
+      form.addEventListener("submit", function (e) { e.preventDefault(); send(form); });
+      return form;
+    }
+
+    function send(form) {
+      if (D.busy) return;
+      var msg = form.querySelector(".msg");
+      var n = D.cur, fields = {}, changed = 0, bad = "";
+      Array.prototype.forEach.call(form.querySelectorAll("[data-k]"), function (inp) {
+        var k = inp.dataset.k, v = inp.value.trim();
+        if (v === (inp.dataset.was || "")) return;
+        fields[k] = v; changed++;
+      });
+      if (!changed) { if (msg) { msg.className = "msg"; msg.textContent = "Ничего не изменили — заполните хотя бы одно поле."; } return; }
+      var t = /^\d{1,2}(:\d{1,2}){1,2}$/;
+      if (fields.start && !t.test(fields.start)) bad = "Начало — мм:сс или ч:мм:сс.";
+      else if (fields.end && !t.test(fields.end)) bad = "Конец — мм:сс или ч:мм:сс.";
+      else Object.keys(fields).forEach(function (k) {
+        if (bad) return;
+        if (k === "about" && fields[k].length > 4000) bad = "Описание слишком длинное.";
+        else if (k !== "about" && fields[k].length > 1000) bad = "Одно из полей слишком длинное.";
+      });
+      if (bad) { if (msg) { msg.className = "msg msg-err"; msg.textContent = bad; } return; }
+
+      var ident = {};
+      Array.prototype.forEach.call(box.querySelectorAll("[data-idk]"), function (inp) { ident[inp.dataset.idk] = inp.value.trim(); });
+      D.busy = true;
+      Array.prototype.forEach.call(form.querySelectorAll("button"), function (b) { b.disabled = true; });
+      if (msg) { msg.className = "msg"; msg.textContent = "Отправляем заявку…"; }
+      fb.f.addDoc(fcol("submissions"), {
+        kind: "number", targetId: n.id, number: n.title || "", concert: n.concert || "",
+        fields: fields,
+        authorName: (ident.name || "").slice(0, 100), authorEmail: (ident.email || "").slice(0, 200),
+        authorNick: (ident.nick || "").slice(0, 60), authorLinks: (ident.links || "").slice(0, 400),
+        uid: state.user.uid, createdAt: fb.f.serverTimestamp(), status: "new"
+      }).then(function () {
+        D.busy = false; D.done = true;
+        toast("Заявка отправлена. Администратор проверит её и перенесёт в таблицу.");
+        draw();
+      }, function (e) {
+        D.busy = false;
+        Array.prototype.forEach.call(form.querySelectorAll("button"), function (b) { b.disabled = false; });
+        if (msg) {
+          msg.className = "msg msg-err";
+          msg.textContent = isDenied(e)
+            ? "Нет прав на отправку. Скорее всего, в базе ещё не опубликованы правила — напишите тому, кто ведёт сайт."
+            : errText(e);
+        }
+      });
+    }
+
+    function thanksBlock() {
+      return el("div", { class: "add-done" },
+        el("h2", { class: "add-done-t", text: "Заявка отправлена" }),
+        el("p", { class: "add-hint", text: "Администратор проверит дополнение и перенесёт его в Google Таблицу — после этого сайт пересоберётся сам, и правку увидят все. Обычно это занимает день." }),
+        el("button", { type: "button", class: "btn", text: "Дополнить другой номер", onclick: function () { D.done = false; D.cur = null; draw(); } }));
+    }
+
+    function draw() {
+      clear(box);
+      if (!state.ready) { box.append(loadingState("Проверяем вход…")); return; }
+      if (!state.user) {
+        box.append(signInPrompt("Войдите, чтобы дополнить номер",
+          "Так администратор узнает, кого спросить, а новые номера привяжутся к вашей странице. Смотреть каталог можно и без входа."));
+        return;
+      }
+      if (D.dataErr) { box.append(errorState("Не удалось загрузить каталог.", function () { D.dataErr = false; loadData().then(draw); })); return; }
+      if (!D.data) { box.append(loadingState("Загружаем каталог…")); loadData().then(draw); return; }
+
+      var ident = el("section", { class: "add-ident" });
+      ident.append(el("h2", { class: "add-step-title", text: "Кто отправляет" }),
+        el("p", { class: "add-hint", text: "Заполнено из профиля — поправьте, если нужно. Почту и имя видит только администратор." }),
+        el("div", { class: "add-grid add-grid-4" },
+          identRow("name", "Имя и фамилия"), identRow("email", "Почта"),
+          identRow("nick", "Ник на сайте", "@ник"), identRow("links", "Ссылки", "через запятую")));
+      box.append(ident);
+
+      var wrap = el("div", { class: "add-work" });
+      wrap.append(concertStep());
+      if (D.concert) wrap.append(numberStep());
+      if (D.cur && D.done) wrap.append(thanksBlock());
+      else if (D.cur) { wrap.append(picked()); wrap.append(formBlock()); }
+      box.append(wrap);
+    }
+
+    views.push(draw);
+    draw();
+  }
+
   /* ------------------------------------------------------------ правка каталога
      Страница /admin/. Администратор меняет поля номера, концерта или человека.
      Правка уходит документом в edits/{id}; её переносит в Google Таблицу сборка на GitHub
@@ -2945,7 +3225,8 @@
     var REPO = "maratizna/socgum-catalog";
     var KIND = { numbers: "number", concerts: "concert", people: "person" };
     var A = { tab: "numbers", q: "", data: null, dataErr: false, cur: null, busy: false,
-              meta: null, metaErr: false, queue: [], queueErr: false };
+              meta: null, metaErr: false, queue: [], queueErr: false,
+              subs: [], subsErr: false, subsBusy: false };
 
     var NUM_FIELDS = [
       { k: "title", label: "Название", req: true },
@@ -3009,7 +3290,20 @@
         sn.forEach(function (d) { var v = d.data(); v.id = d.id; A.queue.push(v); });
       }, function (e) { A.queueErr = true; console.error(e); });
     }
-    function reload() { return Promise.all([loadMeta(), loadQueue()]).then(draw); }
+    /* заявки с /add/: ждут проверки (new) или ждут переноса в таблицу (approved) */
+    function loadSubs() {
+      A.subsErr = false;
+      return fb.f.getDocs(fb.f.query(fcol("submissions"), fb.f.where("status", "in", ["new", "approved"]), fb.f.limit(30))).then(function (sn) {
+        A.subs = [];
+        sn.forEach(function (d) { var v = d.data(); v.id = d.id; A.subs.push(v); });
+        A.subs.sort(function (a, b) {
+          var ta = a.createdAt && a.createdAt.toMillis ? a.createdAt.toMillis() : 0;
+          var tb = b.createdAt && b.createdAt.toMillis ? b.createdAt.toMillis() : 0;
+          return tb - ta;
+        });
+      }, function (e) { A.subsErr = true; console.error(e); });
+    }
+    function reload() { return Promise.all([loadMeta(), loadQueue(), loadSubs()]).then(draw); }
 
     function dispatchBuild() {
       var pat = (A.meta && A.meta.ghPat) || "";
@@ -3162,7 +3456,7 @@
     }
 
     function statusChip(st) {
-      var map = { new: "в очереди", applied: "применено", error: "ошибка" };
+      var map = { new: "в очереди", applied: "применено", error: "ошибка", approved: "принята", rejected: "отклонена" };
       return el("span", { class: "adm-chip adm-chip-" + (st || "new"), text: map[st] || st || "—" });
     }
     function fmtStamp(ts) {
@@ -3190,6 +3484,65 @@
         wrap.append(ul);
       }
       return wrap;
+    }
+
+    function renderSubs() {
+      var wrap = el("section", { class: "adm-card adm-subs" });
+      wrap.append(el("h2", { class: "adm-h2", text: "Заявки с сайта" }));
+      if (A.subsErr) {
+        wrap.append(el("p", { class: "c-hint", text: "Не удалось прочитать заявки. Проверьте права администратора и правила базы." }));
+        return wrap;
+      }
+      if (!A.subs.length) {
+        wrap.append(el("p", { class: "c-hint", text: "Заявок пока нет. Всё, что пришлют через страницу «Дополнить номер», появится здесь." }));
+        return wrap;
+      }
+      var ul = el("ul", { class: "adm-queue-list" });
+      A.subs.forEach(function (s) {
+        var flds = s.fields || {}, keys = Object.keys(flds);
+        var det = keys.map(function (k) { return k + ": " + String(flds[k]).slice(0, 60); }).join("; ");
+        var right = el("span", { class: "adm-queue-r" });
+        if (s.status === "new") {
+          right.append(
+            el("button", { type: "button", class: "btn btn-s", text: "Принять", onclick: function () { decide(s, "approved"); } }),
+            el("button", { type: "button", class: "btn btn-s btn-ghost", text: "Отклонить", onclick: function () { decide(s, "rejected"); } }));
+        } else {
+          right.append(statusChip(s.status));
+        }
+        right.append(el("span", { class: "c-hint", text: fmtStamp(s.createdAt) }));
+        ul.append(el("li", { class: "adm-queue-item" },
+          el("span", { class: "adm-queue-t", text: kindLabel(s.kind) + ": " + (s.number || s.targetId || "") }),
+          el("span", { class: "c-hint", text: [s.concert, s.authorName, s.authorEmail, keys.length + " пол."].filter(Boolean).join(" · ") }),
+          det ? el("span", { class: "c-hint adm-sub-det", text: det }) : null,
+          right));
+      });
+      wrap.append(ul);
+      return wrap;
+    }
+
+    function decide(s, status) {
+      if (A.subsBusy) return;
+      A.subsBusy = true;
+      fb.f.setDoc(fdoc("submissions/" + s.id), {
+        status: status,
+        approvedBy: state.user.email || state.user.uid,
+        approvedAt: fb.f.serverTimestamp()
+      }, { merge: true }).then(function () {
+        A.subsBusy = false;
+        if (status === "approved") {
+          toast("Заявка принята. Обновляем сайт…");
+          dispatchBuild().then(function (res) {
+            toast(res === "sent" ? "Заявка принята. Сайт обновится через 1–2 минуты."
+              : "Заявка принята. Сборка — по расписанию, до 10 минут.");
+          });
+        } else {
+          toast("Заявка отклонена.");
+        }
+        return reload();
+      }, function (e) {
+        A.subsBusy = false;
+        toast(isDenied(e) ? "Нет прав на это действие. Проверьте правила базы." : errText(e));
+      });
     }
 
     function renderSync() {
@@ -3263,7 +3616,7 @@
       head.append(tabs, search);
       box.append(head);
       if (A.cur) box.append(renderForm()); else box.append(renderList());
-      box.append(renderQueue(), renderSync());
+      box.append(renderSubs(), renderQueue(), renderSync());
     }
 
     views.push(draw);
@@ -3273,7 +3626,7 @@
   /* ------------------------------------------------------------ запуск */
   var slot = document.getElementById("auth-slot");
   load().then(function () {
-    initNumber(); initPlaylistAdd(); initPerson(); initAccount(); initUserPage(); initPlPage(); initSettings(); initHot(); initAdmin();
+    initNumber(); initPlaylistAdd(); initPerson(); initAccount(); initUserPage(); initPlPage(); initSettings(); initHot(); initAdd(); initAdmin();
     views.unshift(drawAuth);
     fb.a.onAuthStateChanged(fb.auth, function (user) { loadMe(user).then(refreshViews); });
   }, function (e) {

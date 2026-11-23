@@ -1203,6 +1203,8 @@ def build_site(concerts, directions, numbers, people, report, demo, source, admi
             root="../", page_title=f"Плейлист: {cfg['site_title']}", canonical="", og_image="", description="", **ctx_common))
         write(TMP / "admin" / "index.html", env.get_template("admin.html").render(
             root="../", page_title=f"Правка каталога: {cfg['site_title']}", canonical="", og_image="", description="", **ctx_common))
+        write(TMP / "add" / "index.html", env.get_template("add.html").render(
+            root="../", page_title=f"Дополнить номер: {cfg['site_title']}", canonical="", og_image="", description="", **ctx_common))
 
     # работа без сети: манифест приложения, страница «нет соединения», сервис-воркер
     write(TMP / "manifest.webmanifest", json.dumps({

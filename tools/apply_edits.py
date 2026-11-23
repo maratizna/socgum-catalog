@@ -2,10 +2,10 @@
 """Переносит правки со страницы /admin/ в Google Таблицу.
 
 Запускается на GitHub Actions перед сборкой сайта. Сервисный аккаунт получает токен,
-читает очередь Firestore edits/{id} (status == new), пишет значения в листы
-«Номера» / «Концерты» / «Люди», дописывает строку в журнал «Заявки» и помечает
-документ как applied (или error). После этого build.py собирает сайт из обновлённой
-таблицы, и правку видят все.
+читает очередь Firestore: правки edits/{id} (status == new) и заявки с сайта
+submissions/{id} (status == approved). Пишет значения в листы «Номера» / «Концерты» /
+«Люди», дописывает строку в журнал «Заявки» и помечает документ как applied (или
+error). После этого build.py собирает сайт из обновлённой таблицы, и правку видят все.
 
 Переменные окружения:
   GOOGLE_SA_JSON  — содержимое JSON сервисного аккаунта (секрет в GitHub)
@@ -147,12 +147,12 @@ def api(url, token, method="GET", data=None, quiet=False):
 
 
 # ---------------------------------------------------------------- Firestore
-def queue(project, token):
+def queue(project, token, coll, status, limit):
     url = f"{FS}/projects/{project}/databases/(default)/documents:runQuery"
     q = {"structuredQuery": {
-        "from": [{"collectionId": "edits"}],
-        "where": {"fieldFilter": {"field": {"fieldPath": "status"}, "op": "EQUAL", "value": {"stringValue": "new"}}},
-        "limit": 50,
+        "from": [{"collectionId": coll}],
+        "where": {"fieldFilter": {"field": {"fieldPath": "status"}, "op": "EQUAL", "value": {"stringValue": status}}},
+        "limit": limit,
     }}
     res = api(url, token, "POST", q)
     out = []
@@ -180,13 +180,13 @@ def plain(fields):
     return {k: one(v) for k, v in fields.items()}
 
 
-def mark(project, token, doc_id, status, error=None):
+def mark(project, token, coll, doc_id, status, error=None):
     now = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
     fields = {"status": {"stringValue": status}, "appliedAt": {"timestampValue": now}}
     if error:
         fields["error"] = {"stringValue": error[:500]}
     mask = "&".join("updateMask.fieldPaths=" + urllib.parse.quote(k, safe="") for k in fields)
-    url = f"{FS}/projects/{project}/databases/(default)/documents/edits/{doc_id}?{mask}"
+    url = f"{FS}/projects/{project}/databases/(default)/documents/{coll}/{doc_id}?{mask}"
     api(url, token, "PATCH", {"fields": fields})
 
 
@@ -206,32 +206,37 @@ def col_letter(i):
     return s
 
 
-def apply_edit(sheet_id, token, edit, cache):
-    kind = edit.get("kind")
+def write_row_fields(sheet_id, token, kind, target, fields, cache):
+    """Пишет значения полей в строку листа по ID.
+
+    Возвращает (текст ошибки или None, список записанных полей).
+    """
     spec = COLS.get(kind)
     if not spec:
-        return "неизвестный тип правки «%s»" % kind
-    target = edit.get("targetId") or ""
-    fields = edit.get("fields") or {}
+        return "неизвестный тип правки «%s»" % kind, []
+    target = str(target or "").strip()
     if not target:
-        return "в правке нет ID"
+        return "не указан ID строки", []
+    fields = fields or {}
+    if not fields:
+        return "нечего записывать: пустой набор полей", []
     sheet = spec["sheet"]
     if sheet not in cache:
         cache[sheet] = sheet_values(sheet_id, sheet, token)
     rows = cache[sheet]
     if not rows:
-        return f"лист «{sheet}» пустой"
+        return f"лист «{sheet}» пустой", []
     head = [norm(h) for h in rows[0]]
     id_col = next((head.index(norm(h)) for h in spec["id"] if norm(h) in head), None)
     if id_col is None:
-        return f"в листе «{sheet}» не нашлась колонка ID"
+        return f"в листе «{sheet}» не нашлась колонка ID", []
     row_i = None
     for i, r in enumerate(rows[1:], start=2):
         if len(r) > id_col and str(r[id_col]).strip() == target:
             row_i = i
             break
     if row_i is None:
-        return f"в таблице нет строки с ID «{target}» — возможно, её переименовали"
+        return f"в таблице нет строки с ID «{target}» — возможно, её переименовали", []
 
     updates, used = [], []
     for key, value in fields.items():
@@ -245,19 +250,24 @@ def apply_edit(sheet_id, token, edit, cache):
         updates.append({"range": rng, "values": [[str(value)]]})
         used.append(key)
     if not updates:
-        return "ни одна колонка не нашлась в таблице (изменились заголовки?)"
+        return "ни одна колонка не нашлась в таблице (изменились заголовки?)", []
 
     api(f"{SH}/{sheet_id}/values:batchUpdate", token, "POST",
         {"valueInputOption": "RAW", "data": updates})
-    journal(sheet_id, token, edit, used)
     cache.pop(sheet, None)  # следующая правка того же листа прочитает свежие данные
-    return None
+    return None, used
+
+
+def journal_row(sheet_id, token, row):
+    rng = urllib.parse.quote("'Заявки'!A1", safe="")
+    api(f"{SH}/{sheet_id}/values/{rng}:append?valueInputOption=RAW&insertDataOption=INSERT_ROWS", token, "POST",
+        {"values": [row]}, quiet=True)
 
 
 def journal(sheet_id, token, edit, used):
     fields = edit.get("fields") or {}
     brief = "; ".join(f"{k}: {str(v)[:80]}" for k, v in list(fields.items())[:6])
-    row = [[
+    journal_row(sheet_id, token, [
         time.strftime("%d.%m.%Y %H:%M", time.gmtime()),
         edit.get("email", "site"),
         f"Правка с сайта: {KIND_RU.get(edit.get('kind'), '')} {edit.get('targetId', '')}",
@@ -265,10 +275,45 @@ def journal(sheet_id, token, edit, used):
         "Принять",
         "Применено: " + ", ".join(used),
         json.dumps({"kind": "site-edit", "data": fields}, ensure_ascii=False),
-    ]]
-    rng = urllib.parse.quote("'Заявки'!A1", safe="")
-    api(f"{SH}/{sheet_id}/values/{rng}:append?valueInputOption=RAW&insertDataOption=INSERT_ROWS", token, "POST",
-        {"values": row}, quiet=True)
+    ])
+
+
+def journal_sub(sheet_id, token, sub, used):
+    fields = sub.get("fields") or {}
+    brief = "; ".join(f"{k}: {str(v)[:80]}" for k, v in list(fields.items())[:6])
+    who = ", ".join(x for x in [sub.get("authorName"), sub.get("authorNick"), sub.get("authorEmail")] if x)
+    journal_row(sheet_id, token, [
+        time.strftime("%d.%m.%Y %H:%M", time.gmtime()),
+        sub.get("authorEmail") or "site",
+        f"Заявка с сайта: номер {sub.get('targetId', '')}",
+        brief,
+        "Принять",
+        "Применено: " + ", ".join(used),
+        json.dumps({"kind": "site-request", "data": {
+            "number": sub.get("targetId", ""),
+            "concert": sub.get("concert", ""),
+            "author": who,
+            "fields": fields,
+        }}, ensure_ascii=False),
+    ])
+
+
+def apply_edit(sheet_id, token, edit, cache):
+    err, used = write_row_fields(sheet_id, token, edit.get("kind"),
+                                 edit.get("targetId") or "", edit.get("fields") or {}, cache)
+    if err:
+        return err
+    journal(sheet_id, token, edit, used)
+    return None
+
+
+def apply_submission(sheet_id, token, sub, cache):
+    err, used = write_row_fields(sheet_id, token, "number",
+                                 sub.get("targetId") or "", sub.get("fields") or {}, cache)
+    if err:
+        return err
+    journal_sub(sheet_id, token, sub, used)
+    return None
 
 
 def main():
@@ -283,9 +328,11 @@ def main():
     project = sa.get("project_id", "")
     log(f"Сервисный аккаунт: {sa.get('client_email')}, проект {project}, таблица {sheet_id}")
     token = access_token(sa)
-    items = queue(project, token)
+    cache = {}
+
+    done = failed = 0
+    items = queue(project, token, "edits", "new", 50)
     log(f"Правок в очереди: {len(items)}")
-    cache, done, failed = {}, 0, 0
     for doc_id, edit in items:
         try:
             err = apply_edit(sheet_id, token, edit, cache)
@@ -293,16 +340,37 @@ def main():
             err = f"{type(e).__name__}: {e}"
         if err:
             failed += 1
-            log(f"  {doc_id} ({edit.get('kind')} {edit.get('targetId')}): {err}")
+            log(f"  правка {doc_id} ({edit.get('kind')} {edit.get('targetId')}): {err}")
             try:
-                mark(project, token, doc_id, "error", err)
+                mark(project, token, "edits", doc_id, "error", err)
             except Exception:  # noqa: BLE001
                 pass
         else:
             done += 1
-            log(f"  {doc_id}: применено ({edit.get('kind')} {edit.get('targetId')})")
-            mark(project, token, doc_id, "applied")
-    log(f"Готово: применено {done}, с ошибкой {failed}.")
+            log(f"  правка {doc_id}: применено ({edit.get('kind')} {edit.get('targetId')})")
+            mark(project, token, "edits", doc_id, "applied")
+
+    sub_done = sub_failed = 0
+    subs = queue(project, token, "submissions", "approved", 30)
+    log(f"Заявок с сайта к переносу: {len(subs)}")
+    for doc_id, sub in subs:
+        try:
+            err = apply_submission(sheet_id, token, sub, cache)
+        except Exception as e:  # noqa: BLE001
+            err = f"{type(e).__name__}: {e}"
+        if err:
+            sub_failed += 1
+            log(f"  заявка {doc_id} (номер {sub.get('targetId')}): {err}")
+            try:
+                mark(project, token, "submissions", doc_id, "error", err)
+            except Exception:  # noqa: BLE001
+                pass
+        else:
+            sub_done += 1
+            log(f"  заявка {doc_id}: перенесена (номер {sub.get('targetId')})")
+            mark(project, token, "submissions", doc_id, "applied")
+
+    log(f"Готово: правок применено {done}, с ошибкой {failed}; заявок перенесено {sub_done}, с ошибкой {sub_failed}.")
     return 0
 
 

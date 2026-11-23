@@ -74,6 +74,28 @@ service cloud.firestore {
       allow update, delete: if false;
     }
 
+    // Заявки с публичной страницы «Дополнить номер» (/add/).
+    // Создать может любой вошедший; принимает или отклоняет только администратор.
+    // Принятую заявку переносит в Google Таблицу сборка на GitHub сервисным аккаунтом
+    // (он обходит правила) и он же ставит status applied/error.
+    match /submissions/{subId} {
+      allow read: if isAdmin() || (signedIn() && resource.data.uid == request.auth.uid);
+      allow create: if signedIn()
+        && request.resource.data.keys().hasOnly(['kind', 'targetId', 'number', 'concert', 'fields',
+             'authorName', 'authorEmail', 'authorNick', 'authorLinks', 'uid', 'createdAt', 'status'])
+        && request.resource.data.kind == 'number'
+        && request.resource.data.targetId is string
+        && request.resource.data.targetId.size() > 0 && request.resource.data.targetId.size() <= 100
+        && request.resource.data.fields is map
+        && request.resource.data.fields.size() > 0 && request.resource.data.fields.size() <= 12
+        && request.resource.data.uid == request.auth.uid
+        && request.resource.data.createdAt == request.time
+        && request.resource.data.status == 'new';
+      allow update: if isAdmin()
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'approvedBy', 'approvedAt', 'error']);
+      allow delete: if false;
+    }
+
     // Заявка «это моя страница». Всегда создаётся как ждущая, подтверждает администратор.
     match /claims/{pid} {
       allow read: if true;
