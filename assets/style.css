@@ -1042,11 +1042,16 @@ textarea.ed-in{min-height:110px;resize:vertical;line-height:1.5}
 
 /* выбор сценария на /add/ + вкладки «номер / команда направления» */
 .add-modes{display:grid;gap:12px;grid-template-columns:repeat(3,minmax(0,1fr));margin:8px 0 0}
-.add-mode{display:flex;flex-direction:column;gap:8px;align-items:flex-start;text-align:left;min-height:150px;padding:18px;border:1px solid var(--line);border-radius:14px;background:var(--coal);color:var(--ink);font:inherit;cursor:pointer}
-.add-mode:hover,.add-mode:focus-visible{border-color:var(--ember);background:var(--coal-2)}
+.add-mode{display:flex;flex-direction:column;min-height:150px;border:1px solid var(--line);border-radius:14px;background:var(--coal);transition:border-color .15s,background .15s}
+.add-mode:hover{border-color:var(--ember);background:var(--coal-2)}
+.add-mode-btn{flex:1;display:flex;flex-direction:column;gap:8px;align-items:flex-start;text-align:left;padding:18px 18px 8px;border:0;border-radius:14px 14px 0 0;background:none;color:var(--ink);font:inherit;cursor:pointer}
+.add-mode-btn:focus-visible{outline:2px solid var(--ember-hi);outline-offset:-2px;border-radius:14px}
 .add-mode-t{font-family:var(--font-display);font-weight:700;font-size:19px;line-height:1.2}
 .add-mode-d{font-size:14px;line-height:1.5;color:var(--ash)}
 .add-mode-m{margin-top:auto;font-size:12.5px;color:var(--ash)}
+.add-mode-form{display:inline-flex;align-items:center;gap:6px;align-self:flex-start;min-height:24px;margin:0 18px 16px;padding:5px 10px;border:1px solid rgba(255,139,54,.45);border-radius:999px;color:var(--ember-hi);font-size:12.5px;font-weight:600;line-height:1;text-decoration:none}
+.add-mode-form:hover{border-color:var(--ember);background:var(--ember);color:var(--night)}
+.add-mode-form:focus-visible{outline:2px solid var(--ember-hi);outline-offset:2px}
 .add-tabs{display:inline-flex;flex-wrap:wrap;gap:8px;margin:4px 0 18px}
 .add-tab{min-height:44px;padding:8px 16px;border:1px solid var(--line);border-radius:999px;background:var(--coal);color:var(--ink);font:inherit;font-size:15px;cursor:pointer}
 .add-tab.is-on{background:var(--ember);border-color:var(--ember);color:var(--night);font-weight:600}

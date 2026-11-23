@@ -3280,6 +3280,12 @@
       number: ["Добавить номер или команду направления", "≈ 2 минуты", "Новый номер к концерту или команда внесценического направления: SMM, сценарка, админка, декор, рабы сцены, футажи."],
       patch: ["Дополнить номер или работу направления", "≈ 2 минуты", "Дописать участников, постановщиков, время, обложку и описание — к номеру концерта или к работе внесценического направления."]
     };
+    /* Google Формы — запасной путь, если проще заполнить там (ссылки из листа «Формы») */
+    var GFORMS = {
+      concert: { url: "https://docs.google.com/forms/d/e/1FAIpQLSepQx6WfXuNA_us308UpVuBAzIrM-x308SgDb1T24YNCzzh0A/viewform", title: "Форма «Новый концерт»" },
+      number: { url: "https://docs.google.com/forms/d/e/1FAIpQLScdHPlX8JNLV3Qi-_6CxVuu5pULUjtx829AEDa1w3legIB8EA/viewform", title: "Форма «Номера списком»" },
+      patch: { url: "https://docs.google.com/forms/d/e/1FAIpQLSeontHJuhKG6hk7VEE04vjsqaH28LQGyq6_THKJQ2PigLwvoQ/viewform", title: "Форма «Дополнить номер»" }
+    };
 
     function modeNow() {
       var h = String(location.hash || "").replace("#", "");
@@ -3449,10 +3455,20 @@
       var wrap = el("div", { class: "add-modes" });
       [["concert", "Концерт"], ["number", "Номер и команда направления"], ["patch", "Дополнить номер"]].forEach(function (pair) {
         var m = MODES[pair[0]];
-        wrap.append(el("button", { type: "button", class: "add-mode", onclick: function () { goMode(pair[0], false); } },
-          el("span", { class: "add-mode-t", text: m[0] }),
-          el("span", { class: "add-mode-d", text: m[2] }),
-          el("span", { class: "add-mode-m", text: m[1] })));
+        var gf = GFORMS[pair[0]];
+        wrap.append(el("div", { class: "add-mode" },
+          el("button", { type: "button", class: "add-mode-btn", onclick: function () { goMode(pair[0], false); } },
+            el("span", { class: "add-mode-t", text: m[0] }),
+            el("span", { class: "add-mode-d", text: m[2] }),
+            el("span", { class: "add-mode-m", text: m[1] })),
+          el("a", {
+            class: "add-mode-form",
+            href: gf.url,
+            target: "_blank",
+            rel: "noopener noreferrer",
+            title: gf.title + " — откроется в новой вкладке",
+            text: gf.title + " ↗"
+          })));
       });
       return wrap;
     }
