@@ -83,11 +83,12 @@ service cloud.firestore {
       allow create: if signedIn()
         && request.resource.data.keys().hasOnly(['kind', 'targetId', 'number', 'concert', 'fields',
              'authorName', 'authorEmail', 'authorNick', 'authorLinks', 'uid', 'createdAt', 'status'])
-        && request.resource.data.kind == 'number'
+        && request.resource.data.kind is string
+        && request.resource.data.kind in ['number', 'number-new', 'concert-new', 'team']
         && request.resource.data.targetId is string
         && request.resource.data.targetId.size() > 0 && request.resource.data.targetId.size() <= 100
         && request.resource.data.fields is map
-        && request.resource.data.fields.size() > 0 && request.resource.data.fields.size() <= 12
+        && request.resource.data.fields.size() > 0 && request.resource.data.fields.size() <= 20
         && request.resource.data.uid == request.auth.uid
         && request.resource.data.createdAt == request.time
         && request.resource.data.status == 'new';

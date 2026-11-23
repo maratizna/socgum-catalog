@@ -55,7 +55,7 @@
 {% endif %}
 <footer class="site-foot">
   <p>{{ site_title }}</p>
-  {% if firebase %}<p><a href="{{ root or './' }}add/">Добавить номер</a></p>{% endif %}
+  {% if firebase %}<p><a href="{{ root or './' }}add/">Добавить в каталог</a></p>{% endif %}
   {% if firebase %}<p><a href="{{ root or './' }}hot/">Самое обсуждаемое</a></p>{% endif %}
   <p class="foot-app"><span id="offline-status"></span> <button type="button" id="pwa-install" class="linkbtn" hidden>Установить на телефон</button></p>
   {% if home_url %}<p><a href="{{ home_url }}">{{ home_label }}</a></p>{% endif %}

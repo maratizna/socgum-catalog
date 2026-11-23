@@ -700,7 +700,7 @@
         el("div", { class: "um-head" }, avatarNode(uid, nm, "s"),
           el("div", { class: "um-who" }, el("b", { text: nm }), state.admin ? el("span", { class: "c-hint", text: "Администратор" }) : null)),
         umItem(ownPageUrl(), "page", "Моя страница"),
-        umItem(ROOT + "add/", "plus", "Добавить номер"),
+        umItem(ROOT + "add/", "plus", "Добавить в каталог"),
         umItem(ROOT + "settings/", "gear", "Настройки профиля"));
       var admItem = null;
       if (state.admin) { admItem = umItem(ROOT + "account/", "admin", "Кабинет администратора"); menu.append(admItem, umItem(ROOT + "admin/", "pencil", "Правка каталога")); }
@@ -2937,6 +2937,320 @@
     draw();
   }
 
+  /* ------------------------------------------------------------ сборка сайта по кнопке
+     Запускает GitHub Actions (workflow build.yml) с токеном из meta/sync. Нужна там, где
+     правки должны попасть на сайт не сразу, а когда администратор сам нажмёт кнопку. */
+  function ghDispatch() {
+    var repo = "maratizna/socgum-catalog";
+    return fb.f.getDoc(fdoc("meta/sync")).then(function (s) {
+      var pat = (s.exists() && s.data() && s.data().ghPat) || "";
+      if (!pat) return "no-token";
+      return fetch("https://api.github.com/repos/" + repo + "/actions/workflows/build.yml/dispatches", {
+        method: "POST",
+        headers: { "Authorization": "Bearer " + pat, "Accept": "application/vnd.github+json", "Content-Type": "application/json" },
+        body: JSON.stringify({ ref: "main" })
+      }).then(function (r) { return (r.status === 204 || r.status === 201) ? "sent" : "fail:" + r.status; },
+        function () { return "fail:net"; });
+    }, function () { return "fail:read"; });
+  }
+
+  /* ------------------------------------------------------------ правка прямо на странице номера
+     Администратор на /n/<id>/ жмёт «Править номер» и меняет то, что видно из Google Таблицы:
+     название, коллектив, концерт, учебный год, направления, участников, постановщиков, описание.
+     Изменения уходят документами в очередь edits (как у /admin/), а на сайт попадают по кнопке
+     «Обновить сайт»: сборка переносит правки в таблицу и пересобирает страницы. */
+  function initNumberEdit() {
+    var cm = document.getElementById("comments");
+    var mainEl = document.querySelector(".number-main");
+    var side = document.querySelector(".number-side");
+    if (!cm || !mainEl || !side) return;
+    var nid = cm.dataset.number;
+    var E = { open: false, busy: false, publishing: false, data: null, num: null, con: null, orig: null, in: {}, lists: {}, status: null, pubBtn: null };
+    var bar = el("div", { class: "ed-bar", hidden: true });
+    mainEl.insertBefore(bar, mainEl.querySelector(".num-actions") || null);
+
+    function adminOn() { return !!(state.ready && state.user && state.admin); }
+    function splitNames(v) { return String(v || "").split(/[,;]+/).map(function (s) { return s.trim(); }).filter(Boolean); }
+    function cName(c) { return (c && (c.name || c.title)) || ""; }
+    function dirNames(d) {
+      return ((d && d.directions) || []).map(function (x) { return typeof x === "string" ? x : ((x && x.name) || ""); }).filter(Boolean);
+    }
+    function findConcert(d, name) {
+      var list = (d && d.concerts) || [];
+      for (var i = 0; i < list.length; i++) if (cName(list[i]) === name) return list[i];
+      return null;
+    }
+    function note(msg, kind) {
+      if (!E.status) return;
+      E.status.textContent = msg;
+      E.status.className = "ed-status" + (kind === "ok" ? " ed-ok" : kind === "err" ? " ed-err" : "");
+    }
+
+    function drawBar() {
+      if (!adminOn()) { bar.hidden = true; return; }
+      bar.hidden = false;
+      if (E.open) return;
+      clear(bar);
+      bar.className = "ed-bar";
+      bar.append(
+        el("button", { type: "button", class: "btn btn-s", text: "Править номер", onclick: function () { enter(); } }),
+        el("span", { class: "ed-hint", text: "Видите это только вы. Правки уйдут в Google Таблицу, а на сайт — по кнопке «Обновить сайт»." }));
+    }
+
+    function loadData() {
+      if (E.data) return Promise.resolve(E.data);
+      return fetch(ROOT + "admin.json", { cache: "no-store" }).then(function (r) {
+        if (!r.ok) throw new Error("admin.json " + r.status);
+        return r.json();
+      }).then(function (d) { E.data = d; return d; });
+    }
+
+    function enter() {
+      if (E.busy || E.open) return;
+      E.busy = true;
+      loadData().then(function (d) {
+        E.busy = false;
+        var num = null, list = (d.numbers || []);
+        for (var i = 0; i < list.length; i++) if (list[i].id === nid) { num = list[i]; break; }
+        if (!num) { toast("Номера нет в данных для правки. Обновите страницу после ближайшей сборки."); return; }
+        E.num = num;
+        E.con = findConcert(d, num.concert || "");
+        E.orig = {
+          title: num.title || "",
+          collective: num.collective || "",
+          concert: num.concert || "",
+          direction: num.direction || "",
+          direction2: num.direction2 || "",
+          season: (E.con && E.con.season) || "",
+          about: num.about || "",
+          performers: splitNames(num.performers),
+          choreographers: splitNames(num.choreographers)
+        };
+        buildEdit(d);
+      }, function () { E.busy = false; toast("Не удалось загрузить данные для правки. Проверьте соединение и обновите страницу."); });
+    }
+
+    function optSelect(list, value, emptyText) {
+      var s = el("select", { class: "ed-in" });
+      if (emptyText) s.append(el("option", { value: "", text: emptyText }));
+      list.forEach(function (v) { s.append(el("option", { value: v, text: v })); });
+      s.value = value || "";
+      return s;
+    }
+
+    function nameEditor(values, onChange) {
+      var list = values.slice();
+      var ul = el("ul", { class: "ed-chips" });
+      function render() {
+        clear(ul);
+        if (!list.length) ul.append(el("li", { class: "ed-empty", text: "пока никого" }));
+        list.forEach(function (nm, idx) {
+          ul.append(el("li", { class: "ed-chip" },
+            el("span", { text: nm }),
+            el("button", {
+              type: "button", class: "ed-x", title: "Убрать", "aria-label": "Убрать " + nm, text: "×",
+              onclick: function () { list.splice(idx, 1); render(); }
+            })));
+        });
+        if (onChange) onChange(list);
+      }
+      render();
+      var inp = el("input", { class: "ed-in ed-name-in", type: "text", list: "ed-people", placeholder: "Имя Фамилия" });
+      function add() {
+        var v = inp.value.trim();
+        if (!v) { inp.focus(); return; }
+        list.push(v);
+        inp.value = "";
+        render();
+        inp.focus();
+      }
+      inp.addEventListener("keydown", function (e) { if (e.key === "Enter") { e.preventDefault(); add(); } });
+      var wrap = el("div", { class: "ed-names" }, ul,
+        el("div", { class: "ed-add" }, inp,
+          el("button", { type: "button", class: "btn btn-ghost btn-s", text: "Добавить", onclick: add })));
+      return { el: wrap, get: function () { return list.slice(); } };
+    }
+
+    function buildEdit(d) {
+      E.open = true;
+      var h1 = mainEl.querySelector("h1");
+      var titleInp = el("input", { class: "ed-in ed-title", type: "text", "aria-label": "Название номера" });
+      titleInp.value = E.orig.title;
+      if (h1) { mainEl.insertBefore(titleInp, h1); h1.hidden = true; } else mainEl.prepend(titleInp);
+      E.in.title = titleInp;
+
+      var colP = mainEl.querySelector(".collective");
+      var colInp = el("input", { class: "ed-in ed-collective", type: "text", placeholder: "Коллектив (если есть)", "aria-label": "Название коллектива" });
+      colInp.value = E.orig.collective;
+      mainEl.insertBefore(colInp, titleInp.nextSibling);
+      if (colP) colP.hidden = true;
+      E.in.collective = colInp;
+
+      var people = (d.people || []).map(function (p) { return p && p.name; }).filter(Boolean);
+      var concerts = ((d.concerts || []).map(cName)).filter(Boolean).sort(function (a, b) { return a.localeCompare(b, "ru"); });
+      var dirs = dirNames(d);
+      var seasons = [];
+      (d.concerts || []).forEach(function (c) { if (c.season && seasons.indexOf(c.season) < 0) seasons.push(c.season); });
+
+      var dl = el("dl", { class: "facts ed-facts" });
+      var conSel = optSelect(concerts, E.orig.concert);
+      E.in.concert = conSel;
+      dl.append(el("div", null, el("dt", { text: "Концерт" }), el("dd", null, conSel)));
+      var seasonInp = el("input", { class: "ed-in", type: "text", list: "ed-seasons", placeholder: "2025–2026", "aria-label": "Учебный год" });
+      seasonInp.value = E.orig.season;
+      E.in.season = seasonInp;
+      dl.append(el("div", null, el("dt", { text: "Учебный год" }), el("dd", null, seasonInp)));
+      var dirSel = optSelect(dirs, E.orig.direction, "— нет —");
+      E.in.direction = dirSel;
+      dl.append(el("div", null, el("dt", { text: "Направление" }), el("dd", null, dirSel)));
+      var dir2Sel = optSelect(dirs, E.orig.direction2, "— нет —");
+      E.in.direction2 = dir2Sel;
+      dl.append(el("div", null, el("dt", { text: "Ещё направление" }), el("dd", null, dir2Sel)));
+
+      var oldDl = side.querySelector(".facts");
+      if (oldDl) oldDl.replaceWith(dl); else side.insertBefore(dl, side.firstChild);
+      var oldAbout = side.querySelector(".about");
+      var ta = el("textarea", { class: "ed-in ed-about", rows: "5", placeholder: "Описание номера (если нужно)", "aria-label": "Описание" });
+      ta.value = E.orig.about;
+      E.in.about = ta;
+      var aboutWrap = el("div", { class: "about ed-about-wrap" }, ta);
+      if (oldAbout) oldAbout.replaceWith(aboutWrap); else dl.parentNode.insertBefore(aboutWrap, dl.nextSibling);
+
+      var chSec = side.querySelector("section.people");
+      if (!chSec) {
+        chSec = el("section", { class: "people" }, el("h2", { text: "Постановщики" }), el("ul"));
+        side.insertBefore(chSec, side.querySelector("#performers") || null);
+      }
+      var chEditor = nameEditor(E.orig.choreographers);
+      var chUl = chSec.querySelector("ul");
+      if (chUl) chUl.replaceWith(chEditor.el); else chSec.append(chEditor.el);
+      E.lists.choreographers = chEditor.get;
+
+      var pf = side.querySelector("#performers");
+      if (!pf) {
+        pf = el("details", { class: "people people-fold", id: "performers", open: true },
+          el("summary", null, el("h2", { id: "pf-h" }, "Участники ", el("span", { class: "people-n" }))));
+        side.insertBefore(pf, chSec.nextSibling);
+      }
+      pf.open = true;
+      var cntN = pf.querySelector(".people-n");
+      var pfEditor = nameEditor(E.orig.performers, function (l) { if (cntN) cntN.textContent = String(l.length); });
+      var pfUl = pf.querySelector("ul");
+      if (pfUl) pfUl.replaceWith(pfEditor.el); else pf.append(pfEditor.el);
+      E.lists.performers = pfEditor.get;
+
+      var dlp = document.getElementById("ed-people");
+      if (!dlp) { dlp = el("datalist", { id: "ed-people" }); document.body.append(dlp); }
+      clear(dlp);
+      people.forEach(function (nm) { dlp.append(el("option", { value: nm })); });
+      var dls = document.getElementById("ed-seasons");
+      if (!dls) { dls = el("datalist", { id: "ed-seasons" }); document.body.append(dls); }
+      clear(dls);
+      seasons.forEach(function (s) { dls.append(el("option", { value: s })); });
+
+      clear(bar);
+      bar.className = "ed-bar is-editing";
+      var status = el("span", { class: "ed-status", text: "Правка включена: меняйте поля и нажмите «Сохранить»." });
+      E.status = status;
+      var saveBtn = el("button", { type: "button", class: "btn btn-s", text: "Сохранить" });
+      saveBtn.addEventListener("click", function () { save(saveBtn); });
+      var pub = el("button", { type: "button", class: "btn btn-ghost btn-s", text: "Обновить сайт", hidden: true });
+      pub.addEventListener("click", function () { publish(pub); });
+      E.pubBtn = pub;
+      bar.append(saveBtn, el("button", { type: "button", class: "btn btn-ghost btn-s", text: "Отмена", onclick: function () { location.reload(); } }), pub, status);
+    }
+
+    function currentValues() {
+      var pf = E.lists.performers ? E.lists.performers() : E.orig.performers.slice();
+      var ch = E.lists.choreographers ? E.lists.choreographers() : E.orig.choreographers.slice();
+      return {
+        title: E.in.title.value.trim(),
+        collective: E.in.collective.value.trim(),
+        concert: E.in.concert.value,
+        season: E.in.season.value.trim(),
+        direction: E.in.direction.value,
+        direction2: E.in.direction2.value,
+        about: E.in.about.value.trim(),
+        performers: pf,
+        choreographers: ch
+      };
+    }
+
+    function save(btn) {
+      var cur = currentValues();
+      if (!cur.title) { note("Название не может быть пустым.", "err"); return; }
+      if (!cur.concert) { note("Выберите концерт — без него правка не уйдёт.", "err"); return; }
+      var nf = {};
+      function num(k, now, was) { if (String(now) !== String(was == null ? "" : was)) nf[k] = now; }
+      num("title", cur.title, E.orig.title);
+      num("collective", cur.collective, E.orig.collective);
+      num("concert", cur.concert, E.orig.concert);
+      num("direction", cur.direction, E.orig.direction);
+      num("direction2", cur.direction2, E.orig.direction2);
+      num("about", cur.about, E.orig.about);
+      if (cur.performers.join(", ") !== E.orig.performers.join(", ")) nf.performers = cur.performers.join(", ");
+      if (cur.choreographers.join(", ") !== E.orig.choreographers.join(", ")) nf.choreographers = cur.choreographers.join(", ");
+      var cf = {};
+      if (cur.season !== String(E.orig.season || "")) cf.season = cur.season;
+      var con = findConcert(E.data, cur.concert);
+      if (Object.keys(cf).length && !con) cf = {};
+      if (!Object.keys(nf).length && !Object.keys(cf).length) { note("Ничего не изменено — правка не отправлена.", ""); return; }
+
+      btn.disabled = true;
+      note("Сохраняем…", "");
+      var chain = Promise.resolve();
+      if (Object.keys(nf).length) chain = chain.then(function () {
+        return fb.f.addDoc(fcol("edits"), {
+          kind: "number", targetId: nid, fields: nf,
+          uid: state.user.uid, email: state.user.email || "",
+          createdAt: fb.f.serverTimestamp(), status: "new"
+        });
+      });
+      if (Object.keys(cf).length && con) chain = chain.then(function () {
+        return fb.f.addDoc(fcol("edits"), {
+          kind: "concert", targetId: con.id, fields: cf,
+          uid: state.user.uid, email: state.user.email || "",
+          createdAt: fb.f.serverTimestamp(), status: "new"
+        });
+      });
+      chain.then(function () {
+        btn.disabled = false;
+        E.orig.title = cur.title;
+        E.orig.collective = cur.collective;
+        E.orig.concert = cur.concert;
+        E.orig.direction = cur.direction;
+        E.orig.direction2 = cur.direction2;
+        E.orig.season = cur.season;
+        E.orig.about = cur.about;
+        E.orig.performers = cur.performers.slice();
+        E.orig.choreographers = cur.choreographers.slice();
+        if (E.pubBtn) E.pubBtn.hidden = false;
+        note("Сохранено в очередь. Нажмите «Обновить сайт», чтобы правки появились у всех (1–2 минуты).", "ok");
+      }, function (e) {
+        btn.disabled = false;
+        if (isDenied(e)) note("Нет прав на правку: в базе, скорее всего, ещё не опубликованы обновлённые правила.", "err");
+        else note(errText(e), "err");
+      });
+    }
+
+    function publish(btn) {
+      if (E.publishing) return;
+      E.publishing = true;
+      btn.disabled = true;
+      note("Запускаем сборку…", "");
+      ghDispatch().then(function (r) {
+        E.publishing = false;
+        btn.disabled = false;
+        if (r === "sent") note("Сборка запущена: обычно 1–2 минуты. Потом обновите страницу — правки будут у всех.", "ok");
+        else if (r === "no-token") note("Нужен токен GitHub: откройте «Правку каталога» (/admin/), блок «Сборка сайта», вставьте токен и сохраните.", "err");
+        else note("Не удалось запустить сборку (" + r + "). Попробуйте ещё раз через минуту.", "err");
+      });
+    }
+
+    views.push(drawBar);
+    drawBar();
+  }
+
   /* ------------------------------------------------------------ дополнение номера
      Страница /add/. Любой вошедший может предложить дополнение к номеру: коллектив,
      участники, постановщики, время, обложка, описание. Заявка уходит документом в
@@ -2946,14 +3260,36 @@
     var box = document.getElementById("add");
     if (!box) return;
 
+    var OFFSTAGE = ["SMM", "Сценарка", "Админка", "Декор", "Рабы сцены", "Футажи"];
+    var CTYPES = [["auto", "Определим по названию"], ["gala", "Гала-концерт"], ["debut", "Дебют"], ["vesna", "Весна"], ["lavash", "Лаваш / летняя Студвесна"]];
     var FIELDS = [
       { k: "collective", label: "Коллектив", ph: "Например: Limerence", hint: "Сольный номер — оставьте пустым." },
-      { k: "cover", label: "Обложка", ph: "ссылка на картинку", hint: "Прямая ссылка или имя файла в папке covers. Сжать картинку можно на squoosh.app." },
+      { k: "cover", label: "Обложка", ph: "ссылка на картинку", hint: "Только ссылка — файл загружать не нужно." },
       { k: "performers", label: "Участники", type: "area", hint: "Через запятую, имена так же, как на странице человека: Алиев Марат, Куницына Арина." },
       { k: "choreographers", label: "Постановщики", type: "area", hint: "Через запятую." },
       { k: "about", label: "Описание", type: "area", hint: "Как проходит номер, откуда музыка — что важно знать зрителю." }
     ];
-    var D = { data: null, dataErr: false, qc: "", concert: "", cur: null, busy: false, done: false };
+    var D = { data: null, dataErr: false, mode: "", team: false, qc: "", concert: "", cur: null, busy: false, done: false };
+    var MODES = {
+      concert: ["Концерт", "≈ 1 минута", "Название, дата, ссылка на запись, описание и обложка. Концерт появится в каталоге."],
+      number: ["Номер и команда направления", "≈ 2 минуты", "Новый номер к концерту или команда внесценического направления: SMM, сценарка, админка, декор, рабы сцены, футажи."],
+      patch: ["Дополнить номер", "≈ 2 минуты", "Дописать участников, постановщиков, время, обложку и описание к номеру, который уже есть."]
+    };
+
+    function modeNow() {
+      var h = String(location.hash || "").replace("#", "");
+      if (h === "concert" || h === "patch") return h;
+      if (h === "number" || h === "team") return "number";
+      return "";
+    }
+    function goMode(m, team) {
+      D.mode = m;
+      D.team = !!team;
+      D.done = false;
+      D.busy = false;
+      try { history.replaceState(null, "", "#" + (m === "number" && team ? "team" : m || "add")); } catch (e) { }
+      draw();
+    }
 
     function loadData() {
       return fetch(ROOT + "admin.json", { cache: "no-store" }).then(function (r) {
@@ -2963,12 +3299,14 @@
     }
     function concerts() { return (D.data && D.data.concerts) || []; }
     function allNumbers() { return (D.data && D.data.numbers) || []; }
-    function numbersOf(name) {
-      return allNumbers().filter(function (n) { return !name || n.concert === name; });
-    }
-    function concertByName(name) {
-      var c = concerts().filter(function (x) { return x.name === name; })[0];
-      return c || null;
+    function numbersOf(name) { return allNumbers().filter(function (n) { return !name || n.concert === name; }); }
+    function concertByName(name) { var c = concerts().filter(function (x) { return x.name === name; })[0]; return c || null; }
+    function directions() { return (D.data && D.data.directions) || []; }
+    function seasons() {
+      var out = [], known = (D.data && D.data.concerts) || [];
+      known.forEach(function (c) { if (c.season && out.indexOf(c.season) < 0) out.push(c.season); });
+      ["2025–2026", "2026–2027"].forEach(function (s) { if (out.indexOf(s) < 0) out.push(s); });
+      return out;
     }
     function has(n, k) { return String(n[k] || "").trim() !== ""; }
     function missing(n) {
@@ -3004,27 +3342,216 @@
       inp.value = identValue(k);
       return el("label", { class: "add-field" }, el("span", { class: "add-label", text: label }), inp);
     }
+    function identSection() {
+      var sec = el("section", { class: "add-ident" });
+      sec.append(el("h2", { class: "add-step-title", text: "Кто отправляет" }),
+        el("p", { class: "add-hint", text: "Заполнено из профиля — поправьте, если нужно. Почту и имя видит только администратор." }),
+        el("div", { class: "add-grid add-grid-4" },
+          identRow("name", "Имя и фамилия"), identRow("email", "Почта"),
+          identRow("nick", "Ник на сайте", "@ник"), identRow("links", "Ссылки", "через запятую")));
+      return sec;
+    }
+    function identObj() {
+      var out = {};
+      Array.prototype.forEach.call(box.querySelectorAll("[data-idk]"), function (inp) { out[inp.dataset.idk] = inp.value.trim(); });
+      return out;
+    }
 
+    function input(k, ph, opts) {
+      var i = el("input", { class: "add-in", type: "text", placeholder: ph || "" });
+      i.dataset.fk = k;
+      if (opts && opts.mode) i.setAttribute("inputmode", opts.mode);
+      return i;
+    }
+    function area(k, ph, rows) {
+      var t = el("textarea", { class: "add-in add-area", rows: rows || 3, placeholder: ph || "" });
+      t.dataset.fk = k;
+      return t;
+    }
+    function select(k, list, value) {
+      var s = el("select", { class: "add-in" });
+      list.forEach(function (o) { s.append(el("option", { value: o[0], text: o[1] })); });
+      s.dataset.fk = k;
+      if (value != null) s.value = value;
+      return s;
+    }
+    function field(label, control, hint, wide) {
+      return el("label", { class: "add-field" + (wide ? " add-field-wide" : "") },
+        el("span", { class: "add-label", text: label }), control,
+        hint ? el("span", { class: "add-hint", text: hint }) : null);
+    }
+    function collect(form) {
+      var out = {};
+      Array.prototype.forEach.call(form.querySelectorAll("[data-fk]"), function (inp) {
+        out[inp.dataset.fk] = String(inp.value || "").trim();
+      });
+      return out;
+    }
+    function formMsg(form, text, isErr) {
+      var m = form.querySelector(".msg");
+      if (!m) return;
+      m.className = "msg" + (isErr ? " msg-err" : "");
+      m.textContent = text;
+    }
+    function busyForm(form, on) {
+      Array.prototype.forEach.call(form.querySelectorAll("button"), function (b) { b.disabled = !!on; });
+    }
+    var TIME_RE = /^\d{1,2}(:\d{1,2}){1,2}$/;
+    var DATE_RE = /^(\d{1,2}\.\d{1,2}\.\d{4}|\d{4}-\d{2}-\d{2})$/;
+    var URL_RE = /^https?:\/\/\S+$/i;
+
+    function submitNew(kind, fields, form, doneTitle) {
+      if (D.busy) return;
+      var ident = identObj();
+      if (!ident.email || !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(ident.email)) { formMsg(form, "Укажите почту — без неё не сможем ответить.", true); return; }
+      D.busy = true;
+      busyForm(form, true);
+      formMsg(form, "Отправляем заявку…");
+      fb.f.addDoc(fcol("submissions"), {
+        kind: kind, targetId: "new",
+        number: (fields.title || "").slice(0, 200), concert: (fields.concert || "").slice(0, 200),
+        fields: fields,
+        authorName: (ident.name || "").slice(0, 100), authorEmail: (ident.email || "").slice(0, 200),
+        authorNick: (ident.nick || "").slice(0, 60), authorLinks: (ident.links || "").slice(0, 400),
+        uid: state.user.uid, createdAt: fb.f.serverTimestamp(), status: "new"
+      }).then(function () {
+        D.busy = false;
+        D.done = true;
+        toast("Заявка отправлена. Администратор проверит её и обновит сайт.");
+        draw(doneTitle);
+      }, function (e) {
+        D.busy = false;
+        busyForm(form, false);
+        formMsg(form, isDenied(e)
+          ? "Нет прав на отправку. Скорее всего, в базе ещё не опубликованы правила — напишите тому, кто ведёт сайт."
+          : errText(e), true);
+      });
+    }
+
+    function none(title, hint, mode, team) {
+      return el("div", { class: "add-done" },
+        el("h2", { class: "add-done-t", text: title }),
+        el("p", { class: "add-hint", text: hint }),
+        el("button", { type: "button", class: "btn", text: "Отправить ещё одну заявку", onclick: function () { D.done = false; D.cur = null; D.concert = ""; goMode(mode || "", team); } }));
+    }
+    function backLink(label) {
+      return el("p", { class: "add-back" },
+        el("button", { type: "button", class: "add-link", text: label, onclick: function () { D.done = false; D.cur = null; goMode(""); } }));
+    }
+
+    function chooseView() {
+      var wrap = el("div", { class: "add-modes" });
+      [["concert", "Концерт"], ["number", "Номер и команда направления"], ["patch", "Дополнить номер"]].forEach(function (pair) {
+        var m = MODES[pair[0]];
+        wrap.append(el("button", { type: "button", class: "add-mode", onclick: function () { goMode(pair[0], false); } },
+          el("span", { class: "add-mode-t", text: m[0] }),
+          el("span", { class: "add-mode-d", text: m[2] }),
+          el("span", { class: "add-mode-m", text: m[1] })));
+      });
+      return wrap;
+    }
+
+    /* --- новый концерт ------------------------------------------------------------- */
+    function concertFormView() {
+      var wrap = el("div", { class: "add-work" });
+      wrap.append(backLink("← Добавить в каталог"));
+      var form = el("form", { class: "add-form" });
+      var grid = el("div", { class: "add-grid" });
+      var nameF = field("Название концерта", input("title", "Например: Гала-концерт СоцГум, осень 2024"), "Как в афише: тип концерта, сезон и год.");
+      nameF.classList.add("add-field-wide");
+      grid.append(nameF);
+      grid.append(field("Дата", input("date", "14.05.2026", { mode: "numeric" }), "Можно не заполнять — поставим, когда появятся номера."));
+      grid.append(field("Ссылка на запись в VK", input("video", "https://vk.ru/video-227636138_456239051"), "Нужна ссылка на видео, а не на пост с анонсом. Если записи ещё нет — вставьте ссылку на пост: заменим позже."));
+      grid.append(field("Вторая запись", input("video2", "если есть другая версия записи")));
+      grid.append(field("Тип концерта", select("ctype", CTYPES, "auto")));
+      var seas = seasons().map(function (s) { return [s, s]; });
+      grid.append(field("Учебный год", select("season", seas, "2025–2026")));
+      grid.append(field("Тема", input("topic", "Например: Отель Соблазн")));
+      grid.append(field("Обложка", input("cover", "ссылка на картинку"), "Только ссылка — файл загружать не нужно."));
+      grid.append(field("Описание", area("about", "Что это за концерт, для зрителя", 4), "Необязательно.", true));
+      form.append(grid);
+      form.append(el("div", { class: "add-actions" },
+        el("button", { type: "submit", class: "btn", text: "Отправить заявку" }),
+        el("span", { class: "msg", role: "status" })));
+      form.addEventListener("submit", function (e) {
+        e.preventDefault();
+        var f = collect(form);
+        if (!f.title) { formMsg(form, "Напишите название концерта.", true); return; }
+        if (!f.video || !URL_RE.test(f.video)) { formMsg(form, "Нужна ссылка на запись в VK — начните с https://", true); return; }
+        if (f.video2 && !URL_RE.test(f.video2)) { formMsg(form, "Вторая запись тоже должна быть ссылкой.", true); return; }
+        if (f.date && !DATE_RE.test(f.date)) { formMsg(form, "Дата — в виде 14.05.2026.", true); return; }
+        if (f.cover && !URL_RE.test(f.cover) && !/^[^\s/]+\.(jpe?g|png|webp)$/i.test(f.cover)) { formMsg(form, "Обложка — ссылка на картинку.", true); return; }
+        submitNew("concert-new", f, form, "Заявка на концерт отправлена");
+      });
+      wrap.append(form);
+      return wrap;
+    }
+
+    /* --- новый номер или команда направления --------------------------------------- */
+    function numberFormView() {
+      var team = D.team;
+      var wrap = el("div", { class: "add-work" });
+      wrap.append(backLink("← Добавить в каталог"));
+      var tabs = el("div", { class: "add-tabs" },
+        el("button", { type: "button", class: "add-tab" + (team ? "" : " is-on"), text: "Новый номер", onclick: function () { if (team) goMode("number", false); } }),
+        el("button", { type: "button", class: "add-tab" + (team ? " is-on" : ""), text: "Команда направления", onclick: function () { if (!team) goMode("number", true); } }));
+      wrap.append(tabs);
+
+      var conList = concerts().map(function (c) { return [c.name, c.name]; });
+      var dirList = (team ? OFFSTAGE.filter(function (x) { return directions().indexOf(x) >= 0; }) : directions()).map(function (d) { return [d, d]; });
+      if (team && !dirList.length) dirList = OFFSTAGE.map(function (d) { return [d, d]; });
+
+      var form = el("form", { class: "add-form" });
+      var grid = el("div", { class: "add-grid" });
+      if (team) {
+        grid.append(field("Концерт", select("concert", [["", "— выберите концерт —"]].concat(conList), ""), "Команда относится к конкретному концерту.", true));
+        grid.append(field("Направление", select("direction", dirList, ""), "Внесценическое: SMM, сценарка, админка, декор, сцена, футажи."));
+        grid.append(field("Название", input("title", "оставьте пустым — будет «Команда СММ»"), "Можно не заполнять."));
+        grid.append(field("Участники", area("performers", "Алиев Марат, Куницына Арина", 3), "Через запятую.", true));
+        grid.append(field("Постановщики", area("choreographers", "кто ведёт направление", 2), "Через запятую."));
+        grid.append(field("Описание", area("about", "Чем занимается команда", 3), "Необязательно.", true));
+        grid.append(field("Обложка", input("cover", "ссылка на картинку"), "Только ссылка."));
+      } else {
+        grid.append(field("Концерт", select("concert", [["", "— выберите концерт —"]].concat(conList), ""), "Номер привяжется к этому концерту."));
+        grid.append(field("Направление", select("direction", dirList, "")));
+        grid.append(field("Название номера", input("title", "Например: Ритм сердца")));
+        grid.append(field("Коллектив", input("collective", "Например: Limerence"), "Сольный номер — оставьте пустым."));
+        grid.append(field("Участники", area("performers", "Алиев Марат, Куницына Арина", 3), "Через запятую."));
+        grid.append(field("Постановщики", area("choreographers", "ФИО постановщиков", 2), "Через запятую."));
+        grid.append(field("Начало", input("start", "0:52:10", { mode: "numeric" }), "Время в записи концерта."));
+        grid.append(field("Конец", input("end", "0:58:10", { mode: "numeric" })));
+        grid.append(field("Ссылки", input("links", "трек, группа — через запятую")));
+        grid.append(field("Описание", area("about", "О чём номер, кто автор", 4), "Необязательно.", true));
+        grid.append(field("Обложка", input("cover", "ссылка на картинку"), "Только ссылка — файл загружать не нужно.", true));
+      }
+      form.append(grid);
+      form.append(el("div", { class: "add-actions" },
+        el("button", { type: "submit", class: "btn", text: "Отправить заявку" }),
+        el("span", { class: "msg", role: "status" })));
+      form.addEventListener("submit", function (e) {
+        e.preventDefault();
+        var f = collect(form);
+        if (!f.concert) { formMsg(form, "Выберите концерт.", true); return; }
+        if (!f.direction) { formMsg(form, team ? "Выберите направление команды." : "Выберите направление.", true); return; }
+        if (team) {
+          if (!f.performers) { formMsg(form, "Добавьте хотя бы одного участника.", true); return; }
+          if (!f.title) f.title = "Команда " + f.direction;
+        } else if (!f.title) { formMsg(form, "Напишите название номера.", true); return; }
+        if (f.start && !TIME_RE.test(f.start)) { formMsg(form, "Начало — мм:сс или ч:мм:сс.", true); return; }
+        if (f.end && !TIME_RE.test(f.end)) { formMsg(form, "Конец — мм:сс или ч:мм:сс.", true); return; }
+        if (f.cover && !URL_RE.test(f.cover) && !/^[^\s/]+\.(jpe?g|png|webp)$/i.test(f.cover)) { formMsg(form, "Обложка — ссылка на картинку.", true); return; }
+        submitNew(team ? "team" : "number-new", f, form, team ? "Заявка на команду направления отправлена" : "Заявка на новый номер отправлена");
+      });
+      wrap.append(form);
+      return wrap;
+    }
+
+    /* --- «Дополнить номер»: поиск концерта, выбор номера, правка полей ---------------- */
     function stepHead(num, title, hint) {
       return el("div", { class: "add-step-head" },
         el("span", { class: "add-step-num", text: num }),
         el("h2", { class: "add-step-title", text: title }),
         hint ? el("span", { class: "add-step-hint", text: hint }) : null);
-    }
-
-    function concertStep() {
-      var sec = el("section", { class: "add-step" });
-      sec.append(stepHead("1", "Концерт", "поиск по названию, году и направлению"));
-      var inp = el("input", { class: "add-in add-search", type: "search", placeholder: "Например: гала, студвесна, 2025" });
-      inp.value = D.qc;
-      inp.addEventListener("input", function () {
-        D.qc = inp.value;
-        var list = sec.querySelector(".add-picks");
-        if (list) list.replaceWith(concertPicks());
-      });
-      sec.append(inp);
-      sec.append(concertPicks());
-      return sec;
     }
     function concertPicks() {
       var q = norm(D.qc);
@@ -3041,7 +3568,20 @@
       });
       return ul;
     }
-
+    function concertStep() {
+      var sec = el("section", { class: "add-step" });
+      sec.append(stepHead("1", "Концерт", "поиск по названию, году и направлению"));
+      var inp = el("input", { class: "add-in add-search", type: "search", placeholder: "Например: гала, студвесна, 2025" });
+      inp.value = D.qc;
+      inp.addEventListener("input", function () {
+        D.qc = inp.value;
+        var list = sec.querySelector(".add-picks");
+        if (list) list.replaceWith(concertPicks());
+      });
+      sec.append(inp);
+      sec.append(concertPicks());
+      return sec;
+    }
     function numberStep() {
       var sec = el("section", { class: "add-step" });
       sec.append(stepHead("2", "Номер", "бейджи показывают, чего не хватает"));
@@ -3062,7 +3602,6 @@
       sec.append(ul);
       return sec;
     }
-
     function picked() {
       var n = D.cur;
       var card = el("article", { class: "add-picked" });
@@ -3083,8 +3622,7 @@
       card.append(cover, body);
       return card;
     }
-
-    function formBlock() {
+    function patchForm() {
       var n = D.cur;
       var c = concertByName(n.concert);
       var form = el("form", { class: "add-form" });
@@ -3093,28 +3631,21 @@
         el("div", { class: "add-timing-head" },
           el("b", { text: "Время номера в записи" }),
           c && c.video ? el("a", { class: "add-link", href: c.video, target: "_blank", rel: "noopener", text: "Открыть запись концерта ↗" }) : null));
-      [
-        [{ k: "start", label: "Начало", ph: "0:52:10" }, { k: "end", label: "Конец", ph: "0:58:10" }]
-      ].forEach(function (pair) {
-        var row = el("div", { class: "add-time-row" });
-        pair.forEach(function (f) {
-          var inp = el("input", { class: "add-in add-time", type: "text", inputmode: "numeric", placeholder: f.ph });
-          inp.dataset.k = f.k; inp.dataset.was = n[f.k] || ""; inp.value = n[f.k] || "";
-          row.append(el("label", { class: "add-field" }, el("span", { class: "add-label", text: f.label }), inp));
-        });
-        timing.append(row);
+      var row = el("div", { class: "add-time-row" });
+      [["start", "Начало", "0:52:10"], ["end", "Конец", "0:58:10"]].forEach(function (x) {
+        var inp = el("input", { class: "add-in add-time", type: "text", inputmode: "numeric", placeholder: x[2] });
+        inp.dataset.k = x[0]; inp.dataset.was = n[x[0]] || ""; inp.value = n[x[0]] || "";
+        row.append(el("label", { class: "add-field" }, el("span", { class: "add-label", text: x[1] }), inp));
       });
+      timing.append(row);
       timing.append(el("p", { class: "add-hint", text: "Включите запись, остановите на начале номера и впишите время: принимаем 0:52:10 и 52:10." }));
       form.append(timing);
 
       var grid = el("div", { class: "add-grid" });
       FIELDS.forEach(function (f) {
-        var inp;
-        if (f.type === "area") {
-          inp = el("textarea", { class: "add-in add-area", rows: f.k === "about" ? 4 : 2, placeholder: "" });
-        } else {
-          inp = el("input", { class: "add-in", type: "text", placeholder: f.ph || "" });
-        }
+        var inp = f.type === "area"
+          ? el("textarea", { class: "add-in add-area", rows: f.k === "about" ? 4 : 2 })
+          : el("input", { class: "add-in", type: "text", placeholder: f.ph || "" });
         inp.dataset.k = f.k;
         inp.dataset.was = n[f.k] || "";
         inp.value = n[f.k] || "";
@@ -3126,35 +3657,30 @@
       form.append(el("div", { class: "add-actions" },
         el("button", { type: "submit", class: "btn", text: "Отправить заявку" }),
         el("span", { class: "msg", role: "status" })));
-      form.addEventListener("submit", function (e) { e.preventDefault(); send(form); });
+      form.addEventListener("submit", function (e) { e.preventDefault(); sendPatch(form); });
       return form;
     }
-
-    function send(form) {
+    function sendPatch(form) {
       if (D.busy) return;
-      var msg = form.querySelector(".msg");
       var n = D.cur, fields = {}, changed = 0, bad = "";
       Array.prototype.forEach.call(form.querySelectorAll("[data-k]"), function (inp) {
         var k = inp.dataset.k, v = inp.value.trim();
         if (v === (inp.dataset.was || "")) return;
         fields[k] = v; changed++;
       });
-      if (!changed) { if (msg) { msg.className = "msg"; msg.textContent = "Ничего не изменили — заполните хотя бы одно поле."; } return; }
-      var t = /^\d{1,2}(:\d{1,2}){1,2}$/;
-      if (fields.start && !t.test(fields.start)) bad = "Начало — мм:сс или ч:мм:сс.";
-      else if (fields.end && !t.test(fields.end)) bad = "Конец — мм:сс или ч:мм:сс.";
+      if (!changed) { formMsg(form, "Ничего не изменили — заполните хотя бы одно поле."); return; }
+      if (fields.start && !TIME_RE.test(fields.start)) bad = "Начало — мм:сс или ч:мм:сс.";
+      else if (fields.end && !TIME_RE.test(fields.end)) bad = "Конец — мм:сс или ч:мм:сс.";
       else Object.keys(fields).forEach(function (k) {
         if (bad) return;
         if (k === "about" && fields[k].length > 4000) bad = "Описание слишком длинное.";
         else if (k !== "about" && fields[k].length > 1000) bad = "Одно из полей слишком длинное.";
       });
-      if (bad) { if (msg) { msg.className = "msg msg-err"; msg.textContent = bad; } return; }
-
-      var ident = {};
-      Array.prototype.forEach.call(box.querySelectorAll("[data-idk]"), function (inp) { ident[inp.dataset.idk] = inp.value.trim(); });
+      if (bad) { formMsg(form, bad, true); return; }
+      var ident = identObj();
       D.busy = true;
-      Array.prototype.forEach.call(form.querySelectorAll("button"), function (b) { b.disabled = true; });
-      if (msg) { msg.className = "msg"; msg.textContent = "Отправляем заявку…"; }
+      busyForm(form, true);
+      formMsg(form, "Отправляем заявку…");
       fb.f.addDoc(fcol("submissions"), {
         kind: "number", targetId: n.id, number: n.title || "", concert: n.concert || "",
         fields: fields,
@@ -3163,54 +3689,55 @@
         uid: state.user.uid, createdAt: fb.f.serverTimestamp(), status: "new"
       }).then(function () {
         D.busy = false; D.done = true;
-        toast("Заявка отправлена. Администратор проверит её и перенесёт в таблицу.");
+        toast("Заявка отправлена. Администратор проверит её и обновит сайт.");
         draw();
       }, function (e) {
         D.busy = false;
-        Array.prototype.forEach.call(form.querySelectorAll("button"), function (b) { b.disabled = false; });
-        if (msg) {
-          msg.className = "msg msg-err";
-          msg.textContent = isDenied(e)
-            ? "Нет прав на отправку. Скорее всего, в базе ещё не опубликованы правила — напишите тому, кто ведёт сайт."
-            : errText(e);
-        }
+        busyForm(form, false);
+        formMsg(form, isDenied(e)
+          ? "Нет прав на отправку. Скорее всего, в базе ещё не опубликованы правила — напишите тому, кто ведёт сайт."
+          : errText(e), true);
       });
     }
 
-    function thanksBlock() {
-      return el("div", { class: "add-done" },
-        el("h2", { class: "add-done-t", text: "Заявка отправлена" }),
-        el("p", { class: "add-hint", text: "Администратор проверит дополнение и перенесёт его в Google Таблицу — после этого сайт пересоберётся сам, и правку увидят все. Обычно это занимает день." }),
-        el("button", { type: "button", class: "btn", text: "Дополнить другой номер", onclick: function () { D.done = false; D.cur = null; draw(); } }));
-    }
-
-    function draw() {
+    function draw(doneTitle) {
       clear(box);
       if (!state.ready) { box.append(loadingState("Проверяем вход…")); return; }
       if (!state.user) {
-        box.append(signInPrompt("Войдите, чтобы дополнить номер",
+        box.append(signInPrompt("Войдите, чтобы добавить в каталог",
           "Так администратор узнает, кого спросить, а новые номера привяжутся к вашей странице. Смотреть каталог можно и без входа."));
         return;
       }
-      if (D.dataErr) { box.append(errorState("Не удалось загрузить каталог.", function () { D.dataErr = false; loadData().then(draw); })); return; }
-      if (!D.data) { box.append(loadingState("Загружаем каталог…")); loadData().then(draw); return; }
+      if (!D.mode) D.mode = modeNow();
+      if (!D.mode) { box.append(chooseView()); return; }
 
-      var ident = el("section", { class: "add-ident" });
-      ident.append(el("h2", { class: "add-step-title", text: "Кто отправляет" }),
-        el("p", { class: "add-hint", text: "Заполнено из профиля — поправьте, если нужно. Почту и имя видит только администратор." }),
-        el("div", { class: "add-grid add-grid-4" },
-          identRow("name", "Имя и фамилия"), identRow("email", "Почта"),
-          identRow("nick", "Ник на сайте", "@ник"), identRow("links", "Ссылки", "через запятую")));
-      box.append(ident);
+      if (D.dataErr) { box.append(errorState("Не удалось загрузить каталог.", function () { D.dataErr = false; loadData().then(function () { draw(); }); })); return; }
+      if (!D.data) { box.append(loadingState("Загружаем каталог…")); loadData().then(function () { draw(doneTitle); }); return; }
+      box.append(identSection());
 
+      if (D.mode === "concert") { box.append(concertFormView()); return; }
+      if (D.mode === "number") {
+        if (D.done) box.append(none(doneTitle || "Заявка отправлена",
+          "Администратор проверит заявку и нажмёт «Обновить сайт» — после этого она появится в каталоге. Обычно это занимает день.",
+          "number", D.team));
+        else box.append(numberFormView());
+        return;
+      }
       var wrap = el("div", { class: "add-work" });
+      wrap.append(backLink("← Добавить в каталог"));
       wrap.append(concertStep());
       if (D.concert) wrap.append(numberStep());
-      if (D.cur && D.done) wrap.append(thanksBlock());
-      else if (D.cur) { wrap.append(picked()); wrap.append(formBlock()); }
+      if (D.cur && D.done) wrap.append(none("Заявка отправлена",
+        "Администратор проверит дополнение и нажмёт «Обновить сайт» — правку увидят все.",
+        "patch", false));
+      else if (D.cur) { wrap.append(picked()); wrap.append(patchForm()); }
       box.append(wrap);
     }
 
+    window.addEventListener("hashchange", function () {
+      var m = modeNow();
+      if (m && m !== D.mode) { D.mode = m; D.done = false; draw(); }
+    });
     views.push(draw);
     draw();
   }
@@ -3270,7 +3797,14 @@
       if (A.tab === "concerts") return [it.date, it.topic].filter(Boolean).join(" · ");
       return it.link || "";
     }
-    function kindLabel(k) { return k === "number" ? "Номер" : k === "concert" ? "Концерт" : "Человек"; }
+    function kindLabel(k) {
+      if (k === "number") return "Номер";
+      if (k === "concert") return "Концерт";
+      if (k === "number-new") return "Новый номер";
+      if (k === "team") return "Команда направления";
+      if (k === "concert-new") return "Новый концерт";
+      return "Человек";
+    }
 
     function loadData() {
       return fetch(ROOT + "admin.json", { cache: "no-store" }).then(function (r) {
@@ -3510,8 +4044,13 @@
           right.append(statusChip(s.status));
         }
         right.append(el("span", { class: "c-hint", text: fmtStamp(s.createdAt) }));
+        var title = s.number || s.targetId || "";
+        if (!title || title === "new") {
+          var fl = s.fields || {};
+          title = fl.title || fl.name || fl.direction || "заявка";
+        }
         ul.append(el("li", { class: "adm-queue-item" },
-          el("span", { class: "adm-queue-t", text: kindLabel(s.kind) + ": " + (s.number || s.targetId || "") }),
+          el("span", { class: "adm-queue-t", text: kindLabel(s.kind) + ": " + title }),
           el("span", { class: "c-hint", text: [s.concert, s.authorName, s.authorEmail, keys.length + " пол."].filter(Boolean).join(" · ") }),
           det ? el("span", { class: "c-hint adm-sub-det", text: det }) : null,
           right));
@@ -3530,11 +4069,7 @@
       }, { merge: true }).then(function () {
         A.subsBusy = false;
         if (status === "approved") {
-          toast("Заявка принята. Обновляем сайт…");
-          dispatchBuild().then(function (res) {
-            toast(res === "sent" ? "Заявка принята. Сайт обновится через 1–2 минуты."
-              : "Заявка принята. Сборка — по расписанию, до 10 минут.");
-          });
+          toast("Заявка принята. Нажмите «Собрать сайт сейчас» в блоке «Сборка сайта» — она уйдёт в таблицу, и сайт обновится.");
         } else {
           toast("Заявка отклонена.");
         }
@@ -3626,7 +4161,7 @@
   /* ------------------------------------------------------------ запуск */
   var slot = document.getElementById("auth-slot");
   load().then(function () {
-    initNumber(); initPlaylistAdd(); initPerson(); initAccount(); initUserPage(); initPlPage(); initSettings(); initHot(); initAdd(); initAdmin();
+    initNumber(); initNumberEdit(); initPlaylistAdd(); initPerson(); initAccount(); initUserPage(); initPlPage(); initSettings(); initHot(); initAdd(); initAdmin();
     views.unshift(drawAuth);
     fb.a.onAuthStateChanged(fb.auth, function (user) { loadMe(user).then(refreshViews); });
   }, function (e) {

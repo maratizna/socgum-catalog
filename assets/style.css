@@ -1005,3 +1005,53 @@ textarea.add-in{min-height:72px;resize:vertical}
   .add-badges{margin-left:0;justify-content:flex-start}
   .add-rows{max-width:none}
 }
+/* ------------------------------------------------------------ правка на странице номера (/n/<id>/)
+   Панель «Править номер» видит только администратор. Пока правка включена, панель липнет к низу
+   экрана, чтобы «Сохранить» и «Обновить сайт» были под рукой на длинной странице. */
+.ed-bar{display:flex;flex-wrap:wrap;align-items:center;gap:10px 12px;margin:16px 0 0;padding:12px 14px;border:1px dashed var(--line);border-radius:12px;background:var(--coal)}
+.ed-bar.is-editing{position:sticky;bottom:10px;z-index:24;border-style:solid;border-color:var(--ember);background:var(--coal-2);box-shadow:0 10px 30px rgba(9,5,0,.65)}
+.ed-bar .ed-hint{font-size:12.5px;line-height:1.45;color:var(--ash);max-width:70ch}
+.ed-status{font-size:13px;line-height:1.4;color:var(--ash);flex:1 1 220px;min-width:0}
+.ed-status.ed-ok{color:#9ad6a8}
+.ed-status.ed-err{color:#ff9a7a}
+.ed-in{display:block;width:100%;min-height:44px;padding:10px 12px;border:1px solid var(--line);border-radius:var(--r);background:var(--night);color:var(--ink);font:inherit;font-size:15px}
+.ed-in:focus-visible{outline:2px solid var(--ember);outline-offset:2px}
+textarea.ed-in{min-height:110px;resize:vertical;line-height:1.5}
+.ed-in::placeholder{color:var(--ash);opacity:.75}
+.ed-title{font-family:var(--font-display);font-weight:700;font-size:clamp(26px,4.4vw,42px);line-height:1.12;letter-spacing:-.01em;padding:8px 12px;margin:0 0 6px}
+.ed-collective{font-size:17px;color:var(--ash);margin:0 0 14px}
+.ed-facts dt{color:var(--ash)}
+.ed-facts dd{margin:0 0 8px}
+.ed-facts dd .ed-in{font-size:14.5px}
+.ed-about-wrap .ed-in{font-size:14.5px}
+.ed-names{margin:10px 0 0}
+.ed-chips{display:flex;flex-wrap:wrap;gap:6px;margin:0 0 10px;padding:0;list-style:none}
+.ed-chip{display:inline-flex;align-items:center;gap:6px;min-height:32px;padding:4px 6px 4px 10px;border:1px solid var(--line);border-radius:999px;background:var(--coal);font-size:14px;color:var(--ink)}
+.ed-x{display:inline-flex;align-items:center;justify-content:center;width:24px;height:24px;border:0;border-radius:50%;background:var(--coal-2);color:var(--ash);font-size:15px;line-height:1;cursor:pointer}
+.ed-x:hover{color:var(--ink);background:var(--line)}
+.ed-empty{font-size:13px;color:var(--ash);list-style:none}
+.ed-add{display:flex;gap:8px;align-items:center}
+.ed-add .ed-name-in{flex:1 1 auto;min-width:0}
+@media (max-width:760px){
+  .ed-bar.is-editing{bottom:calc(8px + env(safe-area-inset-bottom,0px));padding:10px 12px}
+  .ed-bar .ed-status{flex:1 1 100%;order:3}
+  .ed-title{font-size:clamp(22px,6vw,30px)}
+  .ed-add{flex-wrap:wrap}
+  .ed-add .ed-name-in{flex:1 1 160px}
+}
+
+/* выбор сценария на /add/ + вкладки «номер / команда направления» */
+.add-modes{display:grid;gap:12px;grid-template-columns:repeat(3,minmax(0,1fr));margin:8px 0 0}
+.add-mode{display:flex;flex-direction:column;gap:8px;align-items:flex-start;text-align:left;min-height:150px;padding:18px;border:1px solid var(--line);border-radius:14px;background:var(--coal);color:var(--ink);font:inherit;cursor:pointer}
+.add-mode:hover,.add-mode:focus-visible{border-color:var(--ember);background:var(--coal-2)}
+.add-mode-t{font-family:var(--font-display);font-weight:700;font-size:19px;line-height:1.2}
+.add-mode-d{font-size:14px;line-height:1.5;color:var(--ash)}
+.add-mode-m{margin-top:auto;font-size:12.5px;color:var(--ash)}
+.add-tabs{display:inline-flex;flex-wrap:wrap;gap:8px;margin:4px 0 18px}
+.add-tab{min-height:44px;padding:8px 16px;border:1px solid var(--line);border-radius:999px;background:var(--coal);color:var(--ink);font:inherit;font-size:15px;cursor:pointer}
+.add-tab.is-on{background:var(--ember);border-color:var(--ember);color:var(--night);font-weight:600}
+.add-back{margin:0 0 14px}
+.add-link{background:none;border:0;padding:6px 0;color:var(--ember-hi);text-decoration:underline;font:inherit;font-size:14.5px;cursor:pointer;text-align:left;min-height:24px}
+.add-link:hover{color:var(--ink)}
+select.add-in{appearance:none;background-image:linear-gradient(45deg,transparent 50%,var(--ash) 50%),linear-gradient(135deg,var(--ash) 50%,transparent 50%);background-position:calc(100% - 18px) 50%,calc(100% - 12px) 50%;background-size:6px 6px,6px 6px;background-repeat:no-repeat;padding-right:38px}
+@media (max-width:860px){.add-modes{grid-template-columns:1fr}.add-mode{min-height:0}}

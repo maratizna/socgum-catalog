@@ -80,6 +80,83 @@ COLS = {
 }
 KIND_RU = {"number": "Номер", "concert": "Концерт", "person": "Человек"}
 
+# Заявки, из которых нужно ДОБАВИТЬ строку: заголовок таблицы -> ключ в fields заявки.
+APPEND = {
+    "Концерты": {
+        "id": "id",
+        "название": "name",
+        "дата": "date",
+        "видео": "video",
+        "видео 2": "video2",
+        "видео2": "video2",
+        "описание": "about",
+        "обложка": "cover",
+        "учебный год": "season",
+        "поколение": "season",
+        "год": "year",
+        "тема": "topic",
+        "тип концерта": "ctype",
+        "вид концерта": "ctype",
+        "плейлист": "playlist",
+        "плейлист концерта": "playlist",
+        "музыка": "playlist",
+    },
+    "Номера": {
+        "id": "id",
+        "концерт": "concert",
+        "направление": "direction",
+        "название": "title",
+        "коллектив": "collective",
+        "участники": "performers",
+        "исполнители": "performers",
+        "постановщики": "choreographers",
+        "описание": "about",
+        "обложка": "cover",
+        "начало": "start",
+        "конец": "end",
+        "старый адрес": "old_url",
+        "ещё направление": "direction2",
+        "еще направление": "direction2",
+        "второе направление": "direction2",
+        "ссылки": "links",
+        "трек": "track",
+    },
+}
+SUB_KIND_RU = {
+    "number": "дополнение номера",
+    "number-new": "новый номер",
+    "concert-new": "новый концерт",
+    "team": "команда направления",
+}
+TRANSLIT = {
+    "а": "a", "б": "b", "в": "v", "г": "g", "д": "d", "е": "e", "ё": "e", "ж": "zh", "з": "z",
+    "и": "i", "й": "y", "к": "k", "л": "l", "м": "m", "н": "n", "о": "o", "п": "p", "р": "r",
+    "с": "s", "т": "t", "у": "u", "ф": "f", "х": "h", "ц": "ts", "ч": "ch", "ш": "sh",
+    "щ": "sch", "ъ": "", "ы": "y", "ь": "", "э": "e", "ю": "yu", "я": "ya",
+}
+
+
+def slugify(text, limit=60):
+    out = []
+    for ch in str(text or "").lower():
+        if ch in TRANSLIT:
+            out.append(TRANSLIT[ch])
+        elif ch.isalnum() and ch.isascii():
+            out.append(ch)
+        else:
+            out.append("-")
+    s = re.sub(r"-+", "-", "".join(out)).strip("-")
+    return (s[:limit].strip("-") or "item")
+
+
+def iso_date(value):
+    """14.05.2026 -> 2026-05-14: build.py понимает оба вида, в таблицу пишем ISO."""
+    s = str(value or "").strip()
+    m = re.fullmatch(r"(\d{1,2})\.(\d{1,2})\.(\d{4})", s)
+    if m:
+        return f"{m.group(3)}-{int(m.group(2)):02d}-{int(m.group(1)):02d}"
+    return s
+
 
 def log(m):
     print(m, flush=True)
@@ -278,18 +355,77 @@ def journal(sheet_id, token, edit, used):
     ])
 
 
-def journal_sub(sheet_id, token, sub, used):
+def append_row(sheet_id, token, sheet, fields, cache):
+    """Дописывает в лист новую строку по названиям колонок. Возвращает (ошибка|None, id)."""
+    if sheet not in cache:
+        cache[sheet] = sheet_values(sheet_id, sheet, token)
+    rows = cache.pop(sheet)  # ниже читаем/пишем — кэш больше не актуален
+    if not rows:
+        return f"лист «{sheet}» пустой", ""
+    head = rows[0]
+    keys = {norm(k): v for k, v in (APPEND.get(sheet) or {}).items()}
+    ids = set()
+    id_idx = None
+    for i, h in enumerate(head):
+        if norm(h) == "id":
+            id_idx = i
+            break
+    if id_idx is not None:
+        for r in rows[1:]:
+            if len(r) > id_idx and str(r[id_idx]).strip():
+                ids.add(str(r[id_idx]).strip())
+
+    row = [""] * len(head)
+    used = []
+    for i, h in enumerate(head):
+        key = keys.get(norm(h))
+        if not key:
+            continue
+        value = fields.get(key)
+        if value is None or value == "":
+            continue
+        row[i] = str(value)
+        used.append(key)
+    if not used:
+        return "в заявке нет полей, которые есть в таблице", ""
+    if id_idx is None:
+        return f"в листе «{sheet}» не нашлась колонка ID", ""
+
+    base = slugify(fields.get("title") or fields.get("name") or "")
+    if fields.get("direction") and not fields.get("title"):
+        base = slugify("команда-" + str(fields.get("direction")))
+    new_id = base
+    n = 2
+    while new_id in ids:
+        new_id = f"{base}-{n}"
+        n += 1
+    row[id_idx] = new_id
+    if "id" not in used:
+        used.append("id")
+
+    rng = urllib.parse.quote(f"'{sheet}'!A1", safe="")
+    api(f"{SH}/{sheet_id}/values/{rng}:append?valueInputOption=RAW&insertDataOption=INSERT_ROWS",
+        token, "POST", {"values": [row]})
+    return None, new_id
+
+
+def journal_sub(sheet_id, token, sub, used, new_id=""):
     fields = sub.get("fields") or {}
     brief = "; ".join(f"{k}: {str(v)[:80]}" for k, v in list(fields.items())[:6])
     who = ", ".join(x for x in [sub.get("authorName"), sub.get("authorNick"), sub.get("authorEmail")] if x)
+    kind = sub.get("kind") or "number"
+    what = SUB_KIND_RU.get(kind, "заявка")
+    target = new_id or sub.get("targetId", "")
     journal_row(sheet_id, token, [
         time.strftime("%d.%m.%Y %H:%M", time.gmtime()),
         sub.get("authorEmail") or "site",
-        f"Заявка с сайта: номер {sub.get('targetId', '')}",
+        f"Заявка с сайта: {what} {target}".strip(),
         brief,
         "Принять",
         "Применено: " + ", ".join(used),
         json.dumps({"kind": "site-request", "data": {
+            "kind": kind,
+            "id": target,
             "number": sub.get("targetId", ""),
             "concert": sub.get("concert", ""),
             "author": who,
@@ -308,8 +444,43 @@ def apply_edit(sheet_id, token, edit, cache):
 
 
 def apply_submission(sheet_id, token, sub, cache):
+    kind = sub.get("kind") or "number"
+    fields = dict(sub.get("fields") or {})
+
+    if kind in ("number-new", "team"):
+        fields.pop("id", None)
+        if kind == "team":
+            if not fields.get("title"):
+                fields["title"] = "Команда " + str(fields.get("direction") or "").strip()
+            fields.pop("collective", None)
+        concert = str(fields.get("concert") or sub.get("concert") or "").strip()
+        if concert:
+            fields["concert"] = concert
+        err, new_id = append_row(sheet_id, token, "Номера", fields, cache)
+        if err:
+            return err
+        journal_sub(sheet_id, token, sub, sorted(fields.keys()), new_id)
+        return None
+
+    if kind == "concert-new":
+        fields.pop("id", None)
+        if fields.get("date"):
+            fields["date"] = iso_date(fields["date"])
+        if not fields.get("year"):
+            date = fields.get("date") or ""
+            season = fields.get("season") or ""
+            if re.fullmatch(r"\d{4}-\d{2}-\d{2}", date):
+                fields["year"] = date[:4]
+            elif re.match(r"\d{4}", season):
+                fields["year"] = season[:4]
+        err, new_id = append_row(sheet_id, token, "Концерты", fields, cache)
+        if err:
+            return err
+        journal_sub(sheet_id, token, sub, sorted(fields.keys()), new_id)
+        return None
+
     err, used = write_row_fields(sheet_id, token, "number",
-                                 sub.get("targetId") or "", sub.get("fields") or {}, cache)
+                                 sub.get("targetId") or "", fields, cache)
     if err:
         return err
     journal_sub(sheet_id, token, sub, used)
