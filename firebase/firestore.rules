@@ -55,6 +55,25 @@ service cloud.firestore {
       allow read, write: if isAdmin();
     }
 
+    // Правки каталога со страницы /admin/: очередь для сборки сайта.
+    // Администратор только создаёт документ; переносит правку в Google Таблицу сборка на GitHub
+    // через сервисный аккаунт (он обходит правила), она же ставит status applied/error.
+    // Менять и удалять правки из браузера нельзя, чтобы очередь нельзя было подделать задним числом.
+    match /edits/{editId} {
+      allow read: if isAdmin();
+      allow create: if isAdmin()
+        && request.resource.data.keys().hasOnly(['kind', 'targetId', 'fields', 'uid', 'email', 'createdAt', 'status'])
+        && request.resource.data.kind in ['number', 'concert', 'person']
+        && request.resource.data.targetId is string
+        && request.resource.data.targetId.size() > 0 && request.resource.data.targetId.size() <= 100
+        && request.resource.data.fields is map
+        && request.resource.data.fields.size() > 0 && request.resource.data.fields.size() <= 20
+        && request.resource.data.uid == request.auth.uid
+        && request.resource.data.createdAt == request.time
+        && request.resource.data.status == 'new';
+      allow update, delete: if false;
+    }
+
     // Заявка «это моя страница». Всегда создаётся как ждущая, подтверждает администратор.
     match /claims/{pid} {
       allow read: if true;

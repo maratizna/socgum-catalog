@@ -1,0 +1,13 @@
+{% extends "base.html" %}
+{% block body_class %}page-admin{% endblock %}
+{% block head_extra %}<meta name="robots" content="noindex">{% endblock %}
+{% block main %}
+<section class="admin">
+  <header class="admin-head">
+    <h1>Правка каталога</h1>
+    <p class="admin-lead">Меняйте номера, концерты и людей. Правка уходит в Google Таблицу, после чего сайт
+      пересобирается сам — обычно за 1–2 минуты. Если что-то не так, ниже видно состояние правки.</p>
+  </header>
+  <div id="admin" class="admin-body"><div class="loading-state" role="status"><span class="spinner" aria-hidden="true"></span><span>Загружаем каталог…</span></div></div>
+</section>
+{% endblock %}

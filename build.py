@@ -924,7 +924,14 @@ def build_model(wb, report):
                       "total": len(order)}
 
     compute_similar(numbers)
-    return concerts, directions, numbers, people
+    # сырые строки листов — нужны только странице правки каталога (admin.json)
+    admin_raw = {
+        "numbers": sheets["Номера"], "concerts": sheets["Концерты"], "people": sheets["Люди"],
+        "number_ids": {n["row"]: n["id"] for n in numbers.values()},
+        "concert_ids": {c["row"]: c["slug"] for c in concerts.values()},
+        "people_ids": {r["_row"]: p_slug[r["_row"]] for r in sheets["Люди"] if r.get("name")},
+    }
+    return concerts, directions, numbers, people, admin_raw
 
 
 SIMILAR_MAX = 6      # сколько похожих номеров показывать внизу страницы номера
@@ -1088,7 +1095,7 @@ def write(path, text):
     path.write_text(text, encoding="utf-8")
 
 
-def build_site(concerts, directions, numbers, people, report, demo, source):
+def build_site(concerts, directions, numbers, people, report, demo, source, admin_raw=None):
     cfg = json.loads((ROOT / "config.json").read_text(encoding="utf-8"))
     site_url = cfg.get("site_url", "").rstrip("/")
     base_path = urlparse(site_url).path.rstrip("/") + "/" if site_url else "/"
@@ -1194,6 +1201,8 @@ def build_site(concerts, directions, numbers, people, report, demo, source):
             root="../", page_title=f"Пользователь: {cfg['site_title']}", canonical="", og_image="", description="", **ctx_common))
         write(TMP / "list" / "index.html", env.get_template("list.html").render(
             root="../", page_title=f"Плейлист: {cfg['site_title']}", canonical="", og_image="", description="", **ctx_common))
+        write(TMP / "admin" / "index.html", env.get_template("admin.html").render(
+            root="../", page_title=f"Правка каталога: {cfg['site_title']}", canonical="", og_image="", description="", **ctx_common))
 
     # работа без сети: манифест приложения, страница «нет соединения», сервис-воркер
     write(TMP / "manifest.webmanifest", json.dumps({
@@ -1237,6 +1246,58 @@ def build_site(concerts, directions, numbers, people, report, demo, source):
     write(TMP / "catalog.json", json.dumps({"generated": today, "sync_hash": sync_hash, "people": people_feed, "numbers": feed},
                                            ensure_ascii=False, indent=1))
 
+    # данные для страницы правки каталога: сырые значения ячеек, чтобы админ видел и правил то же,
+    # что лежит в таблице (по этим полям Action потом пишет обратно в лист)
+    if firebase and admin_raw:
+        def av(v):
+            if v is None:
+                return ""
+            if isinstance(v, dt.datetime):
+                return v.strftime("%Y-%m-%d")
+            if isinstance(v, dt.date):
+                return v.isoformat()
+            if isinstance(v, float) and v.is_integer():
+                return str(int(v))
+            return str(v).strip()
+
+        NUM_KEYS = ("title", "collective", "concert", "direction", "direction2", "performers",
+                    "choreographers", "about", "cover", "start", "end", "old_url", "links", "track")
+        CON_KEYS = ("name", "date", "video", "video2", "about", "cover", "topic", "season", "year", "ctype", "playlist")
+        admin_numbers = []
+        for r in admin_raw["numbers"]:
+            nid = admin_raw["number_ids"].get(r["_row"])
+            if not nid:
+                continue
+            rec = {"id": nid, "row": r["_row"]}
+            rec.update({k: av(r.get(k)) for k in NUM_KEYS})
+            rec["url"] = f"../n/{nid}/"
+            admin_numbers.append(rec)
+        admin_concerts = []
+        for r in admin_raw["concerts"]:
+            slug = admin_raw["concert_ids"].get(r["_row"])
+            if not slug:
+                continue
+            rec = {"id": slug, "row": r["_row"]}
+            rec.update({k: av(r.get(k)) for k in CON_KEYS})
+            admin_concerts.append(rec)
+        admin_people = []
+        for r in admin_raw["people"]:
+            pid = admin_raw["people_ids"].get(r["_row"])
+            if not pid:
+                continue
+            rec = {"id": pid, "row": r["_row"], "name": av(r.get("name")), "about": av(r.get("about")),
+                   "link": av(r.get("link"))}
+            rec["url"] = f"../p/{pid}/"
+            admin_people.append(rec)
+        admin_numbers.sort(key=lambda x: (norm(x["concert"]), x["row"]))
+        admin_concerts.sort(key=lambda x: x["row"])
+        admin_people.sort(key=lambda x: norm(x["name"]))
+        write(TMP / "admin.json", json.dumps({
+            "generated": today, "sheet_id": os.environ.get("SHEET_ID", "").strip(), "repo": "maratizna/socgum-catalog",
+            "numbers": admin_numbers, "concerts": admin_concerts, "people": admin_people,
+            "directions": [d["name"] for d in sorted(directions.values(), key=lambda d: norm(d["name"]))],
+        }, ensure_ascii=False, indent=1))
+
     # названия критериев оценки для страниц людей (где оценки разных номеров показываются списком)
     rate_feed = {n["id"]: {"off": 1 if n["offstage"] else 0, "k": [list(c) for c in n["rate_dir"]["criteria"]]}
                  for n in all_numbers if n.get("rate_dir") and n["rate_dir"].get("criteria")}
@@ -1257,10 +1318,10 @@ def main():
     stats = ""
     ok = False
     if wb is not None:
-        concerts, directions, numbers, people = build_model(wb, report)
+        concerts, directions, numbers, people, admin_raw = build_model(wb, report)
         stats = (f"Итог: концертов {len(concerts)}, номеров {len(numbers)}, людей {len(people)}.")
         if not report.errors:
-            built = build_site(concerts, directions, numbers, people, report, demo, source)
+            built = build_site(concerts, directions, numbers, people, report, demo, source, admin_raw)
             if built and not report.errors:
                 if OUT.exists():
                     shutil.rmtree(OUT)

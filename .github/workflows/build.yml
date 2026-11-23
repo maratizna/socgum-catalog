@@ -5,7 +5,8 @@ on:
     branches: [main]
   workflow_dispatch:
   schedule:
-    - cron: "17 3 * * *"   # раз в сутки, чтобы правки в таблице попадали на сайт сами
+    - cron: "*/10 * * * *"   # каждые 10 минут: страховка, если браузер не смог запустить сборку сразу
+    - cron: "17 3 * * *"     # раз в сутки, чтобы правки в таблице попадали на сайт сами
 
 permissions:
   contents: read
@@ -26,6 +27,14 @@ jobs:
           python-version: "3.12"
           cache: pip
       - run: pip install -r requirements.txt
+      # Правки со страницы /admin/ переносим в таблицу ДО сборки, иначе сайт соберётся из старой таблицы.
+      # Если секрета нет, шаг тихо пропускается и сборка идёт как раньше.
+      - name: Применить правки со страницы правки каталога
+        continue-on-error: true
+        run: python tools/apply_edits.py
+        env:
+          SHEET_ID: ${{ vars.SHEET_ID }}
+          GOOGLE_SA_JSON: ${{ secrets.GOOGLE_SA_JSON }}
       - name: Собрать сайт из таблицы
         run: python build.py
         env:
