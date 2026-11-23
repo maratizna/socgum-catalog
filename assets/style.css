@@ -1070,3 +1070,11 @@ select.add-in{appearance:none;background-image:linear-gradient(45deg,transparent
 .adm-entry-t{font-family:var(--font-display);font-weight:700;font-size:17px;line-height:1.25;margin:0 0 6px}
 .adm-entry .c-hint{margin:0 0 12px;max-width:64ch}
 .adm-entry .c-row{margin:0;flex-wrap:wrap}
+/* доп. ссылки на странице номера и в форме «Дополнить номер» */
+.stage-alt{margin:8px 0 0;display:flex;flex-wrap:wrap;gap:8px}
+.add-extra{margin:18px 0 0;padding:16px;border:1px solid var(--line);border-radius:12px;background:var(--coal)}
+.add-extra-t{font-family:var(--font-display);font-weight:700;font-size:15px;line-height:1.25;margin:0 0 12px}
+.add-extra .add-field{margin:0 0 14px}
+.add-extra .add-field:last-child{margin-bottom:0}
+.add-pick-single{width:100%;text-align:left}
+.add-pick-single .add-pick-t{font-size:16px}

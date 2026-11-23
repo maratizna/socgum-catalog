@@ -30,6 +30,9 @@
         <p class="stage-note">Запись концерта пока не добавлена.</p>
         {% endif %}
       </div>
+      {% if can_play and watch_links %}
+      <div class="stage-alt">{% for l in watch_links %}<a class="add-btn add-btn-s" href="{{ l.url }}" rel="noopener" target="_blank">Смотреть другую запись {{ l.label }}</a> {% endfor %}</div>
+      {% endif %}
       {% if can_play %}<p class="resume" id="resume" hidden></p>{% endif %}
       <div class="num-actions">
         {% if n.social %}

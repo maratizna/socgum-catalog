@@ -121,9 +121,22 @@ APPEND = {
         "ссылки": "links",
         "трек": "track",
     },
+    "Доп. материалы": {
+        "относится к": "scope",
+        "объект": "scope",
+        "что": "target",
+        "название": "target",
+        "тип": "mtype",
+        "вид": "mtype",
+        "ссылка": "url",
+        "подпись": "caption",
+        "связанный номер": "other",
+        "другой номер": "other",
+    },
 }
 SUB_KIND_RU = {
     "number": "дополнение номера",
+    "number-extra": "ссылки номера",
     "number-new": "новый номер",
     "concert-new": "новый концерт",
     "team": "команда направления",
@@ -388,25 +401,46 @@ def append_row(sheet_id, token, sheet, fields, cache):
         used.append(key)
     if not used:
         return "в заявке нет полей, которые есть в таблице", ""
-    if id_idx is None:
-        return f"в листе «{sheet}» не нашлась колонка ID", ""
 
-    base = slugify(fields.get("title") or fields.get("name") or "")
-    if fields.get("direction") and not fields.get("title"):
-        base = slugify("команда-" + str(fields.get("direction")))
-    new_id = base
-    n = 2
-    while new_id in ids:
-        new_id = f"{base}-{n}"
-        n += 1
-    row[id_idx] = new_id
-    if "id" not in used:
-        used.append("id")
+    if id_idx is None:
+        # Лист без колонки ID (например, «Доп. материалы»): дописываем строку как есть.
+        new_id = ""
+    else:
+        base = slugify(fields.get("title") or fields.get("name") or "")
+        if fields.get("direction") and not fields.get("title"):
+            base = slugify("команда-" + str(fields.get("direction")))
+        new_id = base
+        n = 2
+        while new_id in ids:
+            new_id = f"{base}-{n}"
+            n += 1
+        row[id_idx] = new_id
+        if "id" not in used:
+            used.append("id")
 
     rng = urllib.parse.quote(f"'{sheet}'!A1", safe="")
     api(f"{SH}/{sheet_id}/values/{rng}:append?valueInputOption=RAW&insertDataOption=INSERT_ROWS",
         token, "POST", {"values": [row]})
     return None, new_id
+
+
+def concert_id_by_name(sheet_id, token, name, cache):
+    """ID концерта по его названию (для правки «Видео 2»)."""
+    if "Концерты" not in cache:
+        cache["Концерты"] = sheet_values(sheet_id, "Концерты", token)
+    rows = cache["Концерты"]
+    if not rows:
+        return ""
+    head = [norm(h) for h in rows[0]]
+    n_idx = next((head.index(norm(h)) for h in ("Название", "Концерт") if norm(h) in head), None)
+    id_idx = next((head.index(norm(h)) for h in ("ID",) if norm(h) in head), None)
+    if n_idx is None or id_idx is None:
+        return ""
+    want = norm(name)
+    for r in rows[1:]:
+        if len(r) > max(n_idx, id_idx) and norm(r[n_idx]) == want:
+            return str(r[id_idx]).strip()
+    return ""
 
 
 def journal_sub(sheet_id, token, sub, used, new_id=""):
@@ -477,6 +511,33 @@ def apply_submission(sheet_id, token, sub, cache):
         if err:
             return err
         journal_sub(sheet_id, token, sub, sorted(fields.keys()), new_id)
+        return None
+
+    if kind == "number-extra":
+        used = []
+        v2 = str(fields.get("video2") or "").strip()
+        rel = str(fields.get("relatedId") or "").strip()
+        if v2:
+            cid = concert_id_by_name(sheet_id, token, sub.get("concert") or "", cache)
+            if not cid:
+                return f"не нашёл концерт «{sub.get('concert')}» в таблице"
+            err, _ = write_row_fields(sheet_id, token, "concert", cid, {"video2": v2}, cache)
+            if err:
+                return err
+            used.append("вторая запись концерта")
+        if rel:
+            err, _ = append_row(sheet_id, token, "Доп. материалы", {
+                "scope": "Номер",
+                "target": str(sub.get("targetId") or ""),
+                "mtype": "Связанный номер",
+                "other": rel,
+            }, cache)
+            if err:
+                return err
+            used.append("связанный номер")
+        if not used:
+            return "в заявке нет ссылок"
+        journal_sub(sheet_id, token, sub, used)
         return None
 
     err, used = write_row_fields(sheet_id, token, "number",

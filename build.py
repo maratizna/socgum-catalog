@@ -1265,6 +1265,10 @@ def build_site(concerts, directions, numbers, people, report, demo, source, admi
         NUM_KEYS = ("title", "collective", "concert", "direction", "direction2", "performers",
                     "choreographers", "about", "cover", "start", "end", "old_url", "links", "track")
         CON_KEYS = ("name", "date", "video", "video2", "about", "cover", "topic", "season", "year", "ctype", "playlist")
+        # id связанных номеров («другое исполнение») — для формы дополнения на /add/
+        rel_ids = {}
+        for _n in numbers.values():
+            rel_ids[_n["id"]] = [x["n"]["id"] for x in (_n.get("related") or []) if (x or {}).get("n")]
         admin_numbers = []
         for r in admin_raw["numbers"]:
             nid = admin_raw["number_ids"].get(r["_row"])
@@ -1273,6 +1277,7 @@ def build_site(concerts, directions, numbers, people, report, demo, source, admi
             rec = {"id": nid, "row": r["_row"]}
             rec.update({k: av(r.get(k)) for k in NUM_KEYS})
             rec["url"] = f"../n/{nid}/"
+            rec["related"] = rel_ids.get(nid, [])
             admin_numbers.append(rec)
         admin_concerts = []
         for r in admin_raw["concerts"]:

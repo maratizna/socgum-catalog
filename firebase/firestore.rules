@@ -70,7 +70,10 @@ service cloud.firestore {
         && request.resource.data.fields.size() > 0 && request.resource.data.fields.size() <= 20
         && request.resource.data.uid == request.auth.uid
         && request.resource.data.createdAt == request.time
-        && request.resource.data.status == 'new';
+        && (request.resource.data.status == 'new'
+            || (isAdmin() && request.resource.data.status == 'approved'
+                && request.resource.data.approvedBy == request.auth.uid
+                && request.resource.data.approvedAt == request.time));
       allow update, delete: if false;
     }
 
@@ -82,16 +85,20 @@ service cloud.firestore {
       allow read: if isAdmin() || (signedIn() && resource.data.uid == request.auth.uid);
       allow create: if signedIn()
         && request.resource.data.keys().hasOnly(['kind', 'targetId', 'number', 'concert', 'fields',
-             'authorName', 'authorEmail', 'authorNick', 'authorLinks', 'uid', 'createdAt', 'status'])
+             'authorName', 'authorEmail', 'authorNick', 'authorLinks', 'uid', 'createdAt', 'status',
+             'approvedBy', 'approvedAt'])
         && request.resource.data.kind is string
-        && request.resource.data.kind in ['number', 'number-new', 'concert-new', 'team']
+        && request.resource.data.kind in ['number', 'number-extra', 'number-new', 'concert-new', 'team']
         && request.resource.data.targetId is string
         && request.resource.data.targetId.size() > 0 && request.resource.data.targetId.size() <= 100
         && request.resource.data.fields is map
         && request.resource.data.fields.size() > 0 && request.resource.data.fields.size() <= 20
         && request.resource.data.uid == request.auth.uid
         && request.resource.data.createdAt == request.time
-        && request.resource.data.status == 'new';
+        && (request.resource.data.status == 'new'
+            || (isAdmin() && request.resource.data.status == 'approved'
+                && request.resource.data.approvedBy == request.auth.uid
+                && request.resource.data.approvedAt == request.time));
       allow update: if isAdmin()
         && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'approvedBy', 'approvedAt', 'error']);
       allow delete: if false;

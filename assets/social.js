@@ -3279,7 +3279,7 @@
       { k: "choreographers", label: "Постановщики", type: "area", hint: "Через запятую." },
       { k: "about", label: "Описание", type: "area", hint: "Как проходит номер, откуда музыка — что важно знать зрителю." }
     ];
-    var D = { data: null, dataErr: false, mode: "", team: false, qc: "", concert: "", cur: null, busy: false, done: false, patchId: "" };
+    var D = { data: null, dataErr: false, mode: "", team: false, qc: "", qcOpen: false, concert: "", cur: null, busy: false, done: false, patchId: "" };
     var MODES = {
       concert: ["Добавить концерт", "≈ 1 минута", "Название, дата, ссылка на запись, описание и обложка. Концерт появится в каталоге."],
       number: ["Добавить номер или команду направления", "≈ 2 минуты", "Новый номер к концерту или команда внесценического направления: SMM, сценарка, админка, декор, рабы сцены, футажи."],
@@ -3417,6 +3417,31 @@
     var DATE_RE = /^(\d{1,2}\.\d{1,2}\.\d{4}|\d{4}-\d{2}-\d{2})$/;
     var URL_RE = /^https?:\/\/\S+$/i;
 
+    function subDoc(kind, fields, number, concert, target) {
+      var ident = identObj();
+      var doc = {
+        kind: kind, targetId: String(target || "new"),
+        number: String(number || "").slice(0, 200), concert: String(concert || "").slice(0, 200),
+        fields: fields,
+        authorName: (ident.name || "").slice(0, 100), authorEmail: (ident.email || "").slice(0, 200),
+        authorNick: (ident.nick || "").slice(0, 60), authorLinks: (ident.links || "").slice(0, 400),
+        uid: state.user.uid, createdAt: fb.f.serverTimestamp()
+      };
+      if (state.admin) {
+        doc.status = "approved";
+        doc.approvedBy = state.user.uid;
+        doc.approvedAt = fb.f.serverTimestamp();
+      } else {
+        doc.status = "new";
+      }
+      return doc;
+    }
+    function afterSubmitMsg() {
+      return state.admin
+        ? "Принято автоматически: вы администратор. Нажмите «Собрать сайт сейчас» в кабинете — изменения уйдут в таблицу и на сайт."
+        : "Заявка отправлена. Администратор проверит её и обновит сайт.";
+    }
+
     function submitNew(kind, fields, form, doneTitle) {
       if (D.busy) return;
       var ident = identObj();
@@ -3424,17 +3449,10 @@
       D.busy = true;
       busyForm(form, true);
       formMsg(form, "Отправляем заявку…");
-      fb.f.addDoc(fcol("submissions"), {
-        kind: kind, targetId: "new",
-        number: (fields.title || "").slice(0, 200), concert: (fields.concert || "").slice(0, 200),
-        fields: fields,
-        authorName: (ident.name || "").slice(0, 100), authorEmail: (ident.email || "").slice(0, 200),
-        authorNick: (ident.nick || "").slice(0, 60), authorLinks: (ident.links || "").slice(0, 400),
-        uid: state.user.uid, createdAt: fb.f.serverTimestamp(), status: "new"
-      }).then(function () {
+      fb.f.addDoc(fcol("submissions"), subDoc(kind, fields, fields.title || "", fields.concert || "")).then(function () {
         D.busy = false;
         D.done = true;
-        toast("Заявка отправлена. Администратор проверит её и обновит сайт.");
+        toast(afterSubmitMsg());
         draw(doneTitle);
       }, function (e) {
         D.busy = false;
@@ -3588,7 +3606,7 @@
       list.slice(0, 12).forEach(function (c) {
         var n = numbersOf(c.name).length;
         var b = el("button", { type: "button", class: "add-pick" + (D.concert === c.name ? " is-on" : ""),
-          onclick: function () { D.concert = c.name; D.cur = null; D.done = false; draw(); } },
+          onclick: function () { D.concert = c.name; D.cur = null; D.done = false; D.qc = ""; D.qcOpen = false; draw(); } },
           el("span", { class: "add-pick-t", text: c.name || "Без названия" }),
           el("span", { class: "add-pick-s", text: [c.season ? "учебный год " + c.season : "", n ? n + " " + plural(n, "номер", "номера", "номеров") : "номера не заведены"].filter(Boolean).join(" · ") }));
         ul.append(el("li", null, b));
@@ -3598,6 +3616,15 @@
     function concertStep() {
       var sec = el("section", { class: "add-step" });
       sec.append(stepHead("1", "Концерт", "поиск по названию, году и направлению"));
+      var open = !D.concert || D.qcOpen;
+      if (!open) {
+        sec.append(el("button", { type: "button", class: "add-pick is-on add-pick-single",
+          title: "Нажмите, чтобы выбрать другой концерт",
+          onclick: function () { D.qcOpen = true; draw(); } },
+          el("span", { class: "add-pick-t", text: D.concert }),
+          el("span", { class: "add-pick-s", text: "выбран · нажмите, чтобы изменить" })));
+        return sec;
+      }
       var inp = el("input", { class: "add-in add-search", type: "search", placeholder: "Например: гала, студвесна, 2025" });
       inp.value = D.qc;
       inp.addEventListener("input", function () {
@@ -3707,6 +3734,29 @@
           f.hint ? el("span", { class: "add-hint", text: f.hint }) : null));
       });
       form.append(grid);
+      if (c) {
+        var extra = el("div", { class: "add-extra" });
+        extra.append(el("h3", { class: "add-extra-t", text: "Ссылки" }));
+        var v2 = el("input", { class: "add-in", type: "text", placeholder: "https://vk.ru/video..." });
+        v2.dataset.x = "video2"; v2.dataset.was = c.video2 || ""; v2.value = c.video2 || "";
+        extra.append(el("label", { class: "add-field" },
+          el("span", { class: "add-label", text: "Вторая запись этого концерта" }), v2,
+          el("span", { class: "add-hint", text: "Если концерт выложен ещё раз отдельным видео — вставьте ссылку: она появится на странице номера." })));
+        var others = allNumbers().filter(function (x) { return x.id !== n.id; })
+          .sort(function (a, b) { return norm(a.title + " " + a.concert) < norm(b.title + " " + b.concert) ? -1 : 1; });
+        var relSel = el("select", { class: "add-in" });
+        relSel.append(el("option", { value: "", text: "— нет —" }));
+        others.forEach(function (x) {
+          relSel.append(el("option", { value: x.id, text: (x.title || "Без названия") + " — " + x.concert }));
+        });
+        relSel.dataset.x = "relatedId";
+        var wasRel = (n.related && n.related[0]) || "";
+        relSel.dataset.was = wasRel; relSel.value = wasRel;
+        extra.append(el("label", { class: "add-field" },
+          el("span", { class: "add-label", text: "Этот номер уже есть на сайте" }), relSel,
+          el("span", { class: "add-hint", text: "Для номеров, которые выступали на других концертах: выберите страницу другого исполнения — появится ссылка «Другое исполнение»." })));
+        form.append(extra);
+      }
       form.append(el("div", { class: "add-actions" },
         el("button", { type: "submit", class: "btn", text: "Отправить заявку" }),
         el("span", { class: "msg", role: "status" })));
@@ -3721,8 +3771,16 @@
         if (v === (inp.dataset.was || "")) return;
         fields[k] = v; changed++;
       });
-      if (!changed) { formMsg(form, "Ничего не изменили — заполните хотя бы одно поле."); return; }
-      if (fields.start && !TIME_RE.test(fields.start)) bad = "Начало — мм:сс или ч:мм:сс.";
+      var extra = {};
+      Array.prototype.forEach.call(form.querySelectorAll("[data-x]"), function (inp) {
+        var k = inp.dataset.x, v = String(inp.value || "").trim();
+        if (v === (inp.dataset.was || "")) return;
+        extra[k] = v;
+      });
+      var hasExtra = Object.keys(extra).length > 0;
+      if (!changed && !hasExtra) { formMsg(form, "Ничего не изменили — заполните хотя бы одно поле."); return; }
+      if (extra.video2 && !URL_RE.test(extra.video2)) bad = "Вторая запись — ссылка, начните с https://";
+      else if (fields.start && !TIME_RE.test(fields.start)) bad = "Начало — мм:сс или ч:мм:сс.";
       else if (fields.end && !TIME_RE.test(fields.end)) bad = "Конец — мм:сс или ч:мм:сс.";
       else Object.keys(fields).forEach(function (k) {
         if (bad) return;
@@ -3730,19 +3788,15 @@
         else if (k !== "about" && fields[k].length > 1000) bad = "Одно из полей слишком длинное.";
       });
       if (bad) { formMsg(form, bad, true); return; }
-      var ident = identObj();
+      var jobs = [];
+      if (changed) jobs.push(fb.f.addDoc(fcol("submissions"), subDoc("number", fields, n.title, n.concert, n.id)));
+      if (hasExtra) jobs.push(fb.f.addDoc(fcol("submissions"), subDoc("number-extra", extra, n.title, n.concert, n.id)));
       D.busy = true;
       busyForm(form, true);
       formMsg(form, "Отправляем заявку…");
-      fb.f.addDoc(fcol("submissions"), {
-        kind: "number", targetId: n.id, number: n.title || "", concert: n.concert || "",
-        fields: fields,
-        authorName: (ident.name || "").slice(0, 100), authorEmail: (ident.email || "").slice(0, 200),
-        authorNick: (ident.nick || "").slice(0, 60), authorLinks: (ident.links || "").slice(0, 400),
-        uid: state.user.uid, createdAt: fb.f.serverTimestamp(), status: "new"
-      }).then(function () {
+      Promise.all(jobs).then(function () {
         D.busy = false; D.done = true;
-        toast("Заявка отправлена. Администратор проверит её и обновит сайт.");
+        toast(afterSubmitMsg());
         draw();
       }, function (e) {
         D.busy = false;
@@ -3800,7 +3854,7 @@
       var m = modeNow();
       if (m && m !== D.mode) {
         D.mode = m; D.done = false;
-        if (!D.patchId) { D.cur = null; D.concert = ""; D.qc = ""; }
+        if (!D.patchId) { D.cur = null; D.concert = ""; D.qc = ""; D.qcOpen = false; }
         draw();
       }
     });
@@ -3865,6 +3919,7 @@
     }
     function kindLabel(k) {
       if (k === "number") return "Номер";
+      if (k === "number-extra") return "Ссылки номера";
       if (k === "concert") return "Концерт";
       if (k === "number-new") return "Новый номер";
       if (k === "team") return "Команда направления";
