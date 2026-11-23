@@ -700,10 +700,9 @@
         el("div", { class: "um-head" }, avatarNode(uid, nm, "s"),
           el("div", { class: "um-who" }, el("b", { text: nm }), state.admin ? el("span", { class: "c-hint", text: "Администратор" }) : null)),
         umItem(ownPageUrl(), "page", "Моя страница"),
-        umItem(ROOT + "add/", "plus", "Добавить в каталог"),
         umItem(ROOT + "settings/", "gear", "Настройки профиля"));
       var admItem = null;
-      if (state.admin) { admItem = umItem(ROOT + "account/", "admin", "Кабинет администратора"); menu.append(admItem, umItem(ROOT + "admin/", "pencil", "Правка каталога")); }
+      if (state.admin) { admItem = umItem(ROOT + "account/", "admin", "Кабинет администратора"); menu.append(admItem); }
       slot.append(menu);
     }
     if (state.admin) {
@@ -2592,6 +2591,12 @@
         box.append(ul);
       }
       if (state.admin) {
+        box.append(el("div", { class: "adm-entry" },
+          el("div", { class: "adm-entry-t" }, "Администратор"),
+          el("p", { class: "c-hint", text: "Правка номеров и концертов прямо в таблице каталога: изменения уходят в Google Таблицу, потом сайт пересобирается." }),
+          el("div", { class: "c-row" },
+            el("a", { class: "btn btn-s", href: ROOT + "admin/", text: "Правка каталога" }),
+            el("a", { class: "btn btn-s btn-ghost", href: ROOT + "add/", text: "Добавить номер или концерт" }))));
         box.append(el("h2", { text: "Заявки на подтверждение" }));
         if (!pending.length) box.append(el("p", { class: "c-hint", text: "Новых заявок нет." }));
         else {
