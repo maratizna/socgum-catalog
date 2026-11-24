@@ -1200,7 +1200,24 @@
           el("img", { src: p.url, alt: "Фото зрителя", loading: "lazy", decoding: "async", onerror: function () { if (this.parentNode) this.parentNode.hidden = true; } }),
           p.author ? el("span", { class: "c-photo-by", text: p.author }) : null));
       });
-      photosBox.append(grid);
+      var prev = el("button", { type: "button", class: "c-car-prev", "aria-label": "Предыдущие фото", text: "‹", hidden: true, onclick: function () { step(-1); } });
+      var next = el("button", { type: "button", class: "c-car-next", "aria-label": "Следующие фото", text: "›", hidden: true, onclick: function () { step(1); } });
+      function step(dir) {
+        var card = grid.querySelector(".c-photo");
+        var w = card ? card.getBoundingClientRect().width + 12 : 240;
+        grid.scrollBy({ left: dir * w * 2, behavior: "smooth" });
+      }
+      function syncArrows() {
+        var over = grid.scrollWidth > grid.clientWidth + 4;
+        prev.hidden = next.hidden = !over;
+        if (!over) return;
+        prev.disabled = grid.scrollLeft < 4;
+        next.disabled = grid.scrollLeft + grid.clientWidth >= grid.scrollWidth - 4;
+      }
+      grid.addEventListener("scroll", syncArrows, { passive: true });
+      window.addEventListener("resize", syncArrows);
+      setTimeout(syncArrows, 60);
+      photosBox.append(el("div", { class: "c-carousel" }, prev, grid, next));
     }
 
     function imgsNode(c) {

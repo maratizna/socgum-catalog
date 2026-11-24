@@ -1143,6 +1143,21 @@ body.lb-on{overflow:hidden}
 .c-img:hover{border-color:var(--ember)}
 .c-photo{position:relative}
 .c-photo-by{position:absolute;left:8px;bottom:8px;max-width:calc(100% - 16px);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;padding:2px 9px;border-radius:999px;background:rgba(9,5,0,.7);color:var(--ink);font-size:12px;line-height:1.5}
+/* «Фото зрителей» — карусель: все снимки в одну строку, прокрутка и стрелки */
+.c-carousel{position:relative;margin:10px 0 0}
+.c-photos-grid{display:flex;gap:12px;overflow-x:auto;scroll-snap-type:x mandatory;padding:2px 2px 10px;scrollbar-width:thin;scrollbar-color:var(--line) transparent;overscroll-behavior-x:contain}
+.c-photos-grid::-webkit-scrollbar{height:6px}
+.c-photos-grid::-webkit-scrollbar-thumb{background:var(--line);border-radius:999px}
+.c-photos-grid>.c-photo{flex:0 0 auto;width:clamp(180px,24vw,260px);margin:0;scroll-snap-align:start;border:1px solid var(--line);border-radius:var(--r);overflow:hidden;background:var(--coal);padding:0;cursor:zoom-in;aspect-ratio:4/3}
+.c-photos-grid>.c-photo img{width:100%;height:100%;object-fit:cover;display:block}
+.c-photos-grid>.c-photo:hover{border-color:var(--ember)}
+.c-car-prev,.c-car-next{position:absolute;top:calc(50% - 5px);transform:translateY(-50%);z-index:3;width:40px;height:40px;border-radius:50%;border:1px solid var(--line);background:rgba(9,5,0,.78);color:var(--ink);font-size:22px;line-height:1;cursor:pointer;display:grid;place-items:center}
+.c-car-prev{left:6px}
+.c-car-next{right:6px}
+.c-car-prev:hover,.c-car-next:hover{border-color:var(--ember);color:var(--ember-hi)}
+.c-car-prev:disabled,.c-car-next:disabled{opacity:.35;cursor:default;border-color:var(--line);color:var(--ash)}
+.c-car-prev[hidden],.c-car-next[hidden]{display:none}
+@media (max-width:760px){.c-photos-grid{gap:10px}.c-photos-grid>.c-photo{width:clamp(150px,42vw,220px)}.c-car-prev,.c-car-next{width:34px;height:34px;font-size:19px}}
 
 /* фото номера */
 .num-photos{margin:14px 0 0}
