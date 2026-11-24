@@ -78,9 +78,11 @@
       {% endif %}
 
       {% if n.related %}
+      {% set one = n.related[0] if n.related|length == 1 else none %}
       <section class="related" aria-labelledby="rel-h">
-        <h2 class="mat-h" id="rel-h">{{ 'Другое исполнение этого номера' if n.related|length == 1 else 'Другие исполнения этого номера' }}</h2>
-        <p class="rel-note">Тот же номер на другом концерте. Это отдельный номер: состав участников может отличаться.</p>
+        <h2 class="mat-h" id="rel-h">{% if one and one.caption %}{{ one.caption }}{% else %}{{ 'Другое исполнение этого номера' if n.related|length == 1 else 'Другие исполнения этого номера' }}{% endif %}</h2>
+        {% if one and one.author_name %}<p class="rel-author">Добавил: {% if one.author_slug %}<a href="{{ root }}p/{{ one.author_slug }}/">{{ one.author_name }}</a>{% else %}{{ one.author_name }}{% endif %}</p>{% endif %}
+        {% if not one or not one.caption %}<p class="rel-note">Тот же номер на другом концерте. Это отдельный номер: состав участников может отличаться.</p>{% endif %}
         <ul class="rel-list">
           {% for x in n.related %}
           <li><a class="rel-card" href="{{ root }}n/{{ x.n.id }}/">
@@ -89,7 +91,8 @@
               <small>{{ x.n.concert.name }}{% if x.n.concert.date %}, {{ x.n.concert.date|ru_date }}{% endif %}</small>
               {% if x.n.collective and x.n.collective != n.collective %}<small>Коллектив: {{ x.n.collective }}</small>{% endif %}
               {% if x.n.performers %}<small>Участников: {{ x.n.performers|length }}</small>{% endif %}
-              {% if x.caption %}<small>{{ x.caption }}</small>{% endif %}</span>
+              {% if not one and x.caption %}<small>{{ x.caption }}</small>{% endif %}
+              {% if not one and x.author_name %}<small class="rel-author-small">Добавил: {% if x.author_slug %}<a href="{{ root }}p/{{ x.author_slug }}/">{{ x.author_name }}</a>{% else %}{{ x.author_name }}{% endif %}</small>{% endif %}</span>
           </a></li>
           {% endfor %}
         </ul>

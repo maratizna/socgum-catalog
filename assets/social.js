@@ -3831,17 +3831,26 @@
           el("span", { class: "add-hint", text: "Если концерт выложен ещё раз отдельным видео — вставьте ссылку: она появится на странице номера." })));
         var others = allNumbers().filter(function (x) { return x.id !== n.id; })
           .sort(function (a, b) { return norm(a.title + " " + a.concert) < norm(b.title + " " + b.concert) ? -1 : 1; });
-        var relSel = el("select", { class: "add-in" });
-        relSel.append(el("option", { value: "", text: "— нет —" }));
-        others.forEach(function (x) {
-          relSel.append(el("option", { value: x.id, text: (x.title || "Без названия") + " — " + x.concert }));
-        });
-        relSel.dataset.x = "relatedId";
-        var wasRel = (n.related && n.related[0]) || "";
-        relSel.dataset.was = wasRel; relSel.value = wasRel;
-        extra.append(el("label", { class: "add-field" },
-          el("span", { class: "add-label", text: "Этот номер уже есть на сайте" }), relSel,
-          el("span", { class: "add-hint", text: "Для номеров, которые выступали на других концертах: выберите страницу другого исполнения — появится ссылка «Другое исполнение»." })));
+        var relBox = el("div", { class: "add-rel" });
+        function addRelRow(init) {
+          if (relBox.querySelectorAll(".add-rel-row").length >= 3) return;
+          var sel = el("select", { class: "add-in" });
+          sel.append(el("option", { value: "", text: "— выберите номер —" }));
+          others.forEach(function (x) { sel.append(el("option", { value: x.id, text: (x.title || "Без названия") + " — " + x.concert })); });
+          var cap = el("input", { class: "add-in", type: "text", maxlength: "120", placeholder: "Почему связаны: «та же подтанцовка», «продолжение»…" });
+          var row = el("div", { class: "add-rel-row" },
+            el("label", { class: "add-rel-sel" }, el("span", { class: "add-label", text: "Связанный номер" }), sel),
+            el("label", { class: "add-rel-cap" }, el("span", { class: "add-label", text: "Подпись (необязательно)" }), cap),
+            el("button", { type: "button", class: "add-rel-x", "aria-label": "Убрать связку", text: "×", onclick: function () { row.remove(); } }));
+          if (init && init.id) { sel.value = init.id; cap.value = init.caption || ""; }
+          relBox.append(row);
+        }
+        (n.related || []).slice(0, 3).forEach(function (r) { addRelRow(r && r.id ? r : { id: r }); });
+        var addRelBtn = el("button", { type: "button", class: "btn btn-s btn-ghost", text: "+ Добавить связанный номер" });
+        addRelBtn.addEventListener("click", function () { addRelRow(); relBox.lastChild.scrollIntoView({ block: "nearest" }); });
+        extra.append(el("div", { class: "add-field add-field-wide" },
+          el("span", { class: "add-label", text: "Связанные номера" }), relBox, addRelBtn,
+          el("span", { class: "add-hint", text: "Другой номер, с которым этот связан — например, «Горе» и номер «Горе» коллектива «Сумрак» (подтанцовка). Подпись станет заголовком блока «Другое исполнение», а ваше имя подпишется под ним." })));
         form.append(extra);
       }
       form.append(el("div", { class: "add-actions" },
@@ -3864,6 +3873,17 @@
         if (v === (inp.dataset.was || "")) return;
         extra[k] = v;
       });
+      var rels = [];
+      Array.prototype.forEach.call(form.querySelectorAll(".add-rel-row"), function (row) {
+        var sel = row.querySelector("select"), cap = row.querySelector(".add-rel-cap input");
+        var id = sel ? String(sel.value || "") : "";
+        if (!id) return;
+        if (rels.some(function (r) { return r.id === id; })) return;
+        rels.push({ id: id, caption: cap ? String(cap.value || "").trim().slice(0, 120) : "" });
+      });
+      var known = (n.related || []).map(function (r) { return r && r.id ? r.id : r; });
+      var newRels = rels.filter(function (r) { return known.indexOf(r.id) === -1; });
+      if (newRels.length) extra.related = newRels;
       var hasExtra = Object.keys(extra).length > 0;
       if (!changed && !hasExtra) { formMsg(form, "Ничего не изменили — заполните хотя бы одно поле."); return; }
       if (extra.video2 && !URL_RE.test(extra.video2)) bad = "Вторая запись — ссылка, начните с https://";

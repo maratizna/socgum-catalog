@@ -400,7 +400,7 @@ SPEC = {
     "Люди": {"name": ["имя"], "about": ["о себе", "описание"], "link": ["ссылка"], "id": ["id"]},
     "Формы": {"title": ["форма"], "url": ["ссылка для сотрудников", "ссылка"]},
     "Доп. материалы": {"scope": ["относится к", "привязка"], "target": ["что", "к чему", "объект"], "mtype": ["тип"],
-                       "url": ["ссылка", "ссылки", "фото"], "caption": ["подпись"], "other": ["связанный номер", "другой номер"]},
+                       "url": ["ссылка", "ссылки", "фото"], "caption": ["подпись"], "other": ["связанный номер", "другой номер"], "author": ["кто добавил", "автор", "добавил"],},
 }
 REQUIRED = {
     "Концерты": ["name"], "Направления": ["name"],
@@ -670,9 +670,10 @@ def parse_materials(rows, concerts, directions, numbers, report):
                 continue
             if o["concert"] is obj["concert"]:
                 report.warn(S, row, f"Номера «{obj['title']}» и «{o['title']}» из одного концерта. Связка нужна для исполнения на разных концертах.")
+            author = (r.get("author") or "").strip()
             for a, b in ((obj, o), (o, obj)):
                 if not any(x["n"] is b for x in a["related"]):
-                    a["related"].append({"n": b, "caption": caption})
+                    a["related"].append({"n": b, "caption": caption, "author": author})
             continue
         urls = [u for u in re.split(r"[\s;,]+", raw_url) if u]
         if not urls:
@@ -881,6 +882,14 @@ def build_model(wb, report):
     for k, e in extra.items():
         if k not in people:
             report.warn("Люди", e["_row"], f"«{e['name']}» нет ни в одном номере. Строка пока ни на что не влияет.")
+    # кто добавил связку номеров: если такой человек есть в каталоге — ссылка на его страницу
+    for n in numbers.values():
+        for rel in n.get("related") or []:
+            a = (rel.get("author") or "").strip()
+            p = people.get(norm(a)) if a else None
+            rel["author_name"] = a
+            rel["author_slug"] = p["slug"] if p else ""
+
     loose = [p["name"] for k, p in people.items() if k not in extra]
     if loose:
         report.warn("Люди", None, f"У {len(loose)} человек нет строки на листе «Люди» (например, «{loose[0]}»): адрес их страницы зависит от написания имени. "
@@ -1278,7 +1287,7 @@ def build_site(concerts, directions, numbers, people, report, demo, source, admi
         # id связанных номеров («другое исполнение») — для формы дополнения на /add/
         rel_ids = {}
         for _n in numbers.values():
-            rel_ids[_n["id"]] = [x["n"]["id"] for x in (_n.get("related") or []) if (x or {}).get("n")]
+            rel_ids[_n["id"]] = [{"id": x["n"]["id"], "caption": x.get("caption") or ""} for x in (_n.get("related") or []) if (x or {}).get("n")]
         admin_numbers = []
         for r in admin_raw["numbers"]:
             nid = admin_raw["number_ids"].get(r["_row"])

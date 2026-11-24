@@ -132,6 +132,9 @@ APPEND = {
         "подпись": "caption",
         "связанный номер": "other",
         "другой номер": "other",
+        "кто добавил": "author",
+        "автор": "author",
+        "добавил": "author",
     },
 }
 SUB_KIND_RU = {
@@ -266,6 +269,12 @@ def plain(fields):
                 return bool(v)
             if t == "mapValue":
                 return {k: one(x) for k, x in v.get("fields", {}).items()}
+            if t == "arrayValue":
+                return [one(x) for x in v.get("values") or []]
+            if t == "nullValue":
+                return None
+            if t == "doubleValue":
+                return float(v)
         return ""
     return {k: one(v) for k, v in fields.items()}
 
@@ -517,6 +526,28 @@ def apply_submission(sheet_id, token, sub, cache):
         used = []
         v2 = str(fields.get("video2") or "").strip()
         rel = str(fields.get("relatedId") or "").strip()
+        rels = fields.get("related") or []
+        if isinstance(rels, dict):
+            rels = [rels]
+        if rels:
+            author = str(sub.get("authorName") or "").strip()
+            target = str(sub.get("targetId") or "").strip()
+            for item in rels:
+                if isinstance(item, dict):
+                    other = str(item.get("id") or "").strip()
+                    cap = str(item.get("caption") or "").strip()[:120]
+                else:
+                    other = str(item or "").strip()
+                    cap = ""
+                if not other:
+                    continue
+                err, _ = append_row(sheet_id, token, "Доп. материалы", {
+                    "scope": "Номер", "target": target, "mtype": "Связанный номер",
+                    "other": other, "caption": cap, "author": author,
+                }, cache)
+                if err:
+                    return err
+            used.append("связанные номера")
         if v2:
             cid = concert_id_by_name(sheet_id, token, sub.get("concert") or "", cache)
             if not cid:

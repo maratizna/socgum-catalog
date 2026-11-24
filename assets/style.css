@@ -1,4 +1,4 @@
-﻿/* РљР°С‚Р°Р»РѕРі РЅРѕРјРµСЂРѕРІ РЎРѕС†Р“СѓРјР°. Р¦РІРµС‚Р° Рё РїРѕРґР°С‡Р° Р·Р°РґР°РЅС‹ СЃР°Р№С‚РѕРј РЎРѕС†Р“СѓРјР°: С‚С‘РјРЅС‹Р№ С„РѕРЅ, РѕСЂР°РЅР¶РµРІС‹Р№ Р°РєС†РµРЅС‚. */
+/* РљР°С‚Р°Р»РѕРі РЅРѕРјРµСЂРѕРІ РЎРѕС†Р“СѓРјР°. Р¦РІРµС‚Р° Рё РїРѕРґР°С‡Р° Р·Р°РґР°РЅС‹ СЃР°Р№С‚РѕРј РЎРѕС†Р“СѓРјР°: С‚С‘РјРЅС‹Р№ С„РѕРЅ, РѕСЂР°РЅР¶РµРІС‹Р№ Р°РєС†РµРЅС‚. */
 
 @font-face{font-family:"Unbounded";font-weight:700;font-style:normal;font-display:swap;
   src:url(fonts/unbounded-cyrillic-700-normal.woff2) format("woff2");
@@ -1103,3 +1103,20 @@ select.add-in{appearance:none;background-image:linear-gradient(45deg,transparent
 /* ── Подсказки оценок не должны расширять страницу ──────────── */
 .rt-total::after,.rt-chip::after{display:none}
 .rt-total:hover::after,.rt-chip:hover::after,.rt-total:focus-visible::after,.rt-chip:focus-visible::after,.rt-total.is-open::after,.rt-chip.is-open::after{display:block}
+
+/* кто добавил связку номеров */
+.rel-author{margin:-4px 0 10px;color:var(--ash);font-size:.9rem}
+.rel-author a{color:var(--ember-hi);text-decoration:underline;text-underline-offset:2px}
+.rel-author a:hover{color:var(--ink)}
+.rel-author-small{display:block}
+.rel-author-small a{color:var(--ember-hi)}
+
+/* связанные номера в форме «Дополнить» */
+.add-rel{display:grid;gap:10px;margin:0 0 10px}
+.add-rel-row{display:grid;grid-template-columns:minmax(0,1.4fr) minmax(0,1fr) auto;gap:8px;align-items:end;padding:10px;border:1px solid var(--line);border-radius:10px;background:var(--coal-2)}
+.add-rel-sel,.add-rel-cap{display:grid;gap:4px;min-width:0}
+.add-rel-row .add-label{font-size:12.5px}
+.add-rel-row .add-in{min-height:40px}
+.add-rel-x{width:36px;height:36px;border:1px solid var(--line);border-radius:8px;background:transparent;color:var(--ash);font-size:18px;line-height:1;cursor:pointer}
+.add-rel-x:hover{border-color:var(--ember);color:var(--ink)}
+@media (max-width:760px){.add-rel-row{grid-template-columns:1fr;align-items:stretch}.add-rel-x{justify-self:start;width:44px;height:32px}}
