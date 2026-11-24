@@ -243,6 +243,13 @@ def watch_link(url):
     return {"url": url, "label": label}
 
 
+def safe_href(value):
+    """Внешняя ссылка для страницы: пропускаем только http(s), иначе пустая строка.
+    Нужно, чтобы из таблицы (или из профиля) не попала ссылка вида javascript:."""
+    value = html.unescape(str(value or "")).strip()
+    return value if re.match(r"^https?://\S+$", value, re.I) else ""
+
+
 SOCIAL_KINDS = [
     (("vk.com", "vk.ru", "vkvideo.ru"), "vk", "ВКонтакте"),
     (("t.me", "telegram.me", "telegram.org"), "tg", "Telegram"),
@@ -857,7 +864,7 @@ def build_model(wb, report):
         if k not in people:
             e = extra.get(k, {})
             people[k] = {"name": name, "slug": p_slug[e["_row"]] if e else slugs_p.make(name), "numbers": [],
-                         "about": e.get("about", ""), "link": e.get("link", "")}
+                         "about": e.get("about", ""), "link": safe_href(e.get("link", ""))}
         return people[k]
 
     for n in numbers.values():
@@ -1293,7 +1300,7 @@ def build_site(concerts, directions, numbers, people, report, demo, source, admi
             if not pid:
                 continue
             rec = {"id": pid, "row": r["_row"], "name": av(r.get("name")), "about": av(r.get("about")),
-                   "link": av(r.get("link"))}
+                   "link": safe_href(av(r.get("link")))}
             rec["url"] = f"../p/{pid}/"
             admin_people.append(rec)
         admin_numbers.sort(key=lambda x: (norm(x["concert"]), x["row"]))

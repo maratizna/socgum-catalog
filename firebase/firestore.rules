@@ -126,6 +126,8 @@ service cloud.firestore {
         && request.resource.data.keys().hasOnly(['bio', 'link', 'avatar', 'updatedAt'])
         && request.resource.data.bio is string && request.resource.data.bio.size() <= 2000
         && request.resource.data.link is string && request.resource.data.link.size() <= 300
+        && (request.resource.data.link == ''
+            || request.resource.data.link.matches('^https?://[^\\s]+$'))
         && request.resource.data.avatar is string && request.resource.data.avatar.size() <= 150000
         && request.resource.data.updatedAt == request.time;
       allow delete: if isAdmin();

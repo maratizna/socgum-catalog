@@ -1625,7 +1625,13 @@
       }
       if (profile && profile.bio && aboutEl) { aboutEl.textContent = profile.bio; aboutEl.hidden = false; }
       if (profile && profile.link && linkEl) {
-        clear(linkEl).append(el("a", { href: profile.link, rel: "noopener ugc", text: profile.link.replace(/^https?:\/\/(www\.)?/, "").replace(/\/$/, "") }));
+        var pl = String(profile.link || "");
+        if (/^https?:\/\//i.test(pl)) {
+          clear(linkEl).append(el("a", { href: pl, rel: "noopener ugc", text: pl.replace(/^https?:\/\/(www\.)?/, "").replace(/\/$/, "") }));
+        } else {
+          /* ссылка с другой схемой (javascript:, data: …) — только текстом, без клика */
+          clear(linkEl).append(el("span", { text: pl }));
+        }
         linkEl.hidden = false;
       }
       var av = profile && profile.avatar || (approved() && avatars[claim.uid]) || "";
@@ -4206,8 +4212,7 @@
       wrap.append(el("h2", { class: "adm-h2", text: "Сборка сайта" }));
       var pat = (A.meta && A.meta.ghPat) || "";
       var msg = el("span", { class: "adm-msg", role: "status" });
-      var inp = el("input", { class: "adm-in", type: "password", placeholder: "github_pat_…", autocomplete: "off" });
-      inp.value = pat;
+      var inp = el("input", { class: "adm-in", type: "password", placeholder: pat ? "токен сохранён — вставьте новый, чтобы заменить" : "github_pat_…", autocomplete: "off" });
       wrap.append(
         el("p", { class: "adm-hint-text", text: "Чтобы правка была на сайте через минуту, сайту нужен токен GitHub (право Actions: write). Вставьте его один раз — он хранится в базе и виден только администраторам. Без токена правки тоже применяются, но сборка ждёт ближайшего запуска по расписанию (до 10 минут)." }),
         el("div", { class: "adm-row" }, inp,
