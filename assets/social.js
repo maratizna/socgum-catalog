@@ -3393,26 +3393,21 @@
     var CTYPES = [["auto", "Определим по названию"], ["gala", "Гала-концерт"], ["debut", "Дебют"], ["vesna", "Весна"], ["lavash", "Лаваш / летняя Студвесна"]];
     var FIELDS = [
       { k: "collective", label: "Коллектив", ph: "Например: Limerence", hint: "Сольный номер — оставьте пустым." },
-      { k: "cover", label: "Обложка", ph: "ссылка на картинку", hint: "Только ссылка — файл загружать не нужно." },
       { k: "performers", label: "Участники", type: "area", hint: "Через запятую, имена так же, как на странице человека: Алиев Марат, Куницына Арина." },
       { k: "choreographers", label: "Постановщики", type: "area", hint: "Через запятую." },
-      { k: "about", label: "Описание", type: "area", hint: "Как проходит номер, откуда музыка — что важно знать зрителю." },
-      { k: "photos", label: "Фото номера", type: "area", rows: 2, hint: "Ссылки на фотографии через запятую — до 12 штук. Появятся блоком «Фото номера»." },
-      { k: "video", label: "Видео номера", ph: "https://…", hint: "Ссылка на запись номера — на обложке появится кнопка «Смотреть»." }
+      { k: "about", label: "Описание", type: "area", hint: "Как проходит номер, откуда музыка — что важно знать зрителю." }
     ];
-    var D = { data: null, dataErr: false, mode: "", team: false, qc: "", qcOpen: false, concert: "", cur: null, busy: false, done: false, patchId: "" };
+    var MEDIA_FIELDS = [
+      { k: "cover", label: "Обложка", ph: "ссылка на картинку", hint: "Только ссылка — файл загружать не нужно. Если обложки нет, на странице показывается заглушка." },
+      { k: "photos", label: "Фото номера", type: "area", rows: 2, hint: "Ссылки на фотографии через запятую — до 12 штук. Появятся блоком «Фото номера»." },
+      { k: "video", label: "Видео номера", ph: "https://…", hint: "Это может быть видео репетиции или любой другой записи. Если оставить пустым — номер показывается из основной концертной записи по таймкоду выше." }
+    ];
+    var D = { data: null, dataErr: false, mode: "", team: false, qc: "", qcOpen: false, numsOpen: true, concert: "", cur: null, busy: false, done: false, patchId: "" };
     var MODES = {
       concert: ["Добавить концерт", "≈ 1 минута", "Название, дата, ссылка на запись, описание и обложка. Концерт появится в каталоге."],
       number: ["Добавить номер или команду направления", "≈ 2 минуты", "Новый номер к концерту или команда внесценического направления: SMM, сценарка, админка, декор, рабы сцены, футажи."],
       patch: ["Дополнить номер или работу направления", "≈ 2 минуты", "Дописать участников, постановщиков, время, обложку и описание — к номеру концерта или к работе внесценического направления."]
     };
-    /* Google Формы — запасной путь, если проще заполнить там (ссылки из листа «Формы») */
-    var GFORMS = {
-      concert: { url: "https://docs.google.com/forms/d/e/1FAIpQLSepQx6WfXuNA_us308UpVuBAzIrM-x308SgDb1T24YNCzzh0A/viewform", title: "Форма «Новый концерт»" },
-      number: { url: "https://docs.google.com/forms/d/e/1FAIpQLScdHPlX8JNLV3Qi-_6CxVuu5pULUjtx829AEDa1w3legIB8EA/viewform", title: "Форма «Номера списком»" },
-      patch: { url: "https://docs.google.com/forms/d/e/1FAIpQLSeontHJuhKG6hk7VEE04vjsqaH28LQGyq6_THKJQ2PigLwvoQ/viewform", title: "Форма «Дополнить номер»" }
-    };
-
     function modeNow() {
       var h = String(location.hash || "").replace("#", "");
       if (h.indexOf("patch=") === 0) { D.patchId = decodeURIComponent(h.slice(6)); return "patch"; }
@@ -3463,36 +3458,18 @@
       return w;
     }
 
-    function identValue(k) {
-      var u = state.user;
-      if (k === "name") return myName();
-      if (k === "email") return (u && u.email) || "";
-      if (k === "nick") return nicks[u.uid] || "";
-      if (k === "links") {
-        var l = userLinks[u.uid] || {};
-        return Object.keys(l).map(function (x) { return l[x]; }).filter(Boolean).join(", ");
-      }
-      return "";
-    }
-    function identRow(k, label, ph) {
-      var inp = el("input", { class: "add-in", type: "text", placeholder: ph || "" });
-      inp.dataset.idk = k;
-      inp.value = identValue(k);
-      return el("label", { class: "add-field" }, el("span", { class: "add-label", text: label }), inp);
-    }
-    function identSection() {
-      var sec = el("section", { class: "add-ident" });
-      sec.append(el("h2", { class: "add-step-title", text: "Кто отправляет" }),
-        el("p", { class: "add-hint", text: "Заполнено из профиля — поправьте, если нужно. Почту и имя видит только администратор." }),
-        el("div", { class: "add-grid add-grid-4" },
-          identRow("name", "Имя и фамилия"), identRow("email", "Почта"),
-          identRow("nick", "Ник на сайте", "@ник"), identRow("links", "Ссылки", "через запятую")));
-      return sec;
-    }
-    function identObj() {
-      var out = {};
-      Array.prototype.forEach.call(box.querySelectorAll("[data-idk]"), function (inp) { out[inp.dataset.idk] = inp.value.trim(); });
-      return out;
+    /* Автор заявки берётся из аккаунта: имя из профиля, почта из входа,
+       ссылка — на страницу пользователя в каталоге (её же видно в таблице). */
+    function authorInfo() {
+      var u = state.user || {};
+      var page = "";
+      try { if (u.uid && approvedPids().length) page = ownPageUrl(); } catch (e) { page = ""; }
+      return {
+        name: String(myName() || "").slice(0, 100),
+        email: String(u.email || "").slice(0, 200),
+        nick: String(nicks[u.uid] || "").slice(0, 60),
+        links: String(page || "").slice(0, 400)
+      };
     }
 
     function input(k, ph, opts) {
@@ -3539,13 +3516,15 @@
     var URL_RE = /^https?:\/\/\S+$/i;
 
     function subDoc(kind, fields, number, concert, target) {
-      var ident = identObj();
+      var who = authorInfo();
       var doc = {
         kind: kind, targetId: String(target || "new"),
         number: String(number || "").slice(0, 200), concert: String(concert || "").slice(0, 200),
         fields: fields,
-        authorName: (ident.name || "").slice(0, 100), authorEmail: (ident.email || "").slice(0, 200),
-        authorNick: (ident.nick || "").slice(0, 60), authorLinks: (ident.links || "").slice(0, 400),
+        authorName: who.name || "Пользователь",
+        authorEmail: who.email,
+        authorNick: who.nick,
+        authorLinks: who.links,
         uid: state.user.uid, createdAt: fb.f.serverTimestamp()
       };
       if (state.admin) {
@@ -3559,14 +3538,58 @@
     }
     function afterSubmitMsg() {
       return state.admin
-        ? "Принято автоматически: вы администратор. Нажмите «Собрать сайт сейчас» в кабинете — изменения уйдут в таблицу и на сайт."
+        ? "Принято автоматически: вы администратор. Нажмите «Собрать сайт сейчас» в кабинете — изменения появятся на сайте."
         : "Заявка отправлена. Администратор проверит её и обновит сайт.";
+    }
+
+    /* «Что отправится»: живёт под формой и показывает, какие поля уйдут в заявку */
+    function sendSummary(form, labels, opts) {
+      var boxEl = el("section", { class: "add-send" });
+      var list = el("ul", { class: "add-send-list" });
+      var note = el("p", { class: "add-hint" });
+      var who = authorInfo();
+      var keys = Object.keys(labels);
+      function paint() {
+        clear(list);
+        var count = 0;
+        keys.forEach(function (k) {
+          var inp = form.querySelector('[data-k="' + k + '"]') || form.querySelector('[data-fk="' + k + '"]') || form.querySelector('[data-x="' + k + '"]');
+          if (!inp) return;
+          var val = String(inp.value || "").trim();
+          if (!val) return;
+          if (inp.dataset.was !== undefined && val === String(inp.dataset.was || "")) return;
+          count++;
+          list.append(el("li", { class: "add-send-row" },
+            el("span", { class: "add-send-k", text: labels[k] }),
+            el("span", { class: "add-send-v", text: val.length > 90 ? val.slice(0, 90) + "…" : val })));
+        });
+        var rels = form.querySelectorAll(".add-rel-row");
+        if (rels.length) {
+          var changedRels = 0;
+          Array.prototype.forEach.call(rels, function (row) {
+            var rid = row._relId ? row._relId() : "";
+            if (!rid) return;
+            var rcap = row._relCap ? row._relCap() : "";
+            if (!row._relKnown) { changedRels++; return; }
+            if (rcap !== (row._relWas || "")) changedRels++;
+          });
+          if (changedRels) { count++; list.append(el("li", { class: "add-send-row" }, el("span", { class: "add-send-k", text: "Связанные номера" }), el("span", { class: "add-send-v", text: changedRels + " шт." }))); }
+        }
+        list.hidden = !count;
+        note.textContent = count
+          ? "Отправится от имени " + (who.name || "вас") + " (" + (who.email || "почта аккаунта") + "). Администратор проверит и опубликует."
+          : "Пока ничего не изменено — заполните поля выше.";
+      }
+      form.addEventListener("input", paint);
+      form.addEventListener("change", paint);
+      setTimeout(paint, 30);
+      boxEl.append(el("h3", { class: "add-send-t", text: "Что отправится" }), list, note);
+      if (opts && opts.before) boxEl.append(opts.before);
+      return boxEl;
     }
 
     function submitNew(kind, fields, form, doneTitle) {
       if (D.busy) return;
-      var ident = identObj();
-      if (!ident.email || !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(ident.email)) { formMsg(form, "Укажите почту — без неё не сможем ответить.", true); return; }
       D.busy = true;
       busyForm(form, true);
       formMsg(form, "Отправляем заявку…");
@@ -3599,20 +3622,11 @@
       var wrap = el("div", { class: "add-modes" });
       [["concert", "Концерт"], ["number", "Номер и команда направления"], ["patch", "Дополнить номер"]].forEach(function (pair) {
         var m = MODES[pair[0]];
-        var gf = GFORMS[pair[0]];
         wrap.append(el("div", { class: "add-mode" },
           el("button", { type: "button", class: "add-mode-btn", onclick: function () { goMode(pair[0], false); } },
             el("span", { class: "add-mode-t", text: m[0] }),
             el("span", { class: "add-mode-d", text: m[2] }),
-            el("span", { class: "add-mode-m", text: m[1] })),
-          el("a", {
-            class: "add-mode-form",
-            href: gf.url,
-            target: "_blank",
-            rel: "noopener noreferrer",
-            title: gf.title + " — откроется в новой вкладке",
-            text: gf.title + " ↗"
-          })));
+            el("span", { class: "add-mode-m", text: m[1] }))));
       });
       return wrap;
     }
@@ -3628,7 +3642,6 @@
       grid.append(nameF);
       grid.append(field("Дата", input("date", "14.05.2026", { mode: "numeric" }), "Можно не заполнять — поставим, когда появятся номера."));
       grid.append(field("Ссылка на запись в VK", input("video", "https://vk.ru/video-227636138_456239051"), "Нужна ссылка на видео, а не на пост с анонсом. Если записи ещё нет — вставьте ссылку на пост: заменим позже."));
-      grid.append(field("Вторая запись", input("video2", "если есть другая версия записи")));
       grid.append(field("Тип концерта", select("ctype", CTYPES, "auto")));
       var seas = seasons().map(function (s) { return [s, s]; });
       grid.append(field("Учебный год", select("season", seas, "2025–2026")));
@@ -3636,6 +3649,18 @@
       grid.append(field("Обложка", input("cover", "ссылка на картинку"), "Только ссылка — файл загружать не нужно."));
       grid.append(field("Описание", area("about", "Что это за концерт, для зрителя", 4), "Необязательно.", true));
       form.append(grid);
+      var more = el("details", { class: "add-more" });
+      more.append(el("summary", { text: "Вторая запись концерта — нужна редко" }));
+      more.append(el("div", { class: "add-more-body" },
+        el("label", { class: "add-field" },
+          el("span", { class: "add-label", text: "Ссылка на вторую запись" }),
+          input("video2", "если есть другая версия записи"),
+          el("span", { class: "add-hint", text: "Например, запись с другой камеры. Обычно не нужна." }))));
+      form.append(more);
+      form.append(sendSummary(form, {
+        title: "Название", date: "Дата", video: "Ссылка на запись", video2: "Вторая запись",
+        ctype: "Тип концерта", season: "Учебный год", topic: "Тема", cover: "Обложка", about: "Описание",
+      }));
       form.append(el("div", { class: "add-actions" },
         el("button", { type: "submit", class: "btn", text: "Отправить заявку" }),
         el("span", { class: "msg", role: "status" })));
@@ -3691,6 +3716,14 @@
         grid.append(field("Обложка", input("cover", "ссылка на картинку"), "Только ссылка — файл загружать не нужно.", true));
       }
       form.append(grid);
+      form.append(sendSummary(form, team ? {
+        concert: "Концерт", direction: "Направление", title: "Название", performers: "Участники",
+        choreographers: "Постановщики", about: "Описание", cover: "Обложка",
+      } : {
+        concert: "Концерт", direction: "Направление", title: "Название", collective: "Коллектив",
+        performers: "Участники", choreographers: "Постановщики", start: "Начало", end: "Конец",
+        links: "Ссылки", about: "Описание", cover: "Обложка",
+      }));
       form.append(el("div", { class: "add-actions" },
         el("button", { type: "submit", class: "btn", text: "Отправить заявку" }),
         el("span", { class: "msg", role: "status" })));
@@ -3727,7 +3760,7 @@
       list.slice(0, 12).forEach(function (c) {
         var n = numbersOf(c.name).length;
         var b = el("button", { type: "button", class: "add-pick" + (D.concert === c.name ? " is-on" : ""),
-          onclick: function () { D.concert = c.name; D.cur = null; D.done = false; D.qc = ""; D.qcOpen = false; draw(); } },
+          onclick: function () { D.concert = c.name; D.cur = null; D.done = false; D.qc = ""; D.qcOpen = false; D.numsOpen = true; draw(); } },
           el("span", { class: "add-pick-t", text: c.name || "Без названия" }),
           el("span", { class: "add-pick-s", text: [c.season ? "учебный год " + c.season : "", n ? n + " " + plural(n, "номер", "номера", "номеров") : "номера не заведены"].filter(Boolean).join(" · ") }));
         ul.append(el("li", null, b));
@@ -3744,6 +3777,8 @@
           onclick: function () { D.qcOpen = true; draw(); } },
           el("span", { class: "add-pick-t", text: D.concert }),
           el("span", { class: "add-pick-s", text: "выбран · нажмите, чтобы изменить" })));
+        sec.append(el("p", { class: "add-open-link" },
+          el("button", { type: "button", class: "add-link", text: "Раскрыть все концерты", onclick: function () { D.qcOpen = true; draw(); } })));
         return sec;
       }
       var inp = el("input", { class: "add-in add-search", type: "search", placeholder: "Например: гала, студвесна, 2025" });
@@ -3764,7 +3799,7 @@
       var m = missing(n);
       var sub = [n.concert, n.direction, n.start ? "с " + n.start : ""].filter(Boolean).join(" · ");
       return el("li", null, el("button", { type: "button", class: "add-row" + (D.cur && D.cur.id === n.id ? " is-on" : ""),
-        onclick: function () { D.cur = n; D.done = false; draw(); } },
+        onclick: function () { D.cur = n; D.done = false; D.numsOpen = false; draw(); } },
         el("span", { class: "add-row-main" },
           el("b", { class: "add-row-t", text: n.title || "Без названия" }),
           el("span", { class: "add-row-s", text: sub + (extras ? " · " + extras : "") })),
@@ -3773,30 +3808,24 @@
 
     function numberStep() {
       var sec = el("section", { class: "add-step" });
-      sec.append(stepHead("2", "Номер или работа направления", "бейджи показывают, чего не хватает"));
-      var shown = 0;
-      if (D.concert) {
-        var list = numbersOf(D.concert);
-        if (list.length) {
-          var ul = el("ul", { class: "add-rows" });
-          list.forEach(function (n) { ul.append(numberRow(n)); });
-          sec.append(ul);
-          shown += list.length;
-        } else {
-          sec.append(el("p", { class: "add-hint", text: "У этого концерта пока нет номеров на сайте. Напишите администратору — их добавят." }));
-        }
+      sec.append(stepHead("2", "Номер или команда направления", "бейджи показывают, чего не хватает"));
+      if (!D.concert) {
+        sec.append(el("p", { class: "add-hint", text: "Сначала выберите концерт — покажем его номера и команды направлений." }));
+        return sec;
       }
-      var ws = works().filter(function (n) { return !D.concert || n.concert !== D.concert; });
-      if (ws.length) {
-        sec.append(el("p", { class: "add-hint add-works-hint", text: D.concert
-          ? "Или работа внесценического направления — из любого концерта:"
-          : "Можно сразу выбрать работу внесценического направления:" }));
-        var uw = el("ul", { class: "add-rows" });
-        ws.forEach(function (n) { uw.append(numberRow(n)); });
-        sec.append(uw);
-        shown += ws.length;
+      if (D.cur && !D.numsOpen) {
+        sec.append(el("p", { class: "add-open-link" },
+          el("button", { type: "button", class: "add-link", text: "Раскрыть номера и команды направлений", onclick: function () { D.numsOpen = true; draw(); } })));
+        return sec;
       }
-      if (!shown) sec.append(el("p", { class: "add-hint", text: "Сначала выберите концерт — покажем его номера и работы направлений." }));
+      var list = numbersOf(D.concert);
+      if (list.length) {
+        var ul = el("ul", { class: "add-rows" });
+        list.forEach(function (n) { ul.append(numberRow(n)); });
+        sec.append(ul);
+      } else {
+        sec.append(el("p", { class: "add-hint", text: "У этого концерта пока нет номеров на сайте. Напишите администратору — их добавят." }));
+      }
       return sec;
     }
     function picked() {
@@ -3808,7 +3837,15 @@
         if (src.indexOf("http") !== 0) src = ROOT + "covers/" + src;
         cover = el("img", { class: "add-picked-img", src: src, alt: "" });
       } else {
-        cover = el("span", { class: "add-picked-img add-picked-img-empty", text: "нет обложки" });
+        cover = el("button", { type: "button", class: "add-picked-img add-picked-img-empty", text: "нет обложки — добавить",
+          title: "Перейти к обложке, фото и видео",
+          onclick: function () {
+            var media = document.getElementById("add-media");
+            if (!media) return;
+            media.scrollIntoView({ behavior: "smooth", block: "center" });
+            var inp = media.querySelector('[data-k="cover"]');
+            if (inp) setTimeout(function () { inp.focus({ preventScroll: true }); }, 350);
+          } });
       }
       var body = el("div", { class: "add-picked-body" },
         el("h2", { class: "add-picked-t", text: n.title || "Без названия" }),
@@ -3842,51 +3879,108 @@
         form.append(timing);
       }
 
-      var grid = el("div", { class: "add-grid" });
-      FIELDS.forEach(function (f) {
-        var inp = f.type === "area"
-          ? el("textarea", { class: "add-in add-area", rows: f.k === "about" ? 4 : 2 })
-          : el("input", { class: "add-in", type: "text", placeholder: f.ph || "" });
-        inp.dataset.k = f.k;
-        inp.dataset.was = n[f.k] || "";
-        inp.value = n[f.k] || "";
-        grid.append(el("label", { class: "add-field" + (f.type === "area" ? " add-field-wide" : "") },
-          el("span", { class: "add-label", text: f.label }), inp,
-          f.hint ? el("span", { class: "add-hint", text: f.hint }) : null));
-      });
-      form.append(grid);
+      function patchGrid(defs) {
+        var grid = el("div", { class: "add-grid" });
+        defs.forEach(function (f) {
+          var inp = f.type === "area"
+            ? el("textarea", { class: "add-in add-area", rows: f.rows || (f.k === "about" ? 4 : 2) })
+            : el("input", { class: "add-in", type: "text", placeholder: f.ph || "" });
+          inp.dataset.k = f.k;
+          inp.dataset.was = n[f.k] || "";
+          inp.value = n[f.k] || "";
+          grid.append(el("label", { class: "add-field" + (f.type === "area" ? " add-field-wide" : "") },
+            el("span", { class: "add-label", text: f.label }), inp,
+            f.hint ? el("span", { class: "add-hint", text: f.hint }) : null));
+        });
+        return grid;
+      }
+
+      form.append(patchGrid(FIELDS));
+
+      var media = el("section", { class: "add-media", id: "add-media" });
+      media.append(el("h3", { class: "add-extra-t", text: "Обложка, фото и видео" }), patchGrid(MEDIA_FIELDS));
+      form.append(media);
+
       if (c) {
-        var extra = el("div", { class: "add-extra" });
-        extra.append(el("h3", { class: "add-extra-t", text: "Ссылки" }));
-        var v2 = el("input", { class: "add-in", type: "text", placeholder: "https://vk.ru/video..." });
-        v2.dataset.x = "video2"; v2.dataset.was = c.video2 || ""; v2.value = c.video2 || "";
-        extra.append(el("label", { class: "add-field" },
-          el("span", { class: "add-label", text: "Вторая запись этого концерта" }), v2,
-          el("span", { class: "add-hint", text: "Если концерт выложен ещё раз отдельным видео — вставьте ссылку: она появится на странице номера." })));
         var others = allNumbers().filter(function (x) { return x.id !== n.id; })
-          .sort(function (a, b) { return norm(a.title + " " + a.concert) < norm(b.title + " " + b.concert) ? -1 : 1; });
-        var relBox = el("div", { class: "add-rel" });
-        function addRelRow(init) {
+          .sort(function (a, b) { return norm(a.title + " " + a.collective + " " + a.concert) < norm(b.title + " " + b.collective + " " + b.concert) ? -1 : 1; });
+
+        function relRow(init) {
           if (relBox.querySelectorAll(".add-rel-row").length >= 3) return;
-          var sel = el("select", { class: "add-in" });
-          sel.append(el("option", { value: "", text: "— выберите номер —" }));
-          others.forEach(function (x) { sel.append(el("option", { value: x.id, text: (x.title || "Без названия") + " — " + x.concert })); });
-          var cap = el("input", { class: "add-in", type: "text", maxlength: "120", placeholder: "Почему связаны: «та же подтанцовка», «продолжение»…" });
-          var row = el("div", { class: "add-rel-row" },
-            el("label", { class: "add-rel-sel" }, el("span", { class: "add-label", text: "Связанный номер" }), sel),
-            el("label", { class: "add-rel-cap" }, el("span", { class: "add-label", text: "Подпись (необязательно)" }), cap),
-            el("button", { type: "button", class: "add-rel-x", "aria-label": "Убрать связку", text: "×", onclick: function () { row.remove(); } }));
-          if (init && init.id) { sel.value = init.id; cap.value = init.caption || ""; }
+          function refreshSend() {
+            try { form.dispatchEvent(new Event("input", { bubbles: true })); } catch (e) { }
+          }
+          var pickedId = init && init.id ? init.id : "";
+          var pickedCap = init && init.caption ? init.caption : "";
+          var picked = el("button", { type: "button", class: "add-rel-picked", hidden: true });
+          var inp = el("input", { class: "add-in add-rel-search", type: "search", placeholder: "Название или коллектив" });
+          var list = el("ul", { class: "add-rel-list", hidden: true });
+          var cap = el("input", { class: "add-in add-rel-cap", type: "text", maxlength: "120", placeholder: "Почему связаны — заголовок блока" });
+          function byId(id) { return others.filter(function (x) { return x.id === id; })[0] || null; }
+          function paintPicked() {
+            picked.hidden = !pickedId;
+            if (!pickedId) { picked.textContent = ""; return; }
+            var x = byId(pickedId);
+            picked.textContent = "✓ " + (x ? (x.title || x.id) : pickedId) + " — нажмите, чтобы сменить";
+          }
+          function renderList(q) {
+            clear(list);
+            var nq = norm(q);
+            var found = others.filter(function (x) {
+              return !nq || norm((x.title || "") + " " + (x.collective || "") + " " + (x.concert || "")).indexOf(nq) >= 0;
+            }).slice(0, 8);
+            list.append(el("li", { class: "add-rel-empty", text: found.length ? "Выберите номер:" : "Ничего не нашлось — попробуйте другое слово." }));
+            found.forEach(function (x) {
+              list.append(el("li", null, el("button", { type: "button", class: "add-rel-opt",
+                onclick: function () { pickedId = x.id; inp.value = ""; list.hidden = true; paintPicked(); refreshSend(); },
+              }, el("b", { text: x.title || "Без названия" }),
+                el("span", { text: [x.collective, x.concert, x.direction].filter(Boolean).join(" · ") }))));
+            });
+          }
+          inp.addEventListener("focus", function () { renderList(inp.value); list.hidden = false; });
+          inp.addEventListener("input", function () { renderList(inp.value); list.hidden = false; });
+          inp.addEventListener("blur", function () { setTimeout(function () { list.hidden = true; }, 160); });
+          picked.addEventListener("click", function () { pickedId = ""; paintPicked(); refreshSend(); inp.focus(); });
+          cap.addEventListener("input", refreshSend);
+          var s = el("div", { class: "add-rel-pick" },
+            el("span", { class: "add-label", text: "Связанный номер" }), picked, inp, list);
+          var row = el("div", { class: "add-rel-row" }, s,
+            el("label", { class: "add-rel-cap-box" }, el("span", { class: "add-label", text: "Подпись (необязательно)" }), cap),
+            el("button", { type: "button", class: "add-rel-x", "aria-label": "Убрать связку", text: "×", onclick: function () { row.remove(); refreshSend(); } }));
+          if (pickedId) { cap.value = pickedCap; paintPicked(); }
+          row._relId = function () { return pickedId; };
+          row._relCap = function () { return String(cap.value || "").trim().slice(0, 120); };
+          row._relKnown = !!(init && init.id);
+          row._relWas = (init && init.caption) || "";
           relBox.append(row);
         }
-        (n.related || []).slice(0, 3).forEach(function (r) { addRelRow(r && r.id ? r : { id: r }); });
+
+        var relBox = el("div", { class: "add-rel" });
+        var relSec = el("section", { class: "add-rel-sec" });
+        relSec.append(el("h3", { class: "add-extra-t", text: "Связанные номера" }));
         var addRelBtn = el("button", { type: "button", class: "btn btn-s btn-ghost", text: "+ Добавить связанный номер" });
-        addRelBtn.addEventListener("click", function () { addRelRow(); relBox.lastChild.scrollIntoView({ block: "nearest" }); });
-        extra.append(el("div", { class: "add-field add-field-wide" },
-          el("span", { class: "add-label", text: "Связанные номера" }), relBox, addRelBtn,
-          el("span", { class: "add-hint", text: "Другой номер, с которым этот связан — например, «Горе» и номер «Горе» коллектива «Сумрак» (подтанцовка). Подпись станет заголовком блока «Другое исполнение», а ваше имя подпишется под ним." })));
-        form.append(extra);
+        addRelBtn.addEventListener("click", function () { relRow(); if (relBox.lastChild) relBox.lastChild.scrollIntoView({ block: "nearest" }); });
+        (n.related || []).slice(0, 3).forEach(function (r) { relRow(r && r.id ? r : { id: r }); });
+        relSec.append(relBox, addRelBtn,
+          el("p", { class: "add-hint", text: "Другой номер, с которым этот связан — например, «Горе» и номер «Горе» коллектива «Сумрак» (подтанцовка). Подпись станет заголовком блока, а ваше имя подпишется под ним. Если подпись не заполнить, заголовком будет направление связанного номера — у каждой стороны связки оно своё." }));
+        form.append(relSec);
+
+        var more = el("details", { class: "add-more" });
+        more.append(el("summary", { text: "Вторая запись концерта — нужна редко" }));
+        var v2 = el("input", { class: "add-in", type: "text", placeholder: "https://vk.ru/video..." });
+        v2.dataset.x = "video2"; v2.dataset.was = c.video2 || ""; v2.value = c.video2 || "";
+        more.append(el("div", { class: "add-more-body" },
+          el("label", { class: "add-field" },
+            el("span", { class: "add-label", text: "Ссылка на вторую запись" }), v2,
+            el("span", { class: "add-hint", text: "Если концерт выложен ещё раз отдельным видео — вставьте ссылку." }))));
+        form.append(more);
       }
+
+      form.append(sendSummary(form, {
+        collective: "Коллектив", performers: "Участники", choreographers: "Постановщики", about: "Описание",
+        cover: "Обложка", photos: "Фото номера", video: "Видео номера", start: "Начало", end: "Конец",
+        video2: "Вторая запись",
+      }));
       form.append(el("div", { class: "add-actions" },
         el("button", { type: "submit", class: "btn", text: "Отправить заявку" }),
         el("span", { class: "msg", role: "status" })));
@@ -3909,15 +4003,25 @@
       });
       var rels = [];
       Array.prototype.forEach.call(form.querySelectorAll(".add-rel-row"), function (row) {
-        var sel = row.querySelector("select"), cap = row.querySelector(".add-rel-cap input");
-        var id = sel ? String(sel.value || "") : "";
+        var id = row._relId ? row._relId() : "";
         if (!id) return;
         if (rels.some(function (r) { return r.id === id; })) return;
-        rels.push({ id: id, caption: cap ? String(cap.value || "").trim().slice(0, 120) : "" });
+        rels.push({ id: id, caption: row._relCap ? row._relCap() : "", known: !!(row._relKnown) });
       });
-      var known = (n.related || []).map(function (r) { return r && r.id ? r.id : r; });
-      var newRels = rels.filter(function (r) { return known.indexOf(r.id) === -1; });
-      if (newRels.length) extra.related = newRels;
+      var knownCaps = {};
+      (n.related || []).forEach(function (r) {
+        if (r && typeof r === "object" && r.id) knownCaps[r.id] = r.caption || "";
+        else if (typeof r === "string") knownCaps[r] = "";
+      });
+      var relOut = [];
+      rels.forEach(function (r) {
+        if (Object.prototype.hasOwnProperty.call(knownCaps, r.id)) {
+          if ((knownCaps[r.id] || "") !== r.caption) relOut.push({ id: r.id, caption: r.caption, known: true });
+        } else {
+          relOut.push({ id: r.id, caption: r.caption });
+        }
+      });
+      if (relOut.length) extra.related = relOut;
       var hasExtra = Object.keys(extra).length > 0;
       if (!changed && !hasExtra) { formMsg(form, "Ничего не изменили — заполните хотя бы одно поле."); return; }
       if (extra.video2 && !URL_RE.test(extra.video2)) bad = "Вторая запись — ссылка, начните с https://";
@@ -3964,18 +4068,16 @@
       if (D.patchId && !D.cur) {
         var want = String(D.patchId);
         var found = allNumbers().filter(function (n) { return n.id === want; })[0];
-        if (found) { D.cur = found; D.concert = found.concert || ""; D.qc = ""; }
+        if (found) { D.cur = found; D.concert = found.concert || ""; D.qc = ""; D.numsOpen = false; }
         D.patchId = "";
         try { history.replaceState(null, "", "#patch"); } catch (e) { }
         draw(doneTitle);
         return;
       }
-      box.append(identSection());
-
       if (D.mode === "concert") { box.append(concertFormView()); return; }
       if (D.mode === "number") {
         if (D.done) box.append(none(doneTitle || "Заявка отправлена",
-          "Администратор проверит заявку и нажмёт «Обновить сайт» — после этого она появится в каталоге. Обычно это занимает день.",
+          "Администратор проверит заявку и обновит сайт — обычно это занимает день.",
           "number", D.team));
         else box.append(numberFormView());
         return;
@@ -3985,7 +4087,7 @@
       wrap.append(concertStep());
       wrap.append(numberStep());
       if (D.cur && D.done) wrap.append(none("Заявка отправлена",
-        "Администратор проверит дополнение и нажмёт «Обновить сайт» — правку увидят все.",
+        "Администратор проверит дополнение и обновит страницу — правку увидят все.",
         "patch", false));
       else if (D.cur) { wrap.append(picked()); wrap.append(patchForm()); }
       box.append(wrap);
@@ -3995,7 +4097,7 @@
       var m = modeNow();
       if (m && m !== D.mode) {
         D.mode = m; D.done = false;
-        if (!D.patchId) { D.cur = null; D.concert = ""; D.qc = ""; D.qcOpen = false; }
+        if (!D.patchId) { D.cur = null; D.concert = ""; D.qc = ""; D.qcOpen = false; D.numsOpen = true; }
         draw();
       }
     });

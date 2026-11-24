@@ -437,6 +437,39 @@ def append_row(sheet_id, token, sheet, fields, cache):
     return None, new_id
 
 
+def update_material_caption(sheet_id, token, target, other, caption, cache):
+    """Меняет подпись у уже существующей связки в листе «Доп. материалы»."""
+    sheet = "Доп. материалы"
+    if sheet not in cache:
+        cache[sheet] = sheet_values(sheet_id, sheet, token)
+    rows = cache[sheet]
+    if not rows:
+        return "лист «Доп. материалы» пустой"
+    head = [norm(h) for h in rows[0]]
+
+    def idx(*names):
+        for nm in names:
+            if norm(nm) in head:
+                return head.index(norm(nm))
+        return -1
+
+    c_t = idx("что", "к чему", "объект")
+    c_o = idx("связанный номер")
+    c_cap = idx("подпись")
+    if min(c_t, c_o, c_cap) < 0:
+        return "в листе «Доп. материалы» нет колонок «Что», «Связанный номер» и «Подпись»"
+    for i, row in enumerate(rows[1:], start=2):
+        def cell(j):
+            return str(row[j]).strip() if j < len(row) else ""
+        if cell(c_t) == target and cell(c_o) == other:
+            rng = urllib.parse.quote(f"'{sheet}'!{col_letter(c_cap)}{i}", safe="")
+            api(f"{SH}/{sheet_id}/values/{rng}?valueInputOption=RAW", token, "PUT",
+                {"values": [[caption]]})
+            cache.pop(sheet, None)
+            return None
+    return None
+
+
 def concert_id_by_name(sheet_id, token, name, cache):
     """ID концерта по его названию (для правки «Видео 2»)."""
     if "Концерты" not in cache:
@@ -540,15 +573,20 @@ def apply_submission(sheet_id, token, sub, cache):
                 if isinstance(item, dict):
                     other = str(item.get("id") or "").strip()
                     cap = str(item.get("caption") or "").strip()[:120]
+                    known = bool(item.get("known"))
                 else:
                     other = str(item or "").strip()
                     cap = ""
+                    known = False
                 if not other:
                     continue
-                err, _ = append_row(sheet_id, token, "Доп. материалы", {
-                    "scope": "Номер", "target": target, "mtype": "Связанный номер",
-                    "other": other, "caption": cap, "author": author,
-                }, cache)
+                if known:
+                    err = update_material_caption(sheet_id, token, target, other, cap, cache)
+                else:
+                    err, _ = append_row(sheet_id, token, "Доп. материалы", {
+                        "scope": "Номер", "target": target, "mtype": "Связанный номер",
+                        "other": other, "caption": cap, "author": author,
+                    }, cache)
                 if err:
                     return err
             used.append("связанные номера")

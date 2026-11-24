@@ -8,7 +8,7 @@
 <article class="number">
   <div class="number-grid">
     <div class="number-main">
-      <h1>{{ n.title }}</h1>
+      <h1{% if not n.collective %} class="h1-solo"{% endif %}>{{ n.title }}</h1>
       {% if n.collective %}<p class="collective">{{ n.collective }}</p>{% endif %}
 
       <div class="stage" id="stage"
@@ -55,7 +55,7 @@
           <div class="share-box pop-panel" id="share-box" role="dialog" aria-label="Поделиться номером" hidden></div>
         </div>
         {% if firebase %}
-        <a class="add-btn add-btn-s num-add" id="num-add" href="{{ root or './' }}add/#patch={{ n.id }}">{{ 'Дополнить работу направления' if n.offstage else 'Дополнить номер' }}</a>
+        <a class="add-btn add-btn-s num-add" id="num-add" href="{{ root or './' }}add/{% if n.needs_fill %}#patch={{ n.id }}{% endif %}">{{ 'Дополнить работу направления' if n.offstage else 'Дополнить номер' }}</a>
         <div id="pl-add" class="pl-add" data-number="{{ n.id }}"></div>
         {% endif %}
       </div>
@@ -88,9 +88,9 @@
       {% if n.related %}
       {% set one = n.related[0] if n.related|length == 1 else none %}
       <section class="related" aria-labelledby="rel-h">
-        <h2 class="mat-h" id="rel-h">{% if one and one.caption %}{{ one.caption }}{% else %}{{ 'Другое исполнение этого номера' if n.related|length == 1 else 'Другие исполнения этого номера' }}{% endif %}</h2>
+        <h2 class="mat-h" id="rel-h">{% if one and one.caption %}{{ one.caption }}{% elif one and one.n.directions %}{{ one.n.directions[0].name }}{% else %}{{ 'Другое исполнение этого номера' if n.related|length == 1 else 'Другие исполнения этого номера' }}{% endif %}</h2>
         {% if one and one.author_name %}<p class="rel-author">Добавил: {% if one.author_slug %}<a href="{{ root }}p/{{ one.author_slug }}/">{{ one.author_name }}</a>{% else %}{{ one.author_name }}{% endif %}</p>{% endif %}
-        {% if not one or not one.caption %}<p class="rel-note">Тот же номер на другом концерте. Это отдельный номер: состав участников может отличаться.</p>{% endif %}
+        {% if not one or (not one.caption and one.n.title == n.title and one.n.directions and n.directions and one.n.directions[0].slug == n.directions[0].slug) %}<p class="rel-note">Тот же номер на другом концерте. Это отдельный номер: состав участников может отличаться.</p>{% endif %}
         <ul class="rel-list">
           {% for x in n.related %}
           <li><a class="rel-card" href="{{ root }}n/{{ x.n.id }}/">
@@ -99,6 +99,7 @@
               <small>{{ x.n.concert.name }}{% if x.n.concert.date %}, {{ x.n.concert.date|ru_date }}{% endif %}</small>
               {% if x.n.collective and x.n.collective != n.collective %}<small>Коллектив: {{ x.n.collective }}</small>{% endif %}
               {% if x.n.performers %}<small>Участников: {{ x.n.performers|length }}</small>{% endif %}
+              {% if x.n.directions %}<small class="rel-dir">{{ x.n.directions[0].name }}</small>{% endif %}
               {% if not one and x.caption %}<small>{{ x.caption }}</small>{% endif %}
               {% if not one and x.author_name %}<small class="rel-author-small">Добавил: {% if x.author_slug %}<a href="{{ root }}p/{{ x.author_slug }}/">{{ x.author_name }}</a>{% else %}{{ x.author_name }}{% endif %}</small>{% endif %}</span>
           </a></li>

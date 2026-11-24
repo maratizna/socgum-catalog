@@ -111,11 +111,12 @@ html{scroll-padding-top:72px}
 .back{margin:18px 0 22px;font-size:.95rem}
 .back a{color:var(--ash)}
 .back a:hover{color:var(--ink)}
-.number-grid{display:grid;grid-template-columns:minmax(0,1fr) minmax(280px,360px);grid-template-areas:"main side" "talk side";grid-template-rows:auto 1fr;column-gap:clamp(24px,4vw,56px);row-gap:0;align-items:start}
+.number-grid{display:grid;grid-template-columns:minmax(0,1fr) minmax(280px,360px);grid-template-areas:"main side" "talk side";grid-template-rows:auto 1fr;column-gap:clamp(24px,4vw,56px);row-gap:0;align-items:start;margin-top:24px}
 .number-main{grid-area:main}
 .number-side{grid-area:side}
 .number-grid>.comments{grid-area:talk}
-.collective{color:var(--ash);font-size:1.125rem;margin:10px 0 24px}
+.collective{color:var(--ash);font-size:1.125rem;margin:2px 0 24px}
+.number-main h1.h1-solo{margin-bottom:4px}
 .stage{position:relative;aspect-ratio:16/9;background:var(--coal);border-radius:6px;overflow:hidden}
 .stage-blur{position:absolute;inset:-28px;width:calc(100% + 56px);height:calc(100% + 56px);max-width:none;object-fit:cover;filter:blur(24px) brightness(.55) saturate(1.1)}
 .stage-poster{position:relative;width:100%;height:100%;object-fit:contain}
@@ -1166,3 +1167,41 @@ body.lb-on{overflow:hidden}
 .num-photo img{width:100%;height:100%;object-fit:cover;display:block}
 .num-photo:hover{border-color:var(--ember)}
 @media (max-width:760px){.c-imgs{grid-template-columns:repeat(auto-fill,minmax(96px,1fr))}.num-photos-grid{grid-template-columns:repeat(auto-fill,minmax(140px,1fr))}}
+/* /add/: раскрытие списков, медиа-панель, связанные с поиском, «Что отправится» */
+.add-open-link{margin:8px 0 0}
+.add-open-link .add-link{padding:6px 0;font-size:.95rem}
+.add-picked{margin:6px 0 18px}
+.add-media,.add-rel-sec{margin:18px 0 0;padding:16px;border:1px solid var(--line);border-radius:12px;background:var(--coal)}
+.add-media .add-extra-t,.add-rel-sec .add-extra-t{margin:0 0 10px}
+.add-rel{display:grid;gap:10px}
+.add-rel-row{display:grid;grid-template-columns:minmax(0,1.35fr) minmax(0,1fr) auto;gap:10px;align-items:start;padding:10px;border:1px solid var(--line);border-radius:10px;background:var(--coal-2)}
+.add-rel-pick,.add-rel-cap-box{display:grid;gap:6px;min-width:0;position:relative}
+.add-rel-picked{text-align:left;background:var(--coal);border:1px solid var(--ember);border-radius:var(--r);padding:9px 12px;font-size:.95rem;color:var(--ember-hi);min-height:44px}
+.add-rel-picked:hover{background:var(--ember);color:var(--night)}
+.add-rel-search{min-width:0}
+.add-rel-list{position:static;max-height:240px;overflow:auto;margin:4px 0 0;padding:6px;border:1px solid var(--line);border-radius:var(--r);background:var(--coal);display:grid;gap:4px}
+.add-rel-list[hidden]{display:none}
+.add-rel-opt{display:grid;gap:2px;width:100%;text-align:left;background:transparent;border:0;border-radius:6px;padding:8px 10px;color:var(--ink)}
+.add-rel-opt b{font-weight:600}
+.add-rel-opt span{font-size:.85rem;color:var(--ash)}
+.add-rel-opt:hover,.add-rel-opt:focus-visible{background:var(--coal-2);color:var(--ember-hi)}
+.add-rel-empty{padding:6px 10px;font-size:.875rem;color:var(--ash)}
+.add-rel-x{width:44px;height:44px;border:1px solid var(--line);border-radius:var(--r);background:var(--coal);color:var(--ash);font-size:20px;line-height:1}
+.add-rel-x:hover{border-color:var(--ember);color:var(--ember-hi)}
+.add-more{margin:16px 0 0;border:1px solid var(--line);border-radius:10px;background:var(--coal);padding:0 14px}
+.add-more>summary{cursor:pointer;padding:12px 0;color:var(--ash);font-size:.95rem}
+.add-more>summary:hover{color:var(--ink)}
+.add-more-body{padding:0 0 14px}
+.add-send{margin:20px 0 0;padding:14px 16px;border:1px solid var(--line);border-radius:10px;background:var(--coal)}
+.add-send-t{margin:0 0 8px;font-family:var(--font-display);font-size:1rem;color:var(--ember)}
+.add-send-list{display:grid;gap:6px;margin:0 0 8px}
+.add-send-list[hidden]{display:none}
+.add-send-row{display:grid;grid-template-columns:minmax(120px,auto) minmax(0,1fr);gap:10px;font-size:.9375rem}
+.add-send-k{color:var(--ash)}
+.add-send-v{color:var(--ink);overflow-wrap:anywhere}
+@media (max-width:760px){
+  .add-rel-row{grid-template-columns:minmax(0,1fr);align-items:stretch}
+  .add-rel-x{justify-self:start;width:44px;height:32px}
+}
+
+.page-add .add-block,.page-admin .add-block{display:none}

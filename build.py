@@ -672,9 +672,11 @@ def parse_materials(rows, concerts, directions, numbers, report):
             if o["concert"] is obj["concert"]:
                 report.warn(S, row, f"Номера «{obj['title']}» и «{o['title']}» из одного концерта. Связка нужна для исполнения на разных концертах.")
             author = (r.get("author") or "").strip()
+            # Подпись относится только к той стороне, для которой заведена строка:
+            # у обратной связки подпись своя (или пустая — тогда покажем направление).
             for a, b in ((obj, o), (o, obj)):
                 if not any(x["n"] is b for x in a["related"]):
-                    a["related"].append({"n": b, "caption": caption, "author": author})
+                    a["related"].append({"n": b, "caption": caption if a is obj else "", "author": author})
             continue
         urls = [u for u in re.split(r"[\s;,]+", raw_url) if u]
         if not urls:
@@ -1194,6 +1196,13 @@ def build_site(concerts, directions, numbers, people, report, demo, source, admi
         n["age_days"] = (dt.date.today() - d).days if d else 0
         n["photos_list"] = [u for u in re.split(r"[\s,;]+", (n.get("photos") or "").strip()) if u.startswith(("http://", "https://"))][:12]
         n["video_obj"] = parse_video(n.get("video") or "")
+        # «важные» данные: коллектив, участники, постановщики, обложка и таймкод (для внесценических время не нужно)
+        n["needs_fill"] = not (
+            bool((n.get("collective") or "").strip())
+            and bool(n["people"]["performers"]) and bool(n["people"]["choreographers"])
+            and n["has_cover"]
+            and (n["offstage"] or (n.get("start") is not None and n.get("end") is not None))
+        )
         write(TMP / "n" / n["id"] / "index.html", env.get_template("number.html").render(
             root="../../", n=n, page_title=f"{n['title']}: {cfg['site_title']}",
             canonical=f"{site_url}/n/{n['id']}/" if site_url else "",
