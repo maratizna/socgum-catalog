@@ -1179,12 +1179,16 @@
       document.addEventListener("keydown", onKey);
       document.body.append(box);
     }
+    /* Фото номера: клик по плитке сразу открывает снимок */
+    Array.prototype.forEach.call(document.querySelectorAll(".num-photo"), function (b) {
+      b.addEventListener("click", function () { openLightbox(b.dataset.src); });
+    });
     function drawPhotos() {
       clear(photosBox);
       var arr = [];
       comments.forEach(function (c) {
         if (c.status === "hidden" || !c.photos || !c.photos.length) return;
-        c.photos.forEach(function (u) { if (arr.length < 12) arr.push({ url: u }); });
+        c.photos.forEach(function (u) { if (arr.length < 12) arr.push({ url: u, author: fullName(c.authorName, c.authorPersonId) }); });
       });
       photosBox.hidden = !arr.length;
       if (!arr.length) return;
@@ -1193,12 +1197,23 @@
         el("p", { class: "c-photos-sub", text: arr.length + " " + plural(arr.length, "снимок", "снимка", "снимков") + " к отзывам об этом номере" }));
       var grid = el("div", { class: "c-photos-grid" });
       arr.forEach(function (p) {
-        grid.append(el("button", { type: "button", class: "c-photo", "aria-label": "Открыть фото", onclick: function () { openLightbox(p.url); } },
-          el("img", { src: p.url, alt: "Фото зрителя", loading: "lazy", decoding: "async", onerror: function () { if (this.parentNode) this.parentNode.hidden = true; } })));
+        grid.append(el("button", { type: "button", class: "c-photo", title: p.author ? "Фото: " + p.author : "Открыть фото", "aria-label": "Открыть фото", onclick: function () { openLightbox(p.url); } },
+          el("img", { src: p.url, alt: "Фото зрителя", loading: "lazy", decoding: "async", onerror: function () { if (this.parentNode) this.parentNode.hidden = true; } }),
+          p.author ? el("span", { class: "c-photo-by", text: p.author }) : null));
       });
       photosBox.append(grid);
     }
 
+    function imgsNode(c) {
+      var urls = (c.photos || []).filter(function (u) { return typeof u === "string" && u.indexOf("http") === 0; });
+      if (!urls.length || c.status === "hidden") return null;
+      var wrap = el("div", { class: "c-imgs" });
+      urls.forEach(function (u) {
+        var img = el("img", { src: u, alt: "Фото к отзыву", loading: "lazy", decoding: "async", onerror: function () { if (img.parentNode) img.parentNode.hidden = true; } });
+        wrap.append(el("button", { type: "button", class: "c-img", onclick: function () { openLightbox(u); } }, img));
+      });
+      return wrap;
+    }
     function commentNode(c, isReply) {
       var isDir = c.authorPersonId && directors.indexOf(c.authorPersonId) !== -1;
       var mine = state.user && c.uid === state.user.uid;
@@ -1222,7 +1237,7 @@
       if (mine || state.admin) actions.append(el("button", { type: "button", class: "linkbtn", text: "Удалить", onclick: function () { if (confirm("Удалить комментарий насовсем?")) act(deleteComment(c)); } }));
       var rt = !isReply && firstTop[c.uid] === c.id && ratingBy[c.uid], rline = rt ? ratingNode(rt) : null;
       return el("article", { class: "comment" + (isReply ? " reply" : "") + (c.status === "hidden" ? " is-hidden" : "") + (justDone && justDone.cid === c.id ? " is-new" : ""), id: "c-" + c.id, tabindex: justDone && justDone.cid === c.id ? "-1" : null },
-        head, editing[c.id] ? editBox(c) : el("p", { class: "c-text" }, richText(c.text, canSeek)), rline, actions, n > 0 && openLikers[c.id] ? likersBox(c) : null);
+        head, editing[c.id] ? editBox(c) : el("p", { class: "c-text" }, richText(c.text, canSeek)), imgsNode(c), rline, actions, n > 0 && openLikers[c.id] ? likersBox(c) : null);
     }
     function act(p) { return p.then(function () { dropComments(); return loadComments(true); }).then(draw, function (e) { toast(errText(e)); }); }
 
@@ -3364,7 +3379,9 @@
       { k: "cover", label: "Обложка", ph: "ссылка на картинку", hint: "Только ссылка — файл загружать не нужно." },
       { k: "performers", label: "Участники", type: "area", hint: "Через запятую, имена так же, как на странице человека: Алиев Марат, Куницына Арина." },
       { k: "choreographers", label: "Постановщики", type: "area", hint: "Через запятую." },
-      { k: "about", label: "Описание", type: "area", hint: "Как проходит номер, откуда музыка — что важно знать зрителю." }
+      { k: "about", label: "Описание", type: "area", hint: "Как проходит номер, откуда музыка — что важно знать зрителю." },
+      { k: "photos", label: "Фото номера", type: "area", rows: 2, hint: "Ссылки на фотографии через запятую — до 12 штук. Появятся блоком «Фото номера»." },
+      { k: "video", label: "Видео номера", ph: "https://…", hint: "Ссылка на запись номера — на обложке появится кнопка «Смотреть»." }
     ];
     var D = { data: null, dataErr: false, mode: "", team: false, qc: "", qcOpen: false, concert: "", cur: null, busy: false, done: false, patchId: "" };
     var MODES = {

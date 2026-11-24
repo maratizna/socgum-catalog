@@ -2,7 +2,9 @@
 {% from "_dicon.html" import dicon with context %}
 {% block body_class %}page-number{% endblock %}
 {% block main %}
-{% set can_play = video is not none %}
+{% set own_video = n.video_obj is not none %}
+{% set pv = n.video_obj if own_video else video %}
+{% set can_play = pv is not none %}
 <article class="number">
   <div class="number-grid">
     <div class="number-main">
@@ -10,8 +12,8 @@
       {% if n.collective %}<p class="collective">{{ n.collective }}</p>{% endif %}
 
       <div class="stage" id="stage"
-        {% if can_play %}data-oid="{{ video.oid }}" data-vid="{{ video.id }}" data-hash="{{ video.hash }}" data-host="{{ video.host }}"
-        data-start="{{ n.start if n.start is not none else 0 }}"{% if n.end is not none %} data-end="{{ n.end }}"{% endif %} data-nid="{{ n.id }}" data-title="{{ n.title }}"{% endif %}>
+        {% if can_play %}data-oid="{{ pv.oid }}" data-vid="{{ pv.id }}" data-hash="{{ pv.hash }}" data-host="{{ pv.host }}"
+        data-start="{{ 0 if own_video else (n.start if n.start is not none else 0) }}"{% if not own_video and n.end is not none %} data-end="{{ n.end }}"{% endif %} data-nid="{{ n.id }}" data-title="{{ n.title }}"{% endif %}>
         <img class="stage-blur" src="{{ root }}img/{{ n.id }}/cover.webp" alt="" aria-hidden="true">
         <img class="stage-poster" fetchpriority="high" decoding="async" src="{{ root }}img/{{ n.id }}/cover.webp" width="{{ n.cover_size[0] }}" height="{{ n.cover_size[1] }}"
              alt="{% if n.has_cover %}Обложка номера «{{ n.title }}»{% endif %}">
@@ -21,8 +23,8 @@
         </button>
         {% endif %}
         {% if can_play %}
-        <button class="play" type="button" data-t="{{ n.start if n.start is not none else 0 }}">
-          Смотреть{% if n.start is not none %} с {{ n.start|hms }}{% endif %}
+        <button class="play" type="button" data-t="{{ 0 if own_video else (n.start if n.start is not none else 0) }}">
+          Смотреть{% if not own_video and n.start is not none %} с {{ n.start|hms }}{% endif %}
         </button>
         {% elif watch_links %}
         <div class="stage-note stage-links">{% for l in watch_links %}<a class="add-btn add-btn-s" href="{{ l.url }}" rel="noopener" target="_blank">Смотреть запись {{ l.label }}</a> {% endfor %}</div>
@@ -34,6 +36,12 @@
       <div class="stage-alt">{% for l in watch_links %}<a class="add-btn add-btn-s" href="{{ l.url }}" rel="noopener" target="_blank">Смотреть другую запись {{ l.label }}</a> {% endfor %}</div>
       {% endif %}
       {% if can_play %}<p class="resume" id="resume" hidden></p>{% endif %}
+      {% if n.photos_list %}
+      <section class="num-photos" aria-label="Фото номера">
+        <h2 class="mat-h">Фото номера</h2>
+        <div class="num-photos-grid">{% for u in n.photos_list %}<button class="num-photo" type="button" data-src="{{ u }}" aria-label="Открыть фото"><img src="{{ u }}" alt="Фото номера" loading="lazy" decoding="async" onerror="this.parentNode.hidden=true"></button>{% endfor %}</div>
+      </section>
+      {% endif %}
       <div class="num-actions">
         {% if n.social %}
         <p class="social-links">{% for s in n.social %}<a class="add-btn add-btn-s soc soc-{{ s.kind }}" href="{{ s.url }}" rel="noopener" target="_blank">{% include "_soc_icon.html" %}<span>{{ 'Группа концерта' if s.kind == 'vk' else ('Канал концерта' if s.kind == 'tg' else s.label) }}</span></a>{% endfor %}</p>

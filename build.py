@@ -396,6 +396,7 @@ SPEC = {
         "collective": ["коллектив"], "performers": ["участники", "исполнители"], "choreographers": ["постановщики"],
         "about": ["описание"], "cover": ["обложка"], "start": ["начало"], "end": ["конец"],
         "old_url": ["старый адрес"], "links": ["ссылки", "соцсети", "группа"], "track": ["трек", "саундтрек"], "direction2": ["ещё направление", "еще направление", "второе направление"],
+        "photos": ["фото", "фотографии", "фото номера"], "video": ["видео", "видео номера", "запись"],
     },
     "Люди": {"name": ["имя"], "about": ["о себе", "описание"], "link": ["ссылка"], "id": ["id"]},
     "Формы": {"title": ["форма"], "url": ["ссылка для сотрудников", "ссылка"]},
@@ -835,6 +836,7 @@ def build_model(wb, report):
             "performers": split_people(r.get("performers")), "choreographers": split_people(r.get("choreographers")),
             "about": r.get("about", ""), "cover_name": r.get("cover", ""), "start": start, "end": end,
             "old_url": r.get("old_url", ""), "social": social_links(r.get("links")), "tracks": track_links(r.get("track")),
+            "photos": r.get("photos", ""), "video": r.get("video", ""),
             "offstage": any(d.get("offstage") for d in dirs_found),
             "rate_dir": next((d for d in dirs_found if d.get("offstage")), None) or next((d for d in dirs_found if d.get("criteria")), None),
         }
@@ -1190,6 +1192,8 @@ def build_site(concerts, directions, numbers, people, report, demo, source, admi
         desc = n["about"] or (f"{n['collective']}. {n['concert']['name']}." if n["collective"] else n["concert"]["name"])
         d = n["concert"]["date"]
         n["age_days"] = (dt.date.today() - d).days if d else 0
+        n["photos_list"] = [u for u in re.split(r"[\s,;]+", (n.get("photos") or "").strip()) if u.startswith(("http://", "https://"))][:12]
+        n["video_obj"] = parse_video(n.get("video") or "")
         write(TMP / "n" / n["id"] / "index.html", env.get_template("number.html").render(
             root="../../", n=n, page_title=f"{n['title']}: {cfg['site_title']}",
             canonical=f"{site_url}/n/{n['id']}/" if site_url else "",
@@ -1282,7 +1286,7 @@ def build_site(concerts, directions, numbers, people, report, demo, source, admi
             return str(v).strip()
 
         NUM_KEYS = ("title", "collective", "concert", "direction", "direction2", "performers",
-                    "choreographers", "about", "cover", "start", "end", "old_url", "links", "track")
+                    "choreographers", "about", "cover", "start", "end", "old_url", "links", "track", "photos", "video")
         CON_KEYS = ("name", "date", "video", "video2", "about", "cover", "topic", "season", "year", "ctype", "playlist")
         # id связанных номеров («другое исполнение») — для формы дополнения на /add/
         rel_ids = {}
