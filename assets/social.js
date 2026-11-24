@@ -854,7 +854,7 @@
     var editing = {}, editSess = {}, editDraft = {};   // правка комментария: открыта сейчас / начата на этой странице (после обновления страницы сбрасывается) / несохранённый текст
     var EDIT_MIN = 15;                                  // сколько минут после отправки можно начать правку
     var myLikes = {}, openLikers = {};   // мои лайки на этой странице; комментарии с раскрытым списком лайкнувших
-    var photos = [], PHOTO_MAX = 3;      // сколько ссылок на фото можно приложить к отзыву
+    var PHOTO_MAX = 3;                  // сколько ссылок на фото можно приложить к отзыву
     var photoInput = null;               // поле со ссылками на фото в форме отзыва
     var ratings = [], ratingBy = {}, firstTop = {};   // оценки зрителей этого номера; они же по аккаунтам; первый комментарий каждого автора (под ним показываем оценку)
     var sortMode = "old";
@@ -870,7 +870,7 @@
     var sortBar = el("div", { class: "c-sort", hidden: true });
     var list = el("div", { class: "c-list" });
     var photosBox = el("section", { class: "c-photos", hidden: true });
-    var photoCache = null;
+
     var form = el("div", { class: "c-form" });
     var moments = el("details", { class: "moments", open: true });
     var noteBox = document.getElementById("director-note");
@@ -991,7 +991,7 @@
       }, function () { ratings = []; ratingBy = {}; });
     }
     function dropComments() { cdrop("comments:" + nid); cdrop("likes:" + nid); cdrop("ratings:" + nid); cdrop("ragg:" + nid); cdrop("hot:"); cdrop("user:ccount:"); cdrop("user:comments3:"); }
-    function plural(n) {
+    function likesLabel(n) {
       var m = n % 100, d = n % 10;
       return n + " " + (m > 10 && m < 20 ? "лайков" : d === 1 ? "лайк" : d > 1 && d < 5 ? "лайка" : "лайков");
     }
@@ -1169,30 +1169,6 @@
       var list = raw.split(/[\s,;]+/).filter(function (s) { return !!s; });
       return list.slice(0, PHOTO_MAX);
     }
-    /* Грузим после того, как комментарий сохранён: id комментария уже известен. */
-    function uploadPhotos(cid) {
-      var list = photoUrlList();
-      photos = [];
-      if (!list.length || !cid || !uid) return Promise.resolve(0);
-      return Promise.all(list.map(function (url, i) {
-        return fb.f.setDoc(fdoc("commentPhotos/" + cid + "_" + i), {
-          commentId: cid, numberId: nid, uid: uid, order: i, url: url,
-          createdAt: fb.f.serverTimestamp(), status: "visible"
-        }).then(function () { return 1; }, function (e) { if (window.console) console.warn("фото не сохранилось", e); return 0; });
-      })).then(function (r) { return r.reduce(function (a, b) { return a + b; }, 0); });
-    }
-    function loadPhotos(fresh) {
-      if (!fresh && photoCache) return Promise.resolve(photoCache);
-      return cached("photos:" + nid, TTL.comments, fresh === true, function () {
-        return fb.f.getDocs(fb.f.query(fcol("commentPhotos"), fb.f.where("numberId", "==", nid), fb.f.limit(30)))
-          .then(function (s) {
-            var arr = s.docs.map(function (d) { var x = d.data(); x.id = d.id; return x; })
-              .filter(function (p) { return p.status !== "hidden" && p.url; });
-            arr.sort(function (a, b) { return ms(b) - ms(a); });
-            return arr.slice(0, 12);
-          });
-      }).then(function (v) { photoCache = v; return v; }, function () { return []; });
-    }
     function openLightbox(src) {
       function close() { box.remove(); document.removeEventListener("keydown", onKey); }
       function onKey(e) { if (e.key === "Escape") close(); }
@@ -1205,7 +1181,11 @@
     }
     function drawPhotos() {
       clear(photosBox);
-      var arr = photoCache || [];
+      var arr = [];
+      comments.forEach(function (c) {
+        if (c.status === "hidden" || !c.photos || !c.photos.length) return;
+        c.photos.forEach(function (u) { if (arr.length < 12) arr.push({ url: u }); });
+      });
       photosBox.hidden = !arr.length;
       if (!arr.length) return;
       photosBox.append(
@@ -1214,7 +1194,7 @@
       var grid = el("div", { class: "c-photos-grid" });
       arr.forEach(function (p) {
         grid.append(el("button", { type: "button", class: "c-photo", "aria-label": "Открыть фото", onclick: function () { openLightbox(p.url); } },
-          el("img", { src: p.url, alt: "Фото зрителя", loading: "lazy", decoding: "async" })));
+          el("img", { src: p.url, alt: "Фото зрителя", loading: "lazy", decoding: "async", onerror: function () { if (this.parentNode) this.parentNode.hidden = true; } })));
       });
       photosBox.append(grid);
     }
@@ -1234,7 +1214,7 @@
       if (c.status !== "hidden") actions.append(el("button", { type: "button", class: "like-btn" + (liked ? " is-on" : ""), "aria-pressed": liked ? "true" : "false",
         "aria-label": liked ? "Убрать лайк" : "Поставить лайк", title: liked ? "Убрать лайк" : "Нравится", onclick: function () { toggleLike(c); } },
         el("span", { "aria-hidden": "true", text: "♥" })));
-      if (n > 0) actions.append(el("button", { type: "button", class: "linkbtn like-count", "aria-expanded": openLikers[c.id] ? "true" : "false", text: plural(n),
+      if (n > 0) actions.append(el("button", { type: "button", class: "linkbtn like-count", "aria-expanded": openLikers[c.id] ? "true" : "false", text: likesLabel(n),
         onclick: function () { openLikers[c.id] = !openLikers[c.id]; drawList(); } }));
       if (!isReply && state.user) actions.append(el("button", { type: "button", class: "linkbtn", text: "Ответить", onclick: function () { replyTo = c; drawForm(); form.scrollIntoView({ block: "center" }); } }));
       if (state.admin) actions.append(el("button", { type: "button", class: "linkbtn", text: c.status === "hidden" ? "Показать" : "Скрыть", onclick: function () { act(toggleHidden(c)); } }));
@@ -1488,7 +1468,7 @@
         var photoList = photoUrlList();
         var badPhoto = photoList.filter(function (u) { return !/^https?:\/\/\S+$/i.test(u); })[0];
         if (badPhoto) { note(form, "Ссылка на фото должна начинаться с http:// или https://", "err"); photoInput.focus(); return; }
-        if (!photoList.length) photos = [];
+
         if (photoList.length && !text) { note(form, "Коротко опишите, чем запомнился номер: фото прикладываются к отзыву.", "err"); ta.focus(); return; }
         if (setCount() && !full && rateChanged()) { note(form, "Оцените все пять пунктов или нажмите «Сбросить».", "err"); return; }
         if (OFFSTAGE && full && rateChanged() && !ctxv) { note(form, "Выберите, откуда вы знаете работу направления.", "err"); return; }
@@ -1532,6 +1512,7 @@
               data.cref = fdoc("comments/" + dayStamp() + "_" + uid + "_" + n);
               var cdata = { numberId: nid, uid: uid, authorName: myName(), text: text, createdAt: fb.f.serverTimestamp(), status: "visible" };
               if (replyTo) cdata.parentId = replyTo.id;
+              if (photoList.length) cdata.photos = photoList;
               var pid = myPersonForComment();
               if (pid) cdata.authorPersonId = pid;
               data.cdata = cdata;
@@ -1590,8 +1571,7 @@
                 newComment = data.cdata;
                 newComment.id = data.cref.path.split("/").pop();
               }
-              /* фото привязываем к уже сохранённому комментарию; если база не приняла — текст всё равно на месте */
-              return uploadPhotos(newComment ? newComment.id : "");
+
             });
           });
         }).then(function () {
@@ -1599,8 +1579,7 @@
           replyTo = null;
           justDone = { k: 1, t: Date.now(), rate: doneInfo.rate, clear: doneInfo.clear, text: doneInfo.text, tot: doneInfo.tot, cid: newComment ? newComment.id : "" };
           dropComments();
-          cdrop("photos:" + nid); photoCache = null;
-          loadPhotos(true).then(drawPhotos);
+          drawPhotos();
           return loadComments(true).then(function () {
             if (newComment && !comments.some(function (c) { return c.id === newComment.id; })) comments.push(newComment);
           });
@@ -1690,7 +1669,7 @@
     views.push(function () {
       loaded = false; replyTo = null; draw();
       loadNote().then(function () { drawNote(); drawMoments(); });
-      whenNear(function () { loadComments().then(draw); loadPhotos().then(drawPhotos); });
+      whenNear(function () { loadComments().then(draw); });
     });
     catalogInfo().then(function () { draw(); });   // имена на страницах людей нужны для подписи «ник (имя)»
   }
@@ -1861,7 +1840,7 @@
   var USER_PAGE = 5;
   function mapComment(d) {
     var x = d.data();
-    return { id: d.id, numberId: x.numberId, text: x.text, authorName: x.authorName, createdAt: x.createdAt, likeCount: x.likeCount || 0, parentId: x.parentId || "" };
+    return { id: d.id, numberId: x.numberId, text: x.text, authorName: x.authorName, createdAt: x.createdAt, likeCount: x.likeCount || 0, parentId: x.parentId || "", photos: Array.isArray(x.photos) ? x.photos : [] };
   }
   function mapRating(d) {
     var x = d.data(), o = { numberId: x.numberId, updatedAt: x.updatedAt };
