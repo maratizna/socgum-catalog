@@ -4,7 +4,7 @@
 {% block main %}
 {% set own_video = n.video_obj is not none %}
 {% set pv = n.video_obj if own_video else video %}
-{% set can_play = pv is not none %}
+{% set can_play = pv is not none and (own_video or n.has_cover) %}
 <article class="number">
   <div class="number-grid">
     <div class="number-main">
@@ -26,6 +26,8 @@
         <button class="play" type="button" data-t="{{ 0 if own_video else (n.start if n.start is not none else 0) }}">
           Смотреть{% if not own_video and n.start is not none %} с {{ n.start|hms }}{% endif %}
         </button>
+        {% elif pv is not none and not own_video and not n.has_cover and not n.offstage %}
+        <p class="stage-note">Обложки пока нет — запись номера появится, когда её добавят.</p>
         {% elif watch_links %}
         <div class="stage-note stage-links">{% for l in watch_links %}<a class="add-btn add-btn-s" href="{{ l.url }}" rel="noopener" target="_blank">Смотреть запись {{ l.label }}</a> {% endfor %}</div>
         {% elif not n.offstage %}

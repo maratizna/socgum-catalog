@@ -3398,9 +3398,9 @@
       { k: "about", label: "Описание", type: "area", hint: "Как проходит номер, откуда музыка — что важно знать зрителю." }
     ];
     var MEDIA_FIELDS = [
-      { k: "cover", label: "Обложка", ph: "ссылка на картинку", hint: "Только ссылка — файл загружать не нужно. Если обложки нет, на странице показывается заглушка." },
+      { k: "cover", label: "Обложка", ph: "ссылка на картинку", hint: "Только ссылка — файл загружать не нужно. Обложка идёт первой на странице номера: без неё видео не показывается." },
       { k: "photos", label: "Фото номера", type: "area", rows: 2, hint: "Ссылки на фотографии через запятую — до 12 штук. Появятся блоком «Фото номера»." },
-      { k: "video", label: "Видео номера", ph: "https://…", hint: "Это может быть видео репетиции или любой другой записи. Если оставить пустым — номер показывается из основной концертной записи по таймкоду выше." }
+      { k: "video", label: "Видео номера", ph: "https://…", hint: "Запись репетиции или любая другая запись. Показывается поверх обложки — сначала фото, потом видео. Пусто — номер идёт из основной концертной записи по таймкоду выше." }
     ];
     var D = { data: null, dataErr: false, mode: "", team: false, qc: "", qcOpen: false, numsOpen: true, concert: "", cur: null, busy: false, done: false, patchId: "" };
     var MODES = {
@@ -4002,6 +4002,8 @@
         extra[k] = v;
       });
       var rels = [];
+      var curCover = Object.prototype.hasOwnProperty.call(fields, "cover") ? fields.cover : (n.cover || "");
+      var curVideo = Object.prototype.hasOwnProperty.call(fields, "video") ? fields.video : (n.video || "");
       Array.prototype.forEach.call(form.querySelectorAll(".add-rel-row"), function (row) {
         var id = row._relId ? row._relId() : "";
         if (!id) return;
@@ -4024,7 +4026,8 @@
       if (relOut.length) extra.related = relOut;
       var hasExtra = Object.keys(extra).length > 0;
       if (!changed && !hasExtra) { formMsg(form, "Ничего не изменили — заполните хотя бы одно поле."); return; }
-      if (extra.video2 && !URL_RE.test(extra.video2)) bad = "Вторая запись — ссылка, начните с https://";
+      if (curVideo && !curCover) bad = "Видео показывать не с чем: первым на странице всегда идёт обложка, добавьте её.";
+      else if (extra.video2 && !URL_RE.test(extra.video2)) bad = "Вторая запись — ссылка, начните с https://";
       else if (fields.start && !TIME_RE.test(fields.start)) bad = "Начало — мм:сс или ч:мм:сс.";
       else if (fields.end && !TIME_RE.test(fields.end)) bad = "Конец — мм:сс или ч:мм:сс.";
       else Object.keys(fields).forEach(function (k) {
