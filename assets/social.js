@@ -1169,19 +1169,18 @@
       var list = raw.split(/[\s,;]+/).filter(function (s) { return !!s; });
       return list.slice(0, PHOTO_MAX);
     }
-    function openLightbox(src) {
-      function close() { box.remove(); document.removeEventListener("keydown", onKey); }
-      function onKey(e) { if (e.key === "Escape") close(); }
-      var box = el("div", { id: "lb", role: "dialog", "aria-modal": "true", "aria-label": "Фото зрителя" },
-        el("img", { src: src, alt: "Фото зрителя" }),
-        el("button", { type: "button", class: "lb-x", "aria-label": "Закрыть", text: "×", onclick: close }));
-      box.addEventListener("click", function (e) { if (e.target === box) close(); });
-      document.addEventListener("keydown", onKey);
-      document.body.append(box);
+    /* Одно окно просмотра на весь сайт (app.js): картинки, счётчик, стрелки. */
+    function openPhoto(items, index, opts) {
+      if (!items || !items.length) return;
+      if (window.SGPhoto) window.SGPhoto.open(items, index || 0, opts || {});
+      else window.open(items[index || 0].url, "_blank", "noopener");
     }
-    /* Фото номера: клик по плитке сразу открывает снимок */
-    Array.prototype.forEach.call(document.querySelectorAll(".num-photo"), function (b) {
-      b.addEventListener("click", function () { openLightbox(b.dataset.src); });
+    function openLightbox(src) { if (src) openPhoto([{ url: src }], 0, {}); }
+    /* Фото номера: клик по плитке сразу открывает снимок, между снимками можно листать */
+    var numPhotoEls = Array.prototype.slice.call(document.querySelectorAll(".num-photo"));
+    var numPhotoItems = numPhotoEls.map(function (b) { return { url: b.dataset.src, alt: "Фото номера" }; });
+    numPhotoEls.forEach(function (b, idx) {
+      b.addEventListener("click", function () { openPhoto(numPhotoItems, idx, {}); });
     });
     function drawPhotos() {
       clear(photosBox);
@@ -1196,8 +1195,8 @@
         el("h2", { class: "c-photos-h", text: "Фото зрителей" }),
         el("p", { class: "c-photos-sub", text: arr.length + " " + plural(arr.length, "снимок", "снимка", "снимков") + " к отзывам об этом номере" }));
       var grid = el("div", { class: "c-photos-grid" });
-      arr.forEach(function (p) {
-        grid.append(el("button", { type: "button", class: "c-photo", title: p.author ? "Фото: " + p.author : "Открыть фото", "aria-label": "Открыть фото", onclick: function () { openLightbox(p.url); } },
+      arr.forEach(function (p, idx) {
+        grid.append(el("button", { type: "button", class: "c-photo", title: p.author ? "Фото: " + p.author : "Открыть фото", "aria-label": "Открыть фото", onclick: function () { openPhoto(arr, idx, { author: true }); } },
           el("img", { src: p.url, alt: "Фото зрителя", loading: "lazy", decoding: "async", onerror: function () { if (this.parentNode) this.parentNode.hidden = true; } }),
           p.author ? el("span", { class: "c-photo-by", text: p.author }) : null));
       });
@@ -1208,9 +1207,10 @@
       var urls = (c.photos || []).filter(function (u) { return typeof u === "string" && u.indexOf("http") === 0; });
       if (!urls.length || c.status === "hidden") return null;
       var wrap = el("div", { class: "c-imgs" });
-      urls.forEach(function (u) {
+      var photoItems = urls.map(function (u) { return { url: u, alt: "Фото к отзыву" }; });
+      urls.forEach(function (u, idx) {
         var img = el("img", { src: u, alt: "Фото к отзыву", loading: "lazy", decoding: "async", onerror: function () { if (img.parentNode) img.parentNode.hidden = true; } });
-        wrap.append(el("button", { type: "button", class: "c-img", onclick: function () { openLightbox(u); } }, img));
+        wrap.append(el("button", { type: "button", class: "c-img", onclick: function () { openPhoto(photoItems, idx, {}); } }, img));
       });
       return wrap;
     }
