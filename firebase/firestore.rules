@@ -104,6 +104,31 @@ service cloud.firestore {
       allow delete: if false;
     }
 
+    // Фото к отзывам. Документ на каждый снимок: id = {комментарий}_{номер фото}.
+    // Читают все (видимые) и владелец/админ, удалить может автор или админ, скрыть — админ.
+    // Хранится только ссылка на картинку: файлов проект не держит.
+    match /commentPhotos/{photoId} {
+      allow read: if resource.data.status == 'visible'
+        || (signedIn() && resource.data.uid == request.auth.uid)
+        || isAdmin();
+      allow create: if signedIn()
+        && request.resource.data.keys().hasOnly(['commentId', 'numberId', 'uid', 'order', 'url', 'createdAt', 'status'])
+        && request.resource.data.uid == request.auth.uid
+        && request.resource.data.status == 'visible'
+        && request.resource.data.createdAt == request.time
+        && request.resource.data.commentId is string
+        && request.resource.data.commentId.size() > 0 && request.resource.data.commentId.size() <= 120
+        && request.resource.data.numberId is string
+        && request.resource.data.numberId.size() > 0 && request.resource.data.numberId.size() <= 120
+        && request.resource.data.order is int
+        && request.resource.data.order >= 0 && request.resource.data.order < 10
+        && request.resource.data.url is string
+        && request.resource.data.url.size() > 0 && request.resource.data.url.size() <= 500
+        && request.resource.data.url.matches('^https?://[^\\s]+$');
+      allow update: if isAdmin()
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status']);
+      allow delete: if isAdmin() || (signedIn() && resource.data.uid == request.auth.uid);
+    }
     // Заявка «это моя страница». Всегда создаётся как ждущая, подтверждает администратор.
     match /claims/{pid} {
       allow read: if true;

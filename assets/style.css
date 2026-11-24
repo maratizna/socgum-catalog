@@ -1,4 +1,4 @@
-/* Каталог номеров СоцГума. Цвета и подача заданы сайтом СоцГума: тёмный фон, оранжевый акцент. */
+﻿/* РљР°С‚Р°Р»РѕРі РЅРѕРјРµСЂРѕРІ РЎРѕС†Р“СѓРјР°. Р¦РІРµС‚Р° Рё РїРѕРґР°С‡Р° Р·Р°РґР°РЅС‹ СЃР°Р№С‚РѕРј РЎРѕС†Р“СѓРјР°: С‚С‘РјРЅС‹Р№ С„РѕРЅ, РѕСЂР°РЅР¶РµРІС‹Р№ Р°РєС†РµРЅС‚. */
 
 @font-face{font-family:"Unbounded";font-weight:700;font-style:normal;font-display:swap;
   src:url(fonts/unbounded-cyrillic-700-normal.woff2) format("woff2");
@@ -56,7 +56,7 @@ p{margin:0}
 .skip{position:absolute;left:12px;top:-60px;background:var(--ember);color:var(--night);padding:8px 14px;border-radius:var(--r);z-index:100}
 .skip:focus{top:12px}
 
-/* шапка и подвал */
+/* С€Р°РїРєР° Рё РїРѕРґРІР°Р» */
 .demo-note{background:var(--coal-2);border-left:3px solid var(--ember);color:var(--ash);font-size:.875rem;padding:8px var(--pad)}
 .site-head{position:sticky;top:0;z-index:60;max-width:none;width:100%;margin:0;padding:12px max(var(--pad),calc((100% - var(--wrap)) / 2 + var(--pad)));display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap;background:rgba(9,5,0,.94);-webkit-backdrop-filter:blur(8px);backdrop-filter:blur(8px);border-bottom:1px solid rgba(255,255,255,.06)}
 html{scroll-padding-top:72px}
@@ -65,18 +65,18 @@ html{scroll-padding-top:72px}
 .head-link:hover{color:var(--ink)}
 .site-foot{border-top:1px solid var(--line);color:var(--ash);font-size:.9rem;padding:22px var(--pad);display:flex;gap:24px;flex-wrap:wrap;justify-content:space-between;max-width:var(--wrap);width:100%;margin:0 auto}
 
-/* вступление */
+/* РІСЃС‚СѓРїР»РµРЅРёРµ */
 .intro{padding:clamp(20px,5vw,56px) 0 clamp(20px,3vw,32px)}
 .lead{max-width:62ch;margin-top:14px;color:var(--ash);font-size:1.125rem}
 
-/* онбординг первого визита */
+/* РѕРЅР±РѕСЂРґРёРЅРі РїРµСЂРІРѕРіРѕ РІРёР·РёС‚Р° */
 .onboard{margin:0 0 22px;border:1px solid var(--line);border-left:3px solid var(--ember);border-radius:var(--r);background:var(--coal);padding:14px 16px;display:flex;gap:16px;align-items:center;justify-content:space-between;flex-wrap:wrap}
 .onboard[hidden]{display:none}
 .onboard-list{margin:0;padding-left:18px;display:grid;gap:6px;color:var(--ash);font-size:.95rem}
 .onboard-x{flex:none;background:var(--ember);color:var(--night);border:0;border-radius:var(--r);padding:10px 18px;font-weight:700;cursor:pointer;font-family:inherit}
 .onboard-x:hover{background:var(--ember-hi)}
 
-/* фильтры */
+/* С„РёР»СЊС‚СЂС‹ */
 .filters{display:grid;gap:14px;margin-bottom:26px}
 .filter-row{display:flex;gap:12px;flex-wrap:wrap}
 .search{flex:1 1 320px;min-width:0;background:var(--coal);border:1px solid var(--line);border-radius:var(--r);padding:12px 14px}
@@ -95,7 +95,7 @@ html{scroll-padding-top:72px}
 .btn{display:inline-block;background:var(--ember);color:var(--night);border:0;border-radius:var(--r);padding:11px 20px;font-weight:600;text-decoration:none}
 .btn:hover{background:var(--ember-hi);color:var(--night)}
 
-/* сетка номеров */
+/* СЃРµС‚РєР° РЅРѕРјРµСЂРѕРІ */
 .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:34px 22px}
 .card{min-width:0}
 .card-link{display:block;text-decoration:none}
@@ -107,7 +107,7 @@ html{scroll-padding-top:72px}
 .card-role{color:var(--ember);font-size:.9rem;margin-top:2px}
 .empty{padding:40px 0;display:grid;gap:16px;justify-items:start}
 
-/* страница номера */
+/* СЃС‚СЂР°РЅРёС†Р° РЅРѕРјРµСЂР° */
 .back{margin:18px 0 22px;font-size:.95rem}
 .back a{color:var(--ash)}
 .back a:hover{color:var(--ink)}
@@ -144,7 +144,7 @@ html{scroll-padding-top:72px}
 }
 @media (prefers-reduced-motion:reduce){*{transition:none!important;scroll-behavior:auto!important}}
 
-/* вход, комментарии, кабинет (появляются, только если подключён Firebase) */
+/* РІС…РѕРґ, РєРѕРјРјРµРЅС‚Р°СЂРёРё, РєР°Р±РёРЅРµС‚ (РїРѕСЏРІР»СЏСЋС‚СЃСЏ, С‚РѕР»СЊРєРѕ РµСЃР»Рё РїРѕРґРєР»СЋС‡С‘РЅ Firebase) */
 .head-nav{display:flex;gap:18px;align-items:center;flex-wrap:wrap}
 .auth-slot{display:inline-flex;gap:14px;align-items:center}
 .head-btn{background:none;border:0;padding:0;text-decoration:underline;text-decoration-color:var(--ember);text-underline-offset:.2em}
@@ -220,7 +220,7 @@ span.tc{border-color:var(--line);color:var(--ash)}
 .moment-list .who{display:inline-flex;flex-wrap:wrap;gap:6px;align-items:center}
 .moment-list li{padding:5px 0}
 
-/* кабинет: страницы, которыми владеет аккаунт */
+/* РєР°Р±РёРЅРµС‚: СЃС‚СЂР°РЅРёС†С‹, РєРѕС‚РѕСЂС‹РјРё РІР»Р°РґРµРµС‚ Р°РєРєР°СѓРЅС‚ */
 .my-pages{display:grid;gap:14px;max-width:62ch}
 .my-page{display:grid;grid-template-columns:auto 1fr;gap:10px 16px;align-items:start;padding:16px;border:1px solid var(--line);border-radius:var(--r);background:var(--coal)}
 .my-page .avatar-l{margin-top:0}
@@ -231,7 +231,7 @@ span.tc{border-color:var(--line);color:var(--ash)}
 .btn-ghost:hover{border-color:var(--ember);color:#fff}
 a.btn{text-decoration:none;display:inline-block}
 
-/* автор комментария и страница пользователя */
+/* Р°РІС‚РѕСЂ РєРѕРјРјРµРЅС‚Р°СЂРёСЏ Рё СЃС‚СЂР°РЅРёС†Р° РїРѕР»СЊР·РѕРІР°С‚РµР»СЏ */
 .c-who{display:inline-flex;gap:10px;align-items:center;text-decoration:none;color:inherit}
 .c-who:hover strong{color:var(--ember-hi);text-decoration:underline;text-decoration-color:var(--ember)}
 .user-page{display:grid;gap:18px;max-width:72ch}
@@ -240,14 +240,14 @@ a.btn{text-decoration:none;display:inline-block}
 .user-head h1{margin:0}
 .user-comment .c-head{align-items:baseline}
 
-/* лайки комментариев */
+/* Р»Р°Р№РєРё РєРѕРјРјРµРЅС‚Р°СЂРёРµРІ */
 .c-actions{align-items:center}
 .like-btn{background:transparent;border:1px solid var(--line);border-radius:999px;color:var(--ash);padding:1px 11px;line-height:1.5;cursor:pointer}
 .like-btn:hover{border-color:var(--ember);color:var(--ember-hi)}
 .like-btn.is-on{color:var(--ember);border-color:var(--ember)}
 .like-list{display:flex;flex-wrap:wrap;gap:8px 18px;padding:6px 0 0;font-size:.9rem}
 
-/* оценки номера */
+/* РѕС†РµРЅРєРё РЅРѕРјРµСЂР° */
 .rate-sum{background:var(--coal);border:1px solid var(--line);border-radius:var(--r);padding:16px 18px;margin:18px 0}
 .rate-sum h3{font-family:var(--font-display);font-size:1rem;margin:0 0 12px}
 .rate-title{margin:0}
@@ -264,7 +264,7 @@ a.btn{text-decoration:none;display:inline-block}
 .rate-bar i{display:block;height:100%;background:var(--ember)}
 @media (max-width:640px){.rate-sum-grid{grid-template-columns:1fr}.rate-bars li{grid-template-columns:1fr 2.6rem}.rate-bars .rate-bar{grid-column:1 / -1;grid-row:2}.rate-bar-val{grid-column:2;grid-row:1}}
 
-/* форма оценки: ползунки */
+/* С„РѕСЂРјР° РѕС†РµРЅРєРё: РїРѕР»Р·СѓРЅРєРё */
 .rate-box{background:var(--coal);border:1px solid var(--line);border-radius:var(--r);padding:10px 14px}
 .rate-box summary{cursor:pointer;font-weight:600}
 .rate-box[open] summary{margin-bottom:8px}
@@ -291,7 +291,7 @@ a.btn{text-decoration:none;display:inline-block}
 .rate-total{margin:12px 0 4px;color:var(--ash);font-size:.95rem}
 .rate-total.is-full{color:var(--ink);font-weight:600}
 
-/* оценка у комментария: сумма и пять цифр, подсказка при наведении и нажатии */
+/* РѕС†РµРЅРєР° Сѓ РєРѕРјРјРµРЅС‚Р°СЂРёСЏ: СЃСѓРјРјР° Рё РїСЏС‚СЊ С†РёС„СЂ, РїРѕРґСЃРєР°Р·РєР° РїСЂРё РЅР°РІРµРґРµРЅРёРё Рё РЅР°Р¶Р°С‚РёРё */
 .rt{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin:2px 0}
 .rt-total,.rt-chip{position:relative;border-radius:var(--r);border:1px solid var(--line);color:var(--ink);font:inherit;font-size:.9rem;line-height:1;padding:6px 9px;cursor:pointer;font-variant-numeric:tabular-nums;background:transparent}
 .rt-total{border-color:var(--ember);color:var(--ember-hi)}
@@ -305,9 +305,9 @@ a.btn{text-decoration:none;display:inline-block}
 .rt-chip:nth-last-child(-n+2)::after{left:auto;right:0}
 .rt-total:hover::after,.rt-chip:hover::after,.rt-total:focus-visible::after,.rt-chip:focus-visible::after,.rt-total.is-open::after,.rt-chip.is-open::after{opacity:1;visibility:visible}
 
-/* правило над полем комментария и сортировка */
-/* Правила рецензии — шапка самого поля комментария, а не отдельная плашка.
-   Общий фон и рамка с textarea, между ними только тонкий разделитель. */
+/* РїСЂР°РІРёР»Рѕ РЅР°Рґ РїРѕР»РµРј РєРѕРјРјРµРЅС‚Р°СЂРёСЏ Рё СЃРѕСЂС‚РёСЂРѕРІРєР° */
+/* РџСЂР°РІРёР»Р° СЂРµС†РµРЅР·РёРё вЂ” С€Р°РїРєР° СЃР°РјРѕРіРѕ РїРѕР»СЏ РєРѕРјРјРµРЅС‚Р°СЂРёСЏ, Р° РЅРµ РѕС‚РґРµР»СЊРЅР°СЏ РїР»Р°С€РєР°.
+   РћР±С‰РёР№ С„РѕРЅ Рё СЂР°РјРєР° СЃ textarea, РјРµР¶РґСѓ РЅРёРјРё С‚РѕР»СЊРєРѕ С‚РѕРЅРєРёР№ СЂР°Р·РґРµР»РёС‚РµР»СЊ. */
 .c-compose{border:1px solid var(--line);border-radius:var(--r);background:var(--coal);overflow:hidden}
 .c-compose:hover{border-color:#5a4430}
 .c-compose:focus-within{border-color:var(--ember);box-shadow:0 0 0 1px rgba(255,139,54,.25)}
@@ -326,7 +326,7 @@ a.btn{text-decoration:none;display:inline-block}
 .c-sort-label{color:var(--ash);font-size:.95rem;margin-right:2px}
 .c-sort+.c-list{margin-top:10px}
 
-/* добавить номер или концерт */
+/* РґРѕР±Р°РІРёС‚СЊ РЅРѕРјРµСЂ РёР»Рё РєРѕРЅС†РµСЂС‚ */
 .add-block{max-width:var(--wrap);width:100%;margin:40px auto 0;padding:22px var(--pad);border-top:1px solid var(--line);display:grid;gap:12px}
 .add-block h2{font-family:var(--font-display);font-size:1.05rem;margin:0}
 .add-block p{margin:0;color:var(--ash);max-width:62ch}
@@ -336,7 +336,7 @@ a.btn{text-decoration:none;display:inline-block}
 .add-btn:focus-visible{outline:2px solid var(--ember-hi);outline-offset:2px}
 .rate-feel{margin:0;color:var(--ash);font-size:.875rem;line-height:1.45}
 
-/* выпадающие фильтры, карточка концерта, «Показать ещё» */
+/* РІС‹РїР°РґР°СЋС‰РёРµ С„РёР»СЊС‚СЂС‹, РєР°СЂС‚РѕС‡РєР° РєРѕРЅС†РµСЂС‚Р°, В«РџРѕРєР°Р·Р°С‚СЊ РµС‰С‘В» */
 .filter-selects{gap:12px 14px}
 .sel{display:flex;flex-direction:column;gap:5px;color:var(--ash);font-size:.85rem;min-width:0;flex:1 1 200px}
 .sel select{background:var(--coal);border:1px solid var(--line);border-radius:var(--r);padding:11px 12px;color:var(--ink);font:inherit;font-size:1rem;width:100%;min-width:0}
@@ -354,7 +354,7 @@ a.btn{text-decoration:none;display:inline-block}
 .stage-links{margin:10px 0 0}
 
 
-/* панель концерта: тема крупно, название мелко */
+/* РїР°РЅРµР»СЊ РєРѕРЅС†РµСЂС‚Р°: С‚РµРјР° РєСЂСѓРїРЅРѕ, РЅР°Р·РІР°РЅРёРµ РјРµР»РєРѕ */
 .concert-text h2{margin:0 0 4px;font-size:1.25rem}
 .concert-name{margin:0 0 4px;font-size:.95rem;color:var(--ink)}
 .add-btn-s{padding:7px 14px;font-size:.875rem}
@@ -376,15 +376,15 @@ a.btn{text-decoration:none;display:inline-block}
   .stage-note{padding:22px 12px 12px}
 }
 
-/* ссылки на группы и соцсети */
+/* СЃСЃС‹Р»РєРё РЅР° РіСЂСѓРїРїС‹ Рё СЃРѕС†СЃРµС‚Рё */
 .social-links{display:flex;flex-wrap:wrap;gap:8px;margin:14px 0 0}
-/* кнопки под видео — одной строкой вдоль изображения, с переносом при переполнении */
+/* РєРЅРѕРїРєРё РїРѕРґ РІРёРґРµРѕ вЂ” РѕРґРЅРѕР№ СЃС‚СЂРѕРєРѕР№ РІРґРѕР»СЊ РёР·РѕР±СЂР°Р¶РµРЅРёСЏ, СЃ РїРµСЂРµРЅРѕСЃРѕРј РїСЂРё РїРµСЂРµРїРѕР»РЅРµРЅРёРё */
 .num-actions{display:flex;flex-wrap:wrap;gap:10px;align-items:flex-start;margin:14px 0 0}
 .num-actions>.social-links,.num-actions>.share,.num-actions>.pl-add{margin:0}
 .soc{display:inline-flex;align-items:center;gap:8px}
 .soc-i{width:1.15em;height:1.15em;flex:none;color:var(--ember)}
 
-/* Оценка направлений вне сцены: откуда человек знает работу, пометки */
+/* РћС†РµРЅРєР° РЅР°РїСЂР°РІР»РµРЅРёР№ РІРЅРµ СЃС†РµРЅС‹: РѕС‚РєСѓРґР° С‡РµР»РѕРІРµРє Р·РЅР°РµС‚ СЂР°Р±РѕС‚Сѓ, РїРѕРјРµС‚РєРё */
 .rate-note{margin:0 0 10px}
 .rate-ctx{display:grid;gap:6px;margin:0 0 14px;font-size:.9rem}
 .rate-ctx-sel{width:100%;max-width:100%;padding:9px 10px;border-radius:10px;border:1px solid var(--line,rgba(255,255,255,.25));background:transparent;color:inherit;font:inherit}
@@ -392,7 +392,7 @@ a.btn{text-decoration:none;display:inline-block}
 .rt-ctx{font-size:.78rem;opacity:.7;align-self:center}
 .rate-ctx-note{margin:8px 0 0;font-size:.85rem;opacity:.75}
 
-/* Окно настройки фото */
+/* РћРєРЅРѕ РЅР°СЃС‚СЂРѕР№РєРё С„РѕС‚Рѕ */
 .crop-ov{position:fixed;inset:0;z-index:200;display:flex;align-items:center;justify-content:center;padding:16px;background:rgba(5,4,3,.82);overflow:auto}
 .crop-box{background:var(--coal,#14110d);border:1px solid var(--line);border-radius:18px;padding:20px;max-width:100%;display:grid;gap:14px;justify-items:center;text-align:center}
 .crop-box h2{margin:0;font-size:1.25rem}
@@ -405,7 +405,7 @@ a.btn{text-decoration:none;display:inline-block}
 .crop-zoom-row{display:flex;align-items:center;gap:12px;width:100%;max-width:320px}
 .crop-zoom{flex:1;min-width:0}
 
-/* Вкладки профиля и плейлисты */
+/* Р’РєР»Р°РґРєРё РїСЂРѕС„РёР»СЏ Рё РїР»РµР№Р»РёСЃС‚С‹ */
 .ptabs-bar{display:flex;gap:6px;flex-wrap:wrap;margin:26px 0 18px;border-bottom:1px solid var(--line)}
 .ptab{appearance:none;background:none;border:0;border-bottom:3px solid transparent;color:var(--ash);font:inherit;font-weight:600;padding:10px 14px;cursor:pointer;margin-bottom:-1px}
 .ptab:hover{color:#fff}
@@ -468,14 +468,14 @@ a.btn{text-decoration:none;display:inline-block}
 .c-edit{display:grid;gap:10px;margin:8px 0}
 .c-edit .c-row{display:flex;gap:12px;align-items:center}
 
-/* шапка: поиск и аватарка */
+/* С€Р°РїРєР°: РїРѕРёСЃРє Рё Р°РІР°С‚Р°СЂРєР° */
 .head-search{display:inline-flex;align-items:center;justify-content:center;width:36px;height:36px;border-radius:50%;color:var(--ember);text-decoration:none}
 .head-search:hover,.head-search:focus-visible{background:rgba(255,255,255,.08)}
 .head-me .avatar{width:36px;height:36px}
 .head-nav{flex-wrap:nowrap}
 .auth-slot{min-width:0}
 
-/* группа «Фильтры» */
+/* РіСЂСѓРїРїР° В«Р¤РёР»СЊС‚СЂС‹В» */
 .filter-group{margin:14px 0 0}
 .filter-group>summary{display:inline-flex;align-items:center;gap:8px;cursor:pointer;font-weight:600;padding:8px 14px;border:1px solid var(--line);border-radius:999px;list-style:none}
 .filter-group>summary::-webkit-details-marker{display:none}
@@ -484,7 +484,7 @@ a.btn{text-decoration:none;display:inline-block}
 .filter-n{background:var(--ember);color:#0b0a08;border-radius:999px;font-size:.78rem;min-width:20px;height:20px;display:inline-flex;align-items:center;justify-content:center;padding:0 6px}
 .filter-group .filter-selects{margin-top:14px}
 
-/* обложки номеров в профиле */
+/* РѕР±Р»РѕР¶РєРё РЅРѕРјРµСЂРѕРІ РІ РїСЂРѕС„РёР»Рµ */
 .pcard{display:grid;grid-template-columns:96px 1fr;gap:14px;align-items:start}
 .pcard-cover{display:block;width:96px;aspect-ratio:4/3;border-radius:10px;overflow:hidden;background:var(--coal-2)}
 .pcard-cover img{display:block;width:100%;height:100%;object-fit:cover}
@@ -493,7 +493,7 @@ a.btn{text-decoration:none;display:inline-block}
 @media (max-width:560px){.pl-grid{grid-template-columns:1fr}.pl summary{flex-direction:row;align-items:center}.pl-deck{width:112px;flex:none}.pl summary .pl-face{flex:1}}
 @media (max-width:640px){.head-me .avatar{width:46px;height:46px}.head-search{width:42px;height:42px}}
 
-/* страница пользователя: заявка, «это ваша страница» */
+/* СЃС‚СЂР°РЅРёС†Р° РїРѕР»СЊР·РѕРІР°С‚РµР»СЏ: Р·Р°СЏРІРєР°, В«СЌС‚Рѕ РІР°С€Р° СЃС‚СЂР°РЅРёС†Р°В» */
 .head-badge{display:inline-flex;align-items:center;justify-content:center;min-width:22px;height:22px;padding:0 6px;border-radius:999px;background:var(--ember);color:#0b0a08;font-size:.8rem;font-weight:700;text-decoration:none}
 .user-pend{margin:6px 0 0}
 .match-card{margin:20px 0;padding:18px;border:2px solid var(--ember);border-radius:16px;background:var(--coal-2);display:grid;gap:12px}
@@ -504,7 +504,7 @@ a.btn{text-decoration:none;display:inline-block}
 .self-foot{margin:22px 0 0;display:grid;gap:10px}
 .user-page .edit-box,.person .edit-box{margin:12px 0}
 
-/* меню профиля в шапке */
+/* РјРµРЅСЋ РїСЂРѕС„РёР»СЏ РІ С€Р°РїРєРµ */
 .auth-slot{position:relative}
 button.head-me{background:none;border:0;padding:0;cursor:pointer;position:relative;border-radius:50%;line-height:0}
 button.head-me:focus-visible{outline:2px solid var(--ember);outline-offset:3px}
@@ -521,7 +521,7 @@ button.head-me:focus-visible{outline:2px solid var(--ember);outline-offset:3px}
 .um-text{flex:1;min-width:0}
 .um-item .head-badge{flex:none}
 
-/* настройки профиля */
+/* РЅР°СЃС‚СЂРѕР№РєРё РїСЂРѕС„РёР»СЏ */
 .settings{max-width:760px}
 .settings h1{margin:6px 0 18px}
 .set-tabs{display:flex;gap:6px;flex-wrap:wrap;margin:0 0 22px}
@@ -554,7 +554,7 @@ button.head-me:focus-visible{outline:2px solid var(--ember);outline-offset:3px}
 .lim-row.is-full .lim-bar span{background:#ff9d8a}
 .lim-row .c-hint{margin:0}
 
-/* сводка на странице человека */
+/* СЃРІРѕРґРєР° РЅР° СЃС‚СЂР°РЅРёС†Рµ С‡РµР»РѕРІРµРєР° */
 .pstats{list-style:none;padding:0;margin:10px 0 0;display:flex;flex-wrap:wrap;gap:8px}
 .pstats li{border:1px solid var(--line);border-radius:999px;padding:3px 12px;font-size:.92rem;color:var(--ash)}
 .pstats li[hidden]{display:none}
@@ -563,7 +563,7 @@ button.head-me:focus-visible{outline:2px solid var(--ember);outline-offset:3px}
 #p-social[hidden]{display:none}
 .settings{padding-top:18px}
 
-/* переключатель «Номера / Концерты» на странице человека */
+/* РїРµСЂРµРєР»СЋС‡Р°С‚РµР»СЊ В«РќРѕРјРµСЂР° / РљРѕРЅС†РµСЂС‚С‹В» РЅР° СЃС‚СЂР°РЅРёС†Рµ С‡РµР»РѕРІРµРєР° */
 .pview{margin-top:18px!important;display:inline-flex;border:1px solid var(--line);border-radius:999px;padding:3px;margin:0 0 18px;gap:2px}
 .pview-b{appearance:none;background:none;border:0;border-radius:999px;padding:7px 18px;color:var(--ash);font:inherit;font-weight:600;cursor:pointer}
 .pview-b:hover{color:var(--ink)}
@@ -576,23 +576,23 @@ button.head-me:focus-visible{outline:2px solid var(--ember);outline-offset:3px}
 .p-concert .c-hint{margin:0}
 .p-concert-nums{list-style:none;padding:0;margin:12px 0 0;display:grid;gap:6px}
 
-/* кружок аватарки в шапке: виден всегда, пока фото грузится и если его нет */
+/* РєСЂСѓР¶РѕРє Р°РІР°С‚Р°СЂРєРё РІ С€Р°РїРєРµ: РІРёРґРµРЅ РІСЃРµРіРґР°, РїРѕРєР° С„РѕС‚Рѕ РіСЂСѓР·РёС‚СЃСЏ Рё РµСЃР»Рё РµРіРѕ РЅРµС‚ */
 .head-ph{display:none;width:36px;height:36px;border-radius:50%;background:#5c2e0e}
 html[data-signed="1"] .head-ph{display:inline-block}
 .head-me .avatar{background:#5c2e0e}
 .head-me .avatar-init{background:#5c2e0e!important;color:var(--ember-hi)}
 @media (max-width:640px){.head-ph{width:46px;height:46px}}
 
-/* концерты на странице человека: фото */
+/* РєРѕРЅС†РµСЂС‚С‹ РЅР° СЃС‚СЂР°РЅРёС†Рµ С‡РµР»РѕРІРµРєР°: С„РѕС‚Рѕ */
 .p-concert{display:grid;grid-template-columns:128px 1fr;gap:16px;align-items:start}
 .p-concert-img{width:128px;height:128px;border-radius:12px;overflow:hidden;background:var(--coal-2)}
 .p-concert-img img{display:block;width:100%;height:100%;object-fit:cover}
 .p-concert-body{min-width:0}
 @media (max-width:480px){.p-concert{grid-template-columns:88px 1fr;gap:12px;padding:14px}.p-concert-img{width:88px;height:88px}}
 
-/* ------------------------------------------------------------ единый вид карточек
-   Все блоки-«карточки» (комментарии, оценки, концерты, настройки, плейлисты, пустые и ошибочные состояния)
-   берут рамку, радиус и отступы отсюда. Картинки номеров и мелкие вставки внутри карточек скругляются меньше. */
+/* ------------------------------------------------------------ РµРґРёРЅС‹Р№ РІРёРґ РєР°СЂС‚РѕС‡РµРє
+   Р’СЃРµ Р±Р»РѕРєРё-В«РєР°СЂС‚РѕС‡РєРёВ» (РєРѕРјРјРµРЅС‚Р°СЂРёРё, РѕС†РµРЅРєРё, РєРѕРЅС†РµСЂС‚С‹, РЅР°СЃС‚СЂРѕР№РєРё, РїР»РµР№Р»РёСЃС‚С‹, РїСѓСЃС‚С‹Рµ Рё РѕС€РёР±РѕС‡РЅС‹Рµ СЃРѕСЃС‚РѕСЏРЅРёСЏ)
+   Р±РµСЂСѓС‚ СЂР°РјРєСѓ, СЂР°РґРёСѓСЃ Рё РѕС‚СЃС‚СѓРїС‹ РѕС‚СЃСЋРґР°. РљР°СЂС‚РёРЅРєРё РЅРѕРјРµСЂРѕРІ Рё РјРµР»РєРёРµ РІСЃС‚Р°РІРєРё РІРЅСѓС‚СЂРё РєР°СЂС‚РѕС‡РµРє СЃРєСЂСѓРіР»СЏСЋС‚СЃСЏ РјРµРЅСЊС€Рµ. */
 :root{--card-r:14px;--card-r-in:10px;--card-pad:16px 18px;--card-bg:var(--coal);--card-line:var(--line)}
 .comment,.rate-box,.rate-sum,.my-page,.concert-panel,.set-card,.p-concert,.pl,.pl-pop,.match-card,.director-note,
 .empty-state,.error-state,.login-card,.rate-thanks{border-radius:var(--card-r)}
@@ -608,7 +608,7 @@ html[data-signed="1"] .head-ph{display:inline-block}
 .set-card{padding:22px clamp(16px,3vw,28px)}
 @media (max-width:480px){:root{--card-pad:14px}.set-card{padding:18px 14px}}
 
-/* пусто, загрузка, ошибка, нужен вход */
+/* РїСѓСЃС‚Рѕ, Р·Р°РіСЂСѓР·РєР°, РѕС€РёР±РєР°, РЅСѓР¶РµРЅ РІС…РѕРґ */
 .empty-state,.error-state,.login-card{display:grid;gap:8px;justify-items:start;margin:14px 0}
 .empty-state{border-style:dashed}
 .error-state{border-color:#ff9d8a}
@@ -623,21 +623,21 @@ html[data-signed="1"] .head-ph{display:inline-block}
 .btn-more{min-width:150px;text-align:center}
 .c-more{justify-content:center}
 
-/* итог после отправки оценки */
+/* РёС‚РѕРі РїРѕСЃР»Рµ РѕС‚РїСЂР°РІРєРё РѕС†РµРЅРєРё */
 .rate-thanks{border-color:var(--ember);display:grid;gap:6px;margin:0 0 14px}
 .rate-thanks-big{margin:0;font-family:var(--font-display);color:var(--ember-hi);line-height:1.1}
 .rate-thanks-big b{font-size:2.4rem;color:var(--ink)}
 .rate-thanks-big span{font-size:1rem;color:var(--ash)}
 .rate-thanks .c-hint{margin:0}
 
-/* длинные сетки отрисовываются по мере прокрутки */
+/* РґР»РёРЅРЅС‹Рµ СЃРµС‚РєРё РѕС‚СЂРёСЃРѕРІС‹РІР°СЋС‚СЃСЏ РїРѕ РјРµСЂРµ РїСЂРѕРєСЂСѓС‚РєРё */
 .grid>.card{content-visibility:auto;contain-intrinsic-size:auto 340px}
 
-/* шапка: прячется при прокрутке вниз */
+/* С€Р°РїРєР°: РїСЂСЏС‡РµС‚СЃСЏ РїСЂРё РїСЂРѕРєСЂСѓС‚РєРµ РІРЅРёР· */
 .site-head{transition:transform .25s ease}
 .site-head.is-hidden{transform:translateY(-100%)}
 
-/* поиск: подсказки и недавние запросы */
+/* РїРѕРёСЃРє: РїРѕРґСЃРєР°Р·РєРё Рё РЅРµРґР°РІРЅРёРµ Р·Р°РїСЂРѕСЃС‹ */
 .search-wrap{position:relative;flex:1 1 320px;min-width:0}
 .search-wrap .search{width:100%}
 .sugg{position:absolute;left:0;right:0;top:calc(100% + 6px);z-index:40;background:var(--coal);border:1px solid var(--line);border-radius:var(--card-r,14px);box-shadow:0 18px 40px rgba(0,0,0,.55);padding:6px;max-height:min(60vh,420px);overflow:auto}
@@ -650,13 +650,13 @@ html[data-signed="1"] .head-ph{display:inline-block}
 .sg-text{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:600}
 .sg-item.is-on .sg-text{color:var(--ember-hi)}
 
-/* работа без сети */
+/* СЂР°Р±РѕС‚Р° Р±РµР· СЃРµС‚Рё */
 .net-bar{position:fixed;left:50%;bottom:14px;transform:translateX(-50%);z-index:80;margin:0;max-width:min(92vw,520px);padding:10px 16px;border:1px solid var(--ember);border-radius:999px;background:var(--coal);color:var(--ink);font-size:.9rem;text-align:center;box-shadow:0 10px 30px rgba(0,0,0,.5)}
 .net-bar[hidden]{display:none}
 .foot-app{margin:0;color:var(--ash);font-size:.85rem;max-width:62ch}
 .foot-app:empty{display:none}
 
-/* Доп. материалы: галерея, ссылки, связанные номера */
+/* Р”РѕРї. РјР°С‚РµСЂРёР°Р»С‹: РіР°Р»РµСЂРµСЏ, СЃСЃС‹Р»РєРё, СЃРІСЏР·Р°РЅРЅС‹Рµ РЅРѕРјРµСЂР° */
 .materials,.related{margin:18px 0 0}
 .number-side .related{margin:0}
 .number-side .rel-card{padding:6px}
@@ -686,7 +686,7 @@ html[data-signed="1"] .head-ph{display:inline-block}
 .dir-panel .concert-text{min-width:0;width:100%}
 .concert-text{min-width:0}
 
-/* Самое обсуждаемое: полоса на главной и страница */
+/* РЎР°РјРѕРµ РѕР±СЃСѓР¶РґР°РµРјРѕРµ: РїРѕР»РѕСЃР° РЅР° РіР»Р°РІРЅРѕР№ Рё СЃС‚СЂР°РЅРёС†Р° */
 .hot-strip{margin:0 0 22px}
 .is-filtered .hot-strip{display:none}
 .hot-head{display:flex;align-items:baseline;justify-content:space-between;gap:12px;margin:0 0 10px}
@@ -708,7 +708,7 @@ html[data-signed="1"] .head-ph{display:inline-block}
 .hot-list .hot-card img{width:96px;height:72px}
 .hot-rank{flex:none;width:2ch;text-align:right;color:var(--ash);font-variant-numeric:tabular-nums}
 
-/* «Самое обсуждаемое» на главной сворачивается */
+/* В«РЎР°РјРѕРµ РѕР±СЃСѓР¶РґР°РµРјРѕРµВ» РЅР° РіР»Р°РІРЅРѕР№ СЃРІРѕСЂР°С‡РёРІР°РµС‚СЃСЏ */
 .hot-strip{border:1px solid var(--line);border-radius:var(--r);background:var(--coal);padding:0}
 .hot-strip>summary{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:12px 14px;cursor:pointer;list-style:none;font-family:var(--font-display);font-size:1.05rem;color:var(--ember)}
 .hot-strip>summary::-webkit-details-marker{display:none}
@@ -728,13 +728,13 @@ html[data-signed="1"] .head-ph{display:inline-block}
 .empty-concerts p{margin:6px 0}
 .sg-item{row-gap:1px}
 
-/* единый вид всплывающих панелей */
+/* РµРґРёРЅС‹Р№ РІРёРґ РІСЃРїР»С‹РІР°СЋС‰РёС… РїР°РЅРµР»РµР№ */
 .pop-panel{border:1px solid var(--line);border-radius:var(--card-r);background:var(--coal-2);box-shadow:0 10px 28px rgba(0,0,0,.4);max-width:min(420px,100%);box-sizing:border-box}
 .pop-head{display:flex;align-items:center;justify-content:space-between;gap:12px;margin:0 0 2px}
 .pop-close{width:32px;height:32px;flex:none;border:1px solid var(--line);border-radius:50%;background:transparent;color:var(--ash);font-size:1.35rem;line-height:1;cursor:pointer}
 .pop-close:hover,.pop-close:focus-visible{border-color:var(--ember);color:var(--ink);background:var(--coal)}
 
-/* Поделиться номером и кубики внизу */
+/* РџРѕРґРµР»РёС‚СЊСЃСЏ РЅРѕРјРµСЂРѕРј Рё РєСѓР±РёРєРё РІРЅРёР·Сѓ */
 .share{margin:14px 0 0}
 .share-box{margin-top:12px;max-width:360px;display:grid;gap:10px;padding:14px}
 .share-box[hidden]{display:none}
@@ -752,7 +752,7 @@ html[data-signed="1"] .head-ph{display:inline-block}
 .dice-msg{color:#ff9d8a;font-size:.85rem}
 @media (prefers-reduced-motion:reduce){.dice.is-rolling .dice-i svg{animation:none}}
 
-/* Граф связей на странице человека */
+/* Р“СЂР°С„ СЃРІСЏР·РµР№ РЅР° СЃС‚СЂР°РЅРёС†Рµ С‡РµР»РѕРІРµРєР° */
 .p-graph{margin:22px 0 0;border:1px solid var(--line);border-radius:var(--r);background:var(--coal)}
 .p-graph>summary{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:12px 14px;cursor:pointer;list-style:none;font-family:var(--font-display);font-size:1.05rem;color:var(--ember)}
 .p-graph>summary::-webkit-details-marker{display:none}
@@ -777,7 +777,7 @@ html[data-signed="1"] .head-ph{display:inline-block}
 .p-graph-list summary{cursor:pointer;color:var(--ash);font-size:.9rem}
 .p-graph-list ul{margin:8px 0 0;padding-left:20px}
 
-/* Случайный номер после основного содержимого; окно «Добавить» */
+/* РЎР»СѓС‡Р°Р№РЅС‹Р№ РЅРѕРјРµСЂ РїРѕСЃР»Рµ РѕСЃРЅРѕРІРЅРѕРіРѕ СЃРѕРґРµСЂР¶РёРјРѕРіРѕ; РѕРєРЅРѕ В«Р”РѕР±Р°РІРёС‚СЊВ» */
 .dice-row{max-width:var(--wrap);width:100%;margin:34px auto 0;padding:0 var(--pad)}
 .dice-row .foot-dice{justify-content:flex-start}
 .add-dialog{width:min(92vw,440px);padding:22px;border:1px solid var(--line);border-radius:var(--r);background:var(--coal);color:var(--ink)}
@@ -788,7 +788,7 @@ html[data-signed="1"] .head-ph{display:inline-block}
 .add-list .add-btn{display:block;text-align:center}
 .add-dialog.is-inline{position:static;margin:0}
 
-/* иконки направлений */
+/* РёРєРѕРЅРєРё РЅР°РїСЂР°РІР»РµРЅРёР№ */
 .di{width:22px;height:22px;flex:none;color:var(--ember);overflow:visible}
 .dir-filter{flex:1 1 100%}
 .sel-l{color:var(--ash);font-size:.85rem}
@@ -808,12 +808,12 @@ html[data-signed="1"] .head-ph{display:inline-block}
 .dir-h{display:flex;align-items:center;gap:12px}
 .dir-h .di{width:30px;height:30px}
 
-/* продолжить просмотр */
+/* РїСЂРѕРґРѕР»Р¶РёС‚СЊ РїСЂРѕСЃРјРѕС‚СЂ */
 .resume{display:flex;flex-wrap:wrap;align-items:center;gap:8px 14px;margin:12px 0 0}
 .resume[hidden]{display:none}
 .resume-note{color:var(--ash);font-size:.9rem}
 
-/* похожие номера и другие исполнения — в правой колонке */
+/* РїРѕС…РѕР¶РёРµ РЅРѕРјРµСЂР° Рё РґСЂСѓРіРёРµ РёСЃРїРѕР»РЅРµРЅРёСЏ вЂ” РІ РїСЂР°РІРѕР№ РєРѕР»РѕРЅРєРµ */
 .similar{border-top:1px solid var(--line);padding-top:6px}
 .similar>summary{display:flex;align-items:center;justify-content:space-between;gap:12px;cursor:pointer;list-style:none;padding:10px 0}
 .similar>summary::-webkit-details-marker{display:none}
@@ -824,13 +824,13 @@ html[data-signed="1"] .head-ph{display:inline-block}
 .similar-body{padding:6px 0 4px}
 .similar .rel-list{grid-template-columns:1fr}
 
-/* кнопка «открыть обложку» поверх постера */
+/* РєРЅРѕРїРєР° В«РѕС‚РєСЂС‹С‚СЊ РѕР±Р»РѕР¶РєСѓВ» РїРѕРІРµСЂС… РїРѕСЃС‚РµСЂР° */
 .stage-zoom{position:absolute;top:12px;right:12px;width:40px;height:40px;display:flex;align-items:center;justify-content:center;border:1px solid rgba(255,255,255,.25);border-radius:50%;background:rgba(9,5,0,.55);color:#fff;cursor:pointer;backdrop-filter:blur(4px)}
 .stage-zoom:hover{background:rgba(9,5,0,.8);border-color:var(--ember)}
 .stage-zoom:focus-visible{outline:2px solid var(--ember);outline-offset:2px}
 h1,h2{text-wrap:balance}
 
-/* мобильная проверка 360 px: ничего не выходит за экран, вкладки прокручиваются, попапы остаются в границах */
+/* РјРѕР±РёР»СЊРЅР°СЏ РїСЂРѕРІРµСЂРєР° 360 px: РЅРёС‡РµРіРѕ РЅРµ РІС‹С…РѕРґРёС‚ Р·Р° СЌРєСЂР°РЅ, РІРєР»Р°РґРєРё РїСЂРѕРєСЂСѓС‡РёРІР°СЋС‚СЃСЏ, РїРѕРїР°РїС‹ РѕСЃС‚Р°СЋС‚СЃСЏ РІ РіСЂР°РЅРёС†Р°С… */
 @media (max-width:360px){
   .ptabs-bar,.set-tabs{flex-wrap:nowrap;overflow-x:auto;scrollbar-width:none}
   .ptabs-bar::-webkit-scrollbar,.set-tabs::-webkit-scrollbar{display:none}
@@ -844,12 +844,12 @@ h1,h2{text-wrap:balance}
   .my-page .avatar-l{width:72px;height:72px}
 }
 
-/* фирменный шрифт Rimma Sans только у названия «Номера СоцГума» (шапка и заглавие главной): крупнее и с большим межбуквенным расстоянием */
+/* С„РёСЂРјРµРЅРЅС‹Р№ С€СЂРёС„С‚ Rimma Sans С‚РѕР»СЊРєРѕ Сѓ РЅР°Р·РІР°РЅРёСЏ В«РќРѕРјРµСЂР° РЎРѕС†Р“СѓРјР°В» (С€Р°РїРєР° Рё Р·Р°РіР»Р°РІРёРµ РіР»Р°РІРЅРѕР№): РєСЂСѓРїРЅРµРµ Рё СЃ Р±РѕР»СЊС€РёРј РјРµР¶Р±СѓРєРІРµРЅРЅС‹Рј СЂР°СЃСЃС‚РѕСЏРЅРёРµРј */
 .wordmark,.site-title{font-family:var(--font-brand,var(--font-display));letter-spacing:.05em;word-spacing:.08em}
 .site-title{font-size:clamp(2.05rem,5.8vw,3.8rem);line-height:1.14}
 .wordmark{font-size:1.02rem}
 
-/* плейлист концерта */
+/* РїР»РµР№Р»РёСЃС‚ РєРѕРЅС†РµСЂС‚Р° */
 .pl-concert{margin:14px 0 0}
 .pl-card{display:flex;gap:12px;align-items:center;margin-bottom:6px}
 .pl-cover{width:56px;height:56px;object-fit:cover;border-radius:var(--r);flex:none;background:var(--coal-2)}
@@ -860,9 +860,9 @@ h1,h2{text-wrap:balance}
 .pl-frame iframe{width:100%;border:0}
 .pl-note{margin:8px 0 0;color:var(--ash);font-size:.85rem}
 
-/* ── Мобильная эргономика: нажимаемое от 44 px, липкая отправка, шапка не уезжает ── */
+/* в”Ђв”Ђ РњРѕР±РёР»СЊРЅР°СЏ СЌСЂРіРѕРЅРѕРјРёРєР°: РЅР°Р¶РёРјР°РµРјРѕРµ РѕС‚ 44 px, Р»РёРїРєР°СЏ РѕС‚РїСЂР°РІРєР°, С€Р°РїРєР° РЅРµ СѓРµР·Р¶Р°РµС‚ в”Ђв”Ђ */
 @media (max-width:820px){
-  /* на телефоне шапку прятать некуда: меню разделов в ней нет, нижней панели тоже */
+  /* РЅР° С‚РµР»РµС„РѕРЅРµ С€Р°РїРєСѓ РїСЂСЏС‚Р°С‚СЊ РЅРµРєСѓРґР°: РјРµРЅСЋ СЂР°Р·РґРµР»РѕРІ РІ РЅРµР№ РЅРµС‚, РЅРёР¶РЅРµР№ РїР°РЅРµР»Рё С‚РѕР¶Рµ */
   .site-head.is-hidden{transform:none}
   .rate-box>summary{min-height:44px;display:flex;align-items:center;gap:6px}
   .rate-ctx-sel{min-height:44px;padding:11px 12px}
@@ -873,20 +873,20 @@ h1,h2{text-wrap:balance}
   .dice{min-height:44px;padding:10px 16px}
   .c-sort .chip{min-height:44px;display:inline-flex;align-items:center}
   .site-foot a{display:inline-flex;align-items:center;min-height:44px}
-  /* кнопка отправки на виду, пока форма оценки и рецензии на экране */
+  /* РєРЅРѕРїРєР° РѕС‚РїСЂР°РІРєРё РЅР° РІРёРґСѓ, РїРѕРєР° С„РѕСЂРјР° РѕС†РµРЅРєРё Рё СЂРµС†РµРЅР·РёРё РЅР° СЌРєСЂР°РЅРµ */
   .c-form>.c-row{position:sticky;bottom:0;z-index:6;background:var(--night);padding:10px 0 calc(10px + env(safe-area-inset-bottom,0px));box-shadow:0 -14px 18px -14px rgba(0,0,0,.95)}
   .c-form>.c-row .c-hint{display:none}
   .c-form>.c-row .btn{min-height:48px}
 }
 
-/* Просьба об имени: показывается только в момент отправки комментария (аккаунт из письма) */
+/* РџСЂРѕСЃСЊР±Р° РѕР± РёРјРµРЅРё: РїРѕРєР°Р·С‹РІР°РµС‚СЃСЏ С‚РѕР»СЊРєРѕ РІ РјРѕРјРµРЅС‚ РѕС‚РїСЂР°РІРєРё РєРѕРјРјРµРЅС‚Р°СЂРёСЏ (Р°РєРєР°СѓРЅС‚ РёР· РїРёСЃСЊРјР°) */
 .name-ask{display:grid;gap:8px;margin:0 0 12px;padding:12px 14px;border:1px solid var(--ember);border-radius:var(--r);background:var(--coal)}
 .name-ask-t{font-weight:600}
 .name-ask .c-input{min-height:44px}
 .name-ask .c-row{margin:0;gap:8px}
 .name-ask .msg{margin:0}
 
-/* ---- Страница правки каталога (/admin/) ---- */
+/* ---- РЎС‚СЂР°РЅРёС†Р° РїСЂР°РІРєРё РєР°С‚Р°Р»РѕРіР° (/admin/) ---- */
 .admin{padding:clamp(18px,3.6vw,44px) 0 72px}
 .admin-head{max-width:760px;margin:0 0 clamp(14px,2vw,22px)}
 .admin-head h1{font-size:clamp(24px,4.2vw,38px);line-height:1.15}
@@ -942,7 +942,7 @@ textarea.adm-in{min-height:72px;resize:vertical}
   .adm-card{padding:14px}
 }
 
-/* ---------- страница «Дополнить номер» (/add/) ---------- */
+/* ---------- СЃС‚СЂР°РЅРёС†Р° В«Р”РѕРїРѕР»РЅРёС‚СЊ РЅРѕРјРµСЂВ» (/add/) ---------- */
 .add{padding:clamp(18px,3.6vw,44px) 0 72px}
 .add-head{max-width:760px;margin:0 0 clamp(14px,2vw,22px)}
 .add-head h1{font-size:clamp(24px,4.2vw,38px);line-height:1.15}
@@ -1005,9 +1005,9 @@ textarea.add-in{min-height:72px;resize:vertical}
   .add-badges{margin-left:0;justify-content:flex-start}
   .add-rows{max-width:none}
 }
-/* ------------------------------------------------------------ правка на странице номера (/n/<id>/)
-   Панель «Править номер» видит только администратор. Пока правка включена, панель липнет к низу
-   экрана, чтобы «Сохранить» и «Обновить сайт» были под рукой на длинной странице. */
+/* ------------------------------------------------------------ РїСЂР°РІРєР° РЅР° СЃС‚СЂР°РЅРёС†Рµ РЅРѕРјРµСЂР° (/n/<id>/)
+   РџР°РЅРµР»СЊ В«РџСЂР°РІРёС‚СЊ РЅРѕРјРµСЂВ» РІРёРґРёС‚ С‚РѕР»СЊРєРѕ Р°РґРјРёРЅРёСЃС‚СЂР°С‚РѕСЂ. РџРѕРєР° РїСЂР°РІРєР° РІРєР»СЋС‡РµРЅР°, РїР°РЅРµР»СЊ Р»РёРїРЅРµС‚ Рє РЅРёР·Сѓ
+   СЌРєСЂР°РЅР°, С‡С‚РѕР±С‹ В«РЎРѕС…СЂР°РЅРёС‚СЊВ» Рё В«РћР±РЅРѕРІРёС‚СЊ СЃР°Р№С‚В» Р±С‹Р»Рё РїРѕРґ СЂСѓРєРѕР№ РЅР° РґР»РёРЅРЅРѕР№ СЃС‚СЂР°РЅРёС†Рµ. */
 .ed-bar{display:flex;flex-wrap:wrap;align-items:center;gap:10px 12px;margin:16px 0 0;padding:12px 14px;border:1px dashed var(--line);border-radius:12px;background:var(--coal)}
 .ed-bar.is-editing{position:sticky;bottom:10px;z-index:24;border-style:solid;border-color:var(--ember);background:var(--coal-2);box-shadow:0 10px 30px rgba(9,5,0,.65)}
 .ed-bar .ed-hint{font-size:12.5px;line-height:1.45;color:var(--ash);max-width:70ch}
@@ -1040,7 +1040,7 @@ textarea.ed-in{min-height:110px;resize:vertical;line-height:1.5}
   .ed-add .ed-name-in{flex:1 1 160px}
 }
 
-/* выбор сценария на /add/ + вкладки «номер / команда направления» */
+/* РІС‹Р±РѕСЂ СЃС†РµРЅР°СЂРёСЏ РЅР° /add/ + РІРєР»Р°РґРєРё В«РЅРѕРјРµСЂ / РєРѕРјР°РЅРґР° РЅР°РїСЂР°РІР»РµРЅРёСЏВ» */
 .add-modes{display:grid;gap:12px;grid-template-columns:repeat(3,minmax(0,1fr));margin:8px 0 0}
 .add-mode{display:flex;flex-direction:column;min-height:150px;border:1px solid var(--line);border-radius:14px;background:var(--coal);transition:border-color .15s,background .15s}
 .add-mode:hover{border-color:var(--ember);background:var(--coal-2)}
@@ -1061,16 +1061,16 @@ textarea.ed-in{min-height:110px;resize:vertical;line-height:1.5}
 select.add-in{appearance:none;background-image:linear-gradient(45deg,transparent 50%,var(--ash) 50%),linear-gradient(135deg,var(--ash) 50%,transparent 50%);background-position:calc(100% - 18px) 50%,calc(100% - 12px) 50%;background-size:6px 6px,6px 6px;background-repeat:no-repeat;padding-right:38px}
 @media (max-width:860px){.add-modes{grid-template-columns:1fr}.add-mode{min-height:0}}
 
-/* подсказка про работы направлений в шаге выбора */
+/* РїРѕРґСЃРєР°Р·РєР° РїСЂРѕ СЂР°Р±РѕС‚С‹ РЅР°РїСЂР°РІР»РµРЅРёР№ РІ С€Р°РіРµ РІС‹Р±РѕСЂР° */
 .add-works-hint{margin:16px 0 6px}
 .num-add[hidden]{display:none}
 
-/* вход в правку каталога из кабинета (кнопки, а не пункты меню) */
+/* РІС…РѕРґ РІ РїСЂР°РІРєСѓ РєР°С‚Р°Р»РѕРіР° РёР· РєР°Р±РёРЅРµС‚Р° (РєРЅРѕРїРєРё, Р° РЅРµ РїСѓРЅРєС‚С‹ РјРµРЅСЋ) */
 .adm-entry{margin:0 0 10px;padding:16px;border:1px solid var(--line);border-radius:12px;background:var(--coal)}
 .adm-entry-t{font-family:var(--font-display);font-weight:700;font-size:17px;line-height:1.25;margin:0 0 6px}
 .adm-entry .c-hint{margin:0 0 12px;max-width:64ch}
 .adm-entry .c-row{margin:0;flex-wrap:wrap}
-/* доп. ссылки на странице номера и в форме «Дополнить номер» */
+/* РґРѕРї. СЃСЃС‹Р»РєРё РЅР° СЃС‚СЂР°РЅРёС†Рµ РЅРѕРјРµСЂР° Рё РІ С„РѕСЂРјРµ В«Р”РѕРїРѕР»РЅРёС‚СЊ РЅРѕРјРµСЂВ» */
 .stage-alt{margin:8px 0 0;display:flex;flex-wrap:wrap;gap:8px}
 .add-extra{margin:18px 0 0;padding:16px;border:1px solid var(--line);border-radius:12px;background:var(--coal)}
 .add-extra-t{font-family:var(--font-display);font-weight:700;font-size:15px;line-height:1.25;margin:0 0 12px}
@@ -1078,3 +1078,28 @@ select.add-in{appearance:none;background-image:linear-gradient(45deg,transparent
 .add-extra .add-field:last-child{margin-bottom:0}
 .add-pick-single{width:100%;text-align:left}
 .add-pick-single .add-pick-t{font-size:16px}
+
+
+/* ── Фото в отзывах (ссылки) ────────────────────────────────── */
+.c-photos{margin:34px 0 0}
+.c-photos-h{font-family:var(--font-display);font-weight:700;font-size:clamp(18px,2.4vw,24px);line-height:1.2;margin:0 0 4px}
+.c-photos-sub{color:var(--ash);font-size:.9rem;margin:0 0 14px}
+.c-photos-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:16px}
+.c-photo{padding:0;border:1px solid var(--line);border-radius:var(--r);overflow:hidden;background:var(--coal);cursor:zoom-in;aspect-ratio:4/3;transition:border-color .15s ease,box-shadow .15s ease}
+.c-photo:hover,.c-photo:focus-visible{border-color:var(--ember);box-shadow:0 0 0 2px var(--ember)}
+.c-photo:focus-visible{outline:none}
+.c-photo img{width:100%;height:100%;object-fit:cover;display:block}
+.c-photo-field{display:grid;gap:6px}
+.c-photo-field .c-label{color:var(--ash);font-size:.95rem}
+.c-photo-field .c-hint{max-width:64ch}
+#lb{position:fixed;inset:0;z-index:60;background:rgba(6,3,0,.92);display:flex;align-items:center;justify-content:center;padding:20px}
+#lb img{max-width:min(92vw,1200px);max-height:88vh;border-radius:var(--r);display:block}
+.lb-x{position:absolute;top:16px;right:16px;width:44px;height:44px;border-radius:50%;border:1px solid var(--line);background:var(--coal);color:var(--ink);font-size:22px;line-height:1;cursor:pointer}
+.lb-x:hover{border-color:var(--ember);color:var(--ember)}
+@media (max-width:820px){
+  .c-photos-grid{grid-template-columns:repeat(2,1fr);gap:10px}
+}
+
+/* ── Подсказки оценок не должны расширять страницу ──────────── */
+.rt-total::after,.rt-chip::after{display:none}
+.rt-total:hover::after,.rt-chip:hover::after,.rt-total:focus-visible::after,.rt-chip:focus-visible::after,.rt-total.is-open::after,.rt-chip.is-open::after{display:block}

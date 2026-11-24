@@ -7,7 +7,10 @@
   if (!cfgEl) return;
   var CFG = JSON.parse(cfgEl.textContent);
   var ROOT = document.documentElement.dataset.root || "";
-  var SDK = "https://www.gstatic.com/firebasejs/11.0.2/";
+  /* SDK лежит рядом с сайтом (assets/vendor/firebasejs): так первый экран не зависит
+     от gstatic — в России он иногда отвечает десятки секунд или недоступен. */
+  var SDK = "./vendor/firebasejs/";
+  var SDK_FALLBACK = "https://www.gstatic.com/firebasejs/11.0.2/";
 
   function $(sel, ctx) { return (ctx || document).querySelector(sel); }
   function norm(s) { return String(s || "").trim().replace(/\s+/g, " ").toLowerCase().replace(/ё/g, "е"); }
@@ -182,11 +185,18 @@
   function refreshViews() { views.forEach(function (v) { try { v(); } catch (e) { console.error(e); } }); }
 
   function load() {
-    return Promise.all([
-      import(SDK + "firebase-app.js"),
-      import(SDK + "firebase-auth.js"),
-      import(SDK + "firebase-firestore.js")
-    ]).then(function (m) {
+    function sdk(base) {
+      return Promise.all([
+        import(base + "firebase-app.js"),
+        import(base + "firebase-auth.js"),
+        import(base + "firebase-firestore.js")
+      ]);
+    }
+    /* Сначала свои файлы; если их нет (старая сборка) — запасной вариант с gstatic. */
+    return sdk(SDK).catch(function (e) {
+      if (window.console) console.warn("Локальный Firebase SDK не загрузился, беру gstatic", e);
+      return sdk(SDK_FALLBACK);
+    }).then(function (m) {
       var app = m[0].initializeApp(CFG);
       fb = { a: m[1], f: m[2], auth: m[1].getAuth(app), db: m[2].getFirestore(app) };
     });
@@ -844,6 +854,8 @@
     var editing = {}, editSess = {}, editDraft = {};   // правка комментария: открыта сейчас / начата на этой странице (после обновления страницы сбрасывается) / несохранённый текст
     var EDIT_MIN = 15;                                  // сколько минут после отправки можно начать правку
     var myLikes = {}, openLikers = {};   // мои лайки на этой странице; комментарии с раскрытым списком лайкнувших
+    var photos = [], PHOTO_MAX = 3;      // сколько ссылок на фото можно приложить к отзыву
+    var photoInput = null;               // поле со ссылками на фото в форме отзыва
     var ratings = [], ratingBy = {}, firstTop = {};   // оценки зрителей этого номера; они же по аккаунтам; первый комментарий каждого автора (под ним показываем оценку)
     var sortMode = "old";
     try { var sv = store() && store().getItem("sg:sort"); if (sv === "new" || sv === "old" || sv === "top") sortMode = sv; } catch (e) { }
@@ -857,12 +869,14 @@
     var sumBox = el("div", { class: "rate-sum", hidden: true });
     var sortBar = el("div", { class: "c-sort", hidden: true });
     var list = el("div", { class: "c-list" });
+    var photosBox = el("section", { class: "c-photos", hidden: true });
+    var photoCache = null;
     var form = el("div", { class: "c-form" });
     var moments = el("details", { class: "moments", open: true });
     var noteBox = document.getElementById("director-note");
     /* Порядок: оценка и поле комментария → итоги оценок → сами комментарии. */
     var commentsTitle = document.getElementById("cm-h");
-    root.append(form, sumBox, moments, sortBar, list);
+    root.append(form, sumBox, moments, sortBar, list, photosBox);
     if (commentsTitle) root.insertBefore(commentsTitle, sortBar);
 
     function commentsKey() { return "comments:" + nid + (state.admin ? ":a" : state.user ? ":" + state.user.uid : ""); }
@@ -1028,31 +1042,41 @@
     }
     /* комментарий удаляется вместе со своими лайками одним пакетом */
     function deleteComment(c) {
-      return fb.f.getDocs(fb.f.query(fcol("likes"), fb.f.where("commentId", "==", c.id), fb.f.limit(450))).then(function (s) {
+      return Promise.all([
+        fb.f.getDocs(fb.f.query(fcol("likes"), fb.f.where("commentId", "==", c.id), fb.f.limit(450))),
+        fb.f.getDocs(fb.f.query(fcol("commentPhotos"), fb.f.where("commentId", "==", c.id), fb.f.limit(10)))
+      ]).then(function (res) {
+        var s = res[0], ph = res[1];
         return (c.status === "visible" ? readBuzz(nid) : Promise.resolve(null)).then(function (buz) {
           var run = function (withBuzz) {
             var b = fb.f.writeBatch(fb.db);
             s.forEach(function (d) { b.delete(d.ref); });
+            ph.forEach(function (d) { b.delete(d.ref); });
             b.delete(fdoc("comments/" + c.id));
             if (withBuzz && buz) buzzSet(b, nid, buz, -1, ms(c), c.id);
             return b.commit().catch(function (e) { if (withBuzz && buz && isDenied(e)) return run(false); throw e; });
           };
           return run(true);
         });
-      }).then(function () { cdrop("likers:" + c.id); });
+      }).then(function () { cdrop("likers:" + c.id); cdrop("photos:" + nid); });
     }
     /* скрыть или показать комментарий (администратор); счётчик обсуждаемого меняется вместе с ним */
     function toggleHidden(c) {
       var show = c.status === "hidden", upd = { status: show ? "visible" : "hidden" };
-      return readBuzz(nid).then(function (buz) {
+      return Promise.all([
+        readBuzz(nid),
+        fb.f.getDocs(fb.f.query(fcol("commentPhotos"), fb.f.where("commentId", "==", c.id), fb.f.limit(10)))
+      ]).then(function (res) {
+        var buz = res[0], ph = res[1];
         var b = fb.f.writeBatch(fb.db);
         b.update(fdoc("comments/" + c.id), upd);
+        ph.forEach(function (d) { b.update(d.ref, { status: upd.status }); });
         if (buz) buzzSet(b, nid, buz, show ? 1 : -1, ms(c), null);
         return b.commit().catch(function (e) {
           if (buz && isDenied(e)) return fb.f.updateDoc(fdoc("comments/" + c.id), upd);
           throw e;
         });
-      });
+      }).then(function () { cdrop("photos:" + nid); });
     }
     function ms(c) { return c.createdAt && c.createdAt.toMillis ? c.createdAt.toMillis() : Date.now(); }
     function when(c) {
@@ -1135,6 +1159,66 @@
       return el("div", { class: "c-edit" }, ta, msg, el("div", { class: "c-row" }, save,
         el("button", { type: "button", class: "linkbtn", text: "Отмена", onclick: function () { editing[c.id] = false; delete editDraft[c.id]; drawList(); } })));
     }
+    /* ---- фото к отзывам (ссылками) -----------------------------------------
+       Фото не загружаем файлом: в отзыве сохраняем ссылки. Каждая ссылка —
+       отдельный документ commentPhotos/{id комментария}_{номер ссылки}, чтобы
+       сам комментарий оставался лёгким. Галерея внизу страницы номера читает
+       до 30 последних ссылок и показывает 12. */
+    function photoUrlList() {
+      var raw = photoInput ? String(photoInput.value || "") : "";
+      var list = raw.split(/[\s,;]+/).filter(function (s) { return !!s; });
+      return list.slice(0, PHOTO_MAX);
+    }
+    /* Грузим после того, как комментарий сохранён: id комментария уже известен. */
+    function uploadPhotos(cid) {
+      var list = photoUrlList();
+      photos = [];
+      if (!list.length || !cid || !uid) return Promise.resolve(0);
+      return Promise.all(list.map(function (url, i) {
+        return fb.f.setDoc(fdoc("commentPhotos/" + cid + "_" + i), {
+          commentId: cid, numberId: nid, uid: uid, order: i, url: url,
+          createdAt: fb.f.serverTimestamp(), status: "visible"
+        }).then(function () { return 1; }, function (e) { if (window.console) console.warn("фото не сохранилось", e); return 0; });
+      })).then(function (r) { return r.reduce(function (a, b) { return a + b; }, 0); });
+    }
+    function loadPhotos(fresh) {
+      if (!fresh && photoCache) return Promise.resolve(photoCache);
+      return cached("photos:" + nid, TTL.comments, fresh === true, function () {
+        return fb.f.getDocs(fb.f.query(fcol("commentPhotos"), fb.f.where("numberId", "==", nid), fb.f.limit(30)))
+          .then(function (s) {
+            var arr = s.docs.map(function (d) { var x = d.data(); x.id = d.id; return x; })
+              .filter(function (p) { return p.status !== "hidden" && p.url; });
+            arr.sort(function (a, b) { return ms(b) - ms(a); });
+            return arr.slice(0, 12);
+          });
+      }).then(function (v) { photoCache = v; return v; }, function () { return []; });
+    }
+    function openLightbox(src) {
+      function close() { box.remove(); document.removeEventListener("keydown", onKey); }
+      function onKey(e) { if (e.key === "Escape") close(); }
+      var box = el("div", { id: "lb", role: "dialog", "aria-modal": "true", "aria-label": "Фото зрителя" },
+        el("img", { src: src, alt: "Фото зрителя" }),
+        el("button", { type: "button", class: "lb-x", "aria-label": "Закрыть", text: "×", onclick: close }));
+      box.addEventListener("click", function (e) { if (e.target === box) close(); });
+      document.addEventListener("keydown", onKey);
+      document.body.append(box);
+    }
+    function drawPhotos() {
+      clear(photosBox);
+      var arr = photoCache || [];
+      photosBox.hidden = !arr.length;
+      if (!arr.length) return;
+      photosBox.append(
+        el("h2", { class: "c-photos-h", text: "Фото зрителей" }),
+        el("p", { class: "c-photos-sub", text: arr.length + " " + plural(arr.length, "снимок", "снимка", "снимков") + " к отзывам об этом номере" }));
+      var grid = el("div", { class: "c-photos-grid" });
+      arr.forEach(function (p) {
+        grid.append(el("button", { type: "button", class: "c-photo", "aria-label": "Открыть фото", onclick: function () { openLightbox(p.url); } },
+          el("img", { src: p.url, alt: "Фото зрителя", loading: "lazy", decoding: "async" })));
+      });
+      photosBox.append(grid);
+    }
+
     function commentNode(c, isReply) {
       var isDir = c.authorPersonId && directors.indexOf(c.authorPersonId) !== -1;
       var mine = state.user && c.uid === state.user.uid;
@@ -1379,6 +1463,13 @@
 
       /* Правила — шапка самого поля комментария, а не отдельная плашка.
          Один визуальный контейнер с textarea: общий фон, рамка и разделитель. */
+      /* Фото к отзыву — ссылками (файлом не загружаем): ссылки уходят в базу после сохранения текста. */
+      photoInput = el("input", { type: "url", class: "c-input", placeholder: "https://… (до " + PHOTO_MAX + " ссылок)", "aria-label": "Ссылки на фото" });
+      var photosField = el("label", { class: "c-photo-field" },
+        el("span", { class: "c-label", text: "Фото к отзыву" }),
+        photoInput,
+        el("span", { class: "c-hint", text: "Вставьте ссылки на фотографии — они появятся внизу страницы в блоке «Фото зрителей»." }));
+
       var rules = el("div", { class: "c-rules" },
         el("div", { class: "c-rules-h" },
           el("span", { class: "c-rules-ico", "aria-hidden": "true" }),
@@ -1386,7 +1477,7 @@
         el("ul", { class: "c-rules-list" },
           el("li", { text: "без мата" }),
           el("li", { text: "без оскорблений" }),
-          el("li", { text: "без рекламы и ссылок" }),
+          el("li", { text: "без рекламы" }),
           el("li", { text: "без нейрослопа, пишите самостоятельно" }),
           el("li", { text: "содержательные" })));
 
@@ -1394,6 +1485,11 @@
       var f = el("form", { class: "c-form", onsubmit: function (ev) {
         ev.preventDefault();
         var text = ta.value.trim(), full = setCount() === RATE.length;
+        var photoList = photoUrlList();
+        var badPhoto = photoList.filter(function (u) { return !/^https?:\/\/\S+$/i.test(u); })[0];
+        if (badPhoto) { note(form, "Ссылка на фото должна начинаться с http:// или https://", "err"); photoInput.focus(); return; }
+        if (!photoList.length) photos = [];
+        if (photoList.length && !text) { note(form, "Коротко опишите, чем запомнился номер: фото прикладываются к отзыву.", "err"); ta.focus(); return; }
         if (setCount() && !full && rateChanged()) { note(form, "Оцените все пять пунктов или нажмите «Сбросить».", "err"); return; }
         if (OFFSTAGE && full && rateChanged() && !ctxv) { note(form, "Выберите, откуда вы знаете работу направления.", "err"); return; }
         var wantRate = full && rateChanged(), wantClear = cleared && !!prev && !wantRate;
@@ -1494,6 +1590,8 @@
                 newComment = data.cdata;
                 newComment.id = data.cref.path.split("/").pop();
               }
+              /* фото привязываем к уже сохранённому комментарию; если база не приняла — текст всё равно на месте */
+              return uploadPhotos(newComment ? newComment.id : "");
             });
           });
         }).then(function () {
@@ -1501,6 +1599,8 @@
           replyTo = null;
           justDone = { k: 1, t: Date.now(), rate: doneInfo.rate, clear: doneInfo.clear, text: doneInfo.text, tot: doneInfo.tot, cid: newComment ? newComment.id : "" };
           dropComments();
+          cdrop("photos:" + nid); photoCache = null;
+          loadPhotos(true).then(drawPhotos);
           return loadComments(true).then(function () {
             if (newComment && !comments.some(function (c) { return c.id === newComment.id; })) comments.push(newComment);
           });
@@ -1516,7 +1616,9 @@
       } },
         replyTo && el("p", { class: "c-replyto" }, "Ответ для " + replyTo.authorName + " ",
           el("button", { type: "button", class: "linkbtn", text: "отменить", onclick: function () { replyTo = null; drawForm(); } })),
-        rateTitle, rateBox, el("div", { class: "c-compose" }, rules, ta), el("div", { class: "c-row" }, send,
+        rateTitle, rateBox, el("div", { class: "c-compose" }, rules, ta),
+        photosField,
+        el("div", { class: "c-row" }, send,
           el("span", { class: "c-hint", text: "Не больше " + LIM.comments + " комментариев в день." })));
       form.append(f);
       syncSend();
@@ -1564,7 +1666,7 @@
         try { n.focus({ preventScroll: true }); } catch (e) { n.focus(); }
       }, 0);
     }
-    function draw() { drawSummary(); drawMoments(); drawList(); drawForm(); drawNote(); revealNewComment(); }
+    function draw() { drawSummary(); drawMoments(); drawList(); drawForm(); drawNote(); drawPhotos(); revealNewComment(); }
     /* Комментарии, оценки и мои лайки читаются из базы только когда блок почти виден на экране (или в него нажали):
        тот, кто просто смотрит видео и уходит, не тратит ни одного чтения. Слово постановщика стоит рядом с видео, его читаем сразу. */
     var armed = false, armCb = null, armObs = null;
@@ -1588,7 +1690,7 @@
     views.push(function () {
       loaded = false; replyTo = null; draw();
       loadNote().then(function () { drawNote(); drawMoments(); });
-      whenNear(function () { loadComments().then(draw); });
+      whenNear(function () { loadComments().then(draw); loadPhotos().then(drawPhotos); });
     });
     catalogInfo().then(function () { draw(); });   // имена на страницах людей нужны для подписи «ник (имя)»
   }

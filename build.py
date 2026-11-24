@@ -1231,6 +1231,9 @@ def build_site(concerts, directions, numbers, people, report, demo, source, admi
         core += ["assets/brand.css", f"assets/fonts/brand.{brand_font}"]
     core += sorted(f"assets/fonts/{p.name}" for p in (ROOT / "assets" / "fonts").glob("*.woff2") if not p.name.startswith("brand."))
     core += sorted(f"assets/icons/{p.name}" for p in (ROOT / "assets" / "icons").glob("*.png"))
+    if firebase:
+        core += sorted(f"assets/vendor/firebasejs/{p.name}"
+                       for p in (ROOT / "assets" / "vendor" / "firebasejs").glob("*.js"))
     write(TMP / "sw.js", (ROOT / "templates" / "sw.js.tpl").read_text(encoding="utf-8")
           .replace("__V__", asset_v).replace("__CORE__", json.dumps(core, ensure_ascii=False)))
 
