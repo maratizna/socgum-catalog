@@ -168,8 +168,8 @@ html{scroll-padding-top:72px}
 #comments.no-ratings #cm-h{margin:22px 0 0}
 #comments.no-ratings .c-sort{margin-top:8px}
 #comments.no-ratings .c-list{margin-top:8px}
-.c-list{display:grid;gap:14px;margin:14px 0 22px}
-.comment{background:var(--coal);border:1px solid var(--line);border-radius:var(--r);padding:12px 14px;display:grid;gap:6px;scroll-margin-top:20px}
+.c-list{display:grid;grid-template-columns:minmax(0,1fr);gap:14px;margin:14px 0 22px}
+.comment{background:var(--coal);border:1px solid var(--line);border-radius:var(--r);padding:12px 14px;display:grid;grid-template-columns:minmax(0,1fr);gap:6px;scroll-margin-top:20px;min-width:0}
 .comment:target{border-color:var(--ember)}
 .comment.reply{margin-left:clamp(14px,4vw,36px);background:var(--coal-2)}
 .comment.is-hidden{opacity:.55}
@@ -1137,7 +1137,7 @@ body.lb-on{overflow:hidden}
 .add-rel-x:hover{border-color:var(--ember);color:var(--ink)}
 @media (max-width:760px){.add-rel-row{grid-template-columns:1fr;align-items:stretch}.add-rel-x{justify-self:start;width:44px;height:32px}}
 /* фото в комментариях (под текстом) и подписи автора в блоке «Фото зрителей» */
-.c-imgs{display:grid;grid-template-columns:repeat(auto-fill,minmax(110px,1fr));gap:8px;margin:10px 0 2px;max-width:560px}
+.c-imgs{display:grid;grid-template-columns:repeat(auto-fill,minmax(110px,1fr));gap:8px;margin:10px 0 2px;max-width:min(560px,100%);min-width:0}
 .c-img{padding:0;border:1px solid var(--line);border-radius:8px;overflow:hidden;background:var(--coal);cursor:zoom-in;aspect-ratio:4/3}
 .c-img img{width:100%;height:100%;object-fit:cover;display:block}
 .c-img:hover{border-color:var(--ember)}
