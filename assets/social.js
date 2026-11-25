@@ -44,7 +44,7 @@
      avatar — смена фото, ника или соцсетей, вход/выход;
      likers — постановка или снятие лайка у этого комментария. */
   var TTL = { me: 3 * 86400e3, pub: 10 * 60e3, comments: 10 * 60e3, commentsOld: 3600e3, note: 2 * 60e3, avatar: 14 * 86400e3, likers: 30e3,
-    cmtFresh: 30 * 60e3, cmtMid: 6 * 3600e3, cmtDay: 24 * 3600e3, userPage: 6 * 3600e3 };
+    cmtFresh: 30 * 60e3, cmtMid: 6 * 3600e3, cmtDay: 24 * 3600e3, userPage: 6 * 3600e3, requests: 3600e3 };
   var MEM = {};
   function store() { try { return window.localStorage; } catch (e) { return null; } }
   function pack(v) {
@@ -528,7 +528,7 @@
      Подтверждённый владелец ведёт одну страницу: описание и ссылка лежат в profiles/{pid}, а фото одно на аккаунт.
      Фото аккаунта (users) и фото страниц, которыми он владеет (profiles), меняются вместе. */
   function readProfile(pid) { return fb.f.getDoc(fdoc("profiles/" + pid)).then(function (s) { return s.exists() ? s.data() : null; }); }
-  function profileCached(pid, fresh) { return cached("pub:profile:" + pid, TTL.pub, fresh === true, function () { return readProfile(pid); }); }
+  function profileCached(pid, fresh) { return cached("pub:profile:" + pid, TTL.userPage, fresh === true, function () { return readProfile(pid); }); }
   function writeProfile(pid, patch) {
     return readProfile(pid).then(function (cur) {
       cur = cur || {};
@@ -2150,7 +2150,7 @@
       "error": ["Ошибка переноса", "adm-chip-error"],
       "rejected": ["Отклонено", "adm-chip-error"]
     };
-    return cached("user:reqs:" + uid, TTL.pub, false, function () {
+    return cached("user:reqs:" + uid, TTL.requests, false, function () {
       return fb.f.getDocs(fb.f.query(fcol("submissions"), fb.f.where("uid", "==", uid), fb.f.limit(30))).then(function (q) {
         return q.docs.map(function (d) {
           var x = d.data() || {};
@@ -2446,7 +2446,7 @@
     function load(fresh) {
       if (!uid) { done = true; return Promise.resolve(); }
       return Promise.all([
-        cached("user:claims:" + uid, TTL.pub, fresh === true, function () {
+        cached("user:claims:" + uid, TTL.requests, fresh === true, function () {
           return fb.f.getDocs(fb.f.query(fcol("claims"), fb.f.where("uid", "==", uid))).then(function (s) {
             var o = {}; s.forEach(function (d) { o[d.id] = d.data(); }); return o;
           });
@@ -3724,6 +3724,7 @@
       fb.f.addDoc(fcol("submissions"), subDoc(kind, fields, fields.title || "", fields.concert || "")).then(function () {
         D.busy = false;
         D.done = true;
+        try { cdrop("user:reqs:" + (state.user && state.user.uid)); } catch (e) { }
         toast(afterSubmitMsg());
         draw(doneTitle);
       }, function (e) {
@@ -4260,6 +4261,7 @@
       formMsg(form, "Отправляем заявку…");
       Promise.all(jobs).then(function () {
         D.busy = false; D.done = true;
+        try { cdrop("user:reqs:" + (state.user && state.user.uid)); } catch (e) { }
         toast(afterSubmitMsg());
         draw();
       }, function (e) {
