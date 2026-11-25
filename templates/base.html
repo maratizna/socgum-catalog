@@ -48,11 +48,17 @@
 </section>
 {% endif %}
 <footer class="site-foot">
-  <p>{{ site_title }}</p>
-  {% if firebase %}<p><a href="{{ root or './' }}add/">Добавить в каталог</a></p>{% endif %}
-  {% if firebase %}<p><a href="{{ root or './' }}hot/">Самое обсуждаемое</a></p>{% endif %}
-  <p class="foot-app"><span id="offline-status"></span> <button type="button" id="pwa-install" class="linkbtn" hidden>Установить на телефон</button></p>
-  {% if home_url %}<p><a href="{{ home_url }}">{{ home_label }}</a></p>{% endif %}
+  <div class="foot-brand">
+    <p class="foot-name">{{ site_title }}</p>
+    <p class="foot-meta">© СоцГум, {{ build_year }} · обновлено {{ build_date }}</p>
+  </div>
+  <nav class="foot-links" aria-label="Подвал сайта">
+    {% if firebase %}<a href="{{ root or './' }}add/">Добавить в каталог</a>{% endif %}
+    {% if firebase %}<a href="{{ root or './' }}hot/">Самое обсуждаемое</a>{% endif %}
+    {% if firebase %}<a href="{{ root or './' }}faq/">Как это работает</a>{% endif %}
+    {% if home_url %}<a href="{{ home_url }}">{{ home_label }}</a>{% endif %}
+  </nav>
+  <p class="foot-stats">{{ stat_numbers }} · {{ stat_concerts }} · {{ stat_people }}</p>
 </footer>
 <p id="net-bar" class="net-bar" role="status" hidden>Нет соединения. Показано то, что сохранено на устройстве.</p>
 <script>

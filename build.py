@@ -55,6 +55,16 @@ def norm(s):
     return re.sub(r"\s+", " ", str(s or "").strip()).casefold().replace("ё", "е")
 
 
+def ru_plural(n, one, few, many):
+    """Русское склонение: 1 номер, 2 номера, 5 номеров."""
+    n = abs(int(n))
+    if n % 10 == 1 and n % 100 != 11:
+        return one
+    if 2 <= n % 10 <= 4 and not (12 <= n % 100 <= 14):
+        return few
+    return many
+
+
 def slugify(s):
     s = norm(s)
     s = "".join(TRANSLIT.get(ch, ch) for ch in s)
@@ -1162,9 +1172,16 @@ def build_site(concerts, directions, numbers, people, report, demo, source, admi
     fbc = cfg.get("firebase") or {}
     firebase = {k: fbc[k] for k in ("apiKey", "authDomain", "projectId", "appId") if fbc.get(k)} if fbc.get("apiKey") and fbc.get("projectId") else None
     asset_v = hashlib.sha1(b"".join((ROOT / "assets" / f).read_bytes() for f in ("style.css", "app.js", "social.js", "graph.js", "dir-icons.svg", "player.js"))).hexdigest()[:8]
+    stat = {
+        "numbers": f"{len(numbers)} {ru_plural(len(numbers), 'номер', 'номера', 'номеров')}",
+        "concerts": f"{len(concerts)} {ru_plural(len(concerts), 'концерт', 'концерта', 'концертов')}",
+        "people": f"{len(people)} {ru_plural(len(people), 'человек', 'человека', 'человек')}",
+    }
     ctx_common = dict(firebase=firebase, asset_v=asset_v, dicon_href=f"assets/dir-icons.svg?v={asset_v}", site_title=cfg["site_title"], site_url=site_url, home_url=cfg.get("home_url", ""),
                       home_label=cfg.get("home_label", ""), demo=demo, brand_font=bool(brand_font),
-                      lead=cfg.get("lead", ""), forms=list(FORMS))
+                      lead=cfg.get("lead", ""), forms=list(FORMS),
+                      build_date=dt.date.today().strftime("%d.%m.%Y"), build_year=dt.date.today().year,
+                      stat_numbers=stat["numbers"], stat_concerts=stat["concerts"], stat_people=stat["people"])
 
     def concert_key(c):
         when = c["date"].toordinal() if c["date"] else (dt.date(c["year"], 1, 1).toordinal() if c["year"] else 0)
@@ -1234,6 +1251,10 @@ def build_site(concerts, directions, numbers, people, report, demo, source, admi
             root="../", page_title=f"Правка каталога: {cfg['site_title']}", canonical="", og_image="", description="", **ctx_common))
         write(TMP / "add" / "index.html", env.get_template("add.html").render(
             root="../", page_title=f"Добавить в каталог: {cfg['site_title']}", canonical="", og_image="", description="", **ctx_common))
+        write(TMP / "faq" / "index.html", env.get_template("faq.html").render(
+            root="../", page_title=f"Как это работает: {cfg['site_title']}",
+            canonical=f"{site_url}/faq/" if site_url else "", og_image="",
+            description="Как добавить номер или концерт в каталог, как проверяются заявки и обновляется сайт.", **ctx_common))
 
     # работа без сети: манифест приложения, страница «нет соединения», сервис-воркер
     write(TMP / "manifest.webmanifest", json.dumps({
@@ -1344,6 +1365,8 @@ def build_site(concerts, directions, numbers, people, report, demo, source, admi
 
     if site_url:
         urls = [f"{site_url}/"] + [f"{site_url}/n/{n['id']}/" for n in numbers.values()] + [f"{site_url}/p/{p['slug']}/" for p in people.values()]
+        if firebase:
+            urls.append(f"{site_url}/faq/")
         write(TMP / "sitemap.xml", '<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n'
               + "".join(f"<url><loc>{html.escape(u)}</loc><lastmod>{today}</lastmod></url>\n" for u in urls) + "</urlset>\n")
         write(TMP / "robots.txt", f"User-agent: *\nAllow: /\nSitemap: {site_url}/sitemap.xml\n")

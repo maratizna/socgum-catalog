@@ -63,7 +63,18 @@ html{scroll-padding-top:72px}
 .wordmark{font-family:var(--font-display);font-weight:700;font-size:.95rem;color:var(--ember);text-decoration:none}
 .head-link{color:var(--ash);font-size:.95rem}
 .head-link:hover{color:var(--ink)}
-.site-foot{border-top:1px solid var(--line);color:var(--ash);font-size:.9rem;padding:22px var(--pad);display:flex;gap:24px;flex-wrap:wrap;justify-content:space-between;max-width:var(--wrap);width:100%;margin:0 auto}
+.site-foot{border-top:1px solid var(--line);color:var(--ash);font-size:.9rem;padding:22px var(--pad);display:flex;gap:24px;flex-wrap:wrap;justify-content:space-between;align-items:flex-start;max-width:var(--wrap);width:100%;margin:0 auto}
+.foot-brand{margin:0;min-width:0}
+.foot-name{margin:0;color:var(--ink);font-weight:600}
+.foot-meta{margin:3px 0 0;font-size:.8rem;color:var(--ash)}
+.foot-links{display:flex;gap:18px;flex-wrap:wrap;align-items:center}
+.foot-links a{color:var(--ash)}
+.foot-links a:hover,.foot-links a:focus-visible{color:var(--ink)}
+.foot-stats{margin:0;font-size:.85rem;color:var(--ash);font-variant-numeric:tabular-nums}
+@media (max-width:760px){
+  .site-foot{flex-direction:column;align-items:flex-start;gap:10px}
+  .foot-links{gap:8px 16px}
+}
 
 /* РІСЃС‚СѓРїР»РµРЅРёРµ */
 .intro{padding:clamp(20px,5vw,56px) 0 clamp(20px,3vw,32px)}
@@ -1212,3 +1223,18 @@ body.lb-on{overflow:hidden}
 .adm-ava-img{width:44px;height:44px;border-radius:50%;object-fit:cover;border:1px solid var(--line);background:var(--coal-2)}
 .adm-ava-nm{font-weight:600;min-width:0}
 .adm-ava .btn{margin-left:auto}
+
+/* страница «Как это работает» (/faq/) */
+.page-faq .faq{max-width:880px}
+.faq-lead{color:var(--ash);font-size:1.05rem;line-height:1.6;max-width:72ch;margin:12px 0 26px}
+.faq-block{border-top:1px solid var(--line);padding:20px 0 0;margin:24px 0 0}
+.faq-h2{font-family:var(--font-display);font-weight:700;font-size:1.1rem;letter-spacing:.01em;margin:0 0 12px}
+.faq-list{padding-left:22px;display:grid;gap:8px;line-height:1.55;margin:0}
+.faq-block p{margin:0 0 10px;line-height:1.6;max-width:72ch}
+.faq-q{font-weight:600;margin:16px 0 2px;color:var(--ink)}
+.faq-a{margin:0 0 6px;color:var(--ash)}
+.faq-contacts{font-weight:600}
+.faq-soon{color:var(--ember-hi);border-bottom:1px dashed rgba(255,139,54,.5)}
+.faq-note{color:var(--ash);font-size:.9rem;max-width:70ch}
+.settings-offline{color:var(--ash);font-size:.9rem;margin:22px 0 0}
+.settings-offline .linkbtn{margin-left:6px}
