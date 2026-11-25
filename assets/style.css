@@ -1205,3 +1205,10 @@ body.lb-on{overflow:hidden}
 }
 
 .page-add .add-block,.page-admin .add-block{display:none}
+
+/* фото пользователей в кабинете: админ может убрать неуместное фото */
+.adm-avas{display:grid;gap:10px;margin-top:10px}
+.adm-ava{display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+.adm-ava-img{width:44px;height:44px;border-radius:50%;object-fit:cover;border:1px solid var(--line);background:var(--coal-2)}
+.adm-ava-nm{font-weight:600;min-width:0}
+.adm-ava .btn{margin-left:auto}

@@ -4172,7 +4172,7 @@
     var KIND = { numbers: "number", concerts: "concert", people: "person" };
     var A = { tab: "numbers", q: "", data: null, dataErr: false, cur: null, busy: false,
               meta: null, metaErr: false, queue: [], queueErr: false,
-              subs: [], subsErr: false, subsBusy: false };
+              subs: [], subsErr: false, subsBusy: false, userPhotos: [], photosErr: false };
 
     var NUM_FIELDS = [
       { k: "title", label: "Название", req: true },
@@ -4257,7 +4257,43 @@
         });
       }, function (e) { A.subsErr = true; console.error(e); });
     }
-    function reload() { return Promise.all([loadMeta(), loadQueue(), loadSubs()]).then(draw); }
+    function reload() { return Promise.all([loadMeta(), loadQueue(), loadSubs(), loadAvatarList()]).then(draw); }
+
+    /* Фото пользователей: администратор может убрать неуместное фото.
+       У человека останется подпись с первой буквой имени — страницу это не ломает. */
+    function loadAvatarList() {
+      A.userPhotos = [];
+      A.photosErr = false;
+      return fb.f.getDocs(fb.f.query(fcol("users"), fb.f.limit(200))).then(function (sn) {
+        sn.forEach(function (d) {
+          var x = d.data() || {};
+          if (!x.avatar) return;
+          A.userPhotos.push({ uid: d.id, avatar: x.avatar, name: x.name || "", nick: x.nick || "" });
+        });
+        A.userPhotos.sort(function (a, b) { return String(a.name || a.nick).localeCompare(String(b.name || b.nick), "ru"); });
+      }, function (e) { A.photosErr = true; console.error(e); });
+    }
+    function removeUserAvatar(uid) {
+      return fb.f.updateDoc(fdoc("users/" + uid), { avatar: "", updatedAt: fb.f.serverTimestamp() })
+        .then(function () { toast("Фото убрано."); return reload(); },
+          function (e) { toast(errText(e)); });
+    }
+    function renderAvatars() {
+      var sec = el("section", { class: "adm-card" }, el("h2", { class: "adm-title", text: "Фото пользователей" }));
+      sec.append(el("p", { class: "adm-hint-text", text: "Если фото неуместное — уберите его. У человека останется кружок с первой буквой имени, страница и комментарии продолжат работать." }));
+      if (A.photosErr) { sec.append(el("p", { class: "c-hint", text: "Не удалось прочитать список фото." })); return sec; }
+      if (!A.userPhotos.length) { sec.append(el("p", { class: "c-hint", text: "Фотографий пока нет." })); return sec; }
+      var wrap = el("div", { class: "adm-avas" });
+      A.userPhotos.forEach(function (u) {
+        var row = el("div", { class: "adm-ava" },
+          el("img", { class: "adm-ava-img", src: u.avatar, alt: "" }),
+          el("span", { class: "adm-ava-nm", text: u.name || u.nick || u.uid }),
+          el("button", { class: "btn btn-s btn-ghost", type: "button", text: "Убрать фото", onclick: function (e) { e.preventDefault(); removeUserAvatar(u.uid); } }));
+        wrap.append(row);
+      });
+      sec.append(wrap);
+      return sec;
+    }
 
     function dispatchBuild() {
       var pat = (A.meta && A.meta.ghPat) || "";
@@ -4570,7 +4606,7 @@
       head.append(tabs, search);
       box.append(head);
       if (A.cur) box.append(renderForm()); else box.append(renderList());
-      box.append(renderSubs(), renderQueue(), renderSync());
+      box.append(renderSubs(), renderAvatars(), renderQueue(), renderSync());
     }
 
     views.push(draw);
