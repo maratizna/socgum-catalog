@@ -744,7 +744,6 @@
         el("div", { class: "um-head" }, avatarNode(uid, nm, "s"),
           el("div", { class: "um-who" }, el("b", { text: nm }), state.admin ? el("span", { class: "c-hint", text: "Администратор" }) : null)),
         umItem(ownPageUrl(), "page", "Моя страница"),
-        umItem(ROOT + "u/?id=" + encodeURIComponent(uid) + "#requests", "list", "Мои заявки"),
         umItem(ROOT + "settings/", "gear", "Настройки профиля"));
       var admItem = null;
       if (state.admin) { admItem = umItem(ROOT + "account/", "admin", "Кабинет администратора"); menu.append(admItem); }
@@ -2156,7 +2155,7 @@
         return q.docs.map(function (d) {
           var x = d.data() || {};
           return { id: d.id, kind: x.kind, number: x.number, concert: x.concert, status: x.status, createdAt: x.createdAt, fields: x.fields || {}, error: x.error || "" };
-        }).sort(function (a, b) { return ms(b.createdAt) - ms(a.createdAt); });
+        }).sort(function (a, b) { return tsMs(b.createdAt) - tsMs(a.createdAt); });
       });
     }).then(function (list) {
       clear(panel);
@@ -2281,8 +2280,10 @@
     var st = host._st;
     if (st && st.uid === o.uid) {
       var was = st.self; st.self = !!o.self;
-      /* человек вошёл уже после открытия страницы: уже загруженные вкладки перерисовываем с подсказками для владельца */
-      ["comments", "ratings", "playlists"].forEach(function (id) { if (st.loaded[id] && (was !== st.self || id === "playlists")) st.show(id, true); });
+      /* человек вошёл (или вышел) уже после открытия страницы: набор вкладок меняется, пересобираем */
+      if (was !== st.self) { unmountTabs(host); return mountTabs(host, o); }
+      /* уже загруженные вкладки перерисовываем с подсказками для владельца */
+      ["comments", "ratings", "playlists"].forEach(function (id) { if (st.loaded[id] && id === "playlists") st.show(id, true); });
       return;
     }
     unmountTabs(host);
