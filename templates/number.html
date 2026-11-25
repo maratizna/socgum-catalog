@@ -35,7 +35,7 @@
         {% endif %}
       </div>
       {% if can_play and watch_links %}
-      <div class="stage-alt">{% for l in watch_links %}<a class="add-btn add-btn-s" href="{{ l.url }}" rel="noopener" target="_blank">Смотреть другую запись {{ l.label }}</a> {% endfor %}</div>
+      <div class="stage-alt">{% for l in watch_links %}<a class="add-btn add-btn-s" href="{{ l.url }}" rel="noopener" target="_blank">Смотреть другую запись {{ l.label }}{% if n.start2 %} с {{ n.start2 }}{% endif %}</a> {% endfor %}</div>
       {% endif %}
       {% if can_play %}<p class="resume" id="resume" hidden></p>{% endif %}
       {% if n.photos_list %}
@@ -56,10 +56,10 @@
           <button type="button" class="add-btn add-btn-s share-btn" id="share-btn" aria-expanded="false" aria-controls="share-box" aria-haspopup="dialog">Поделиться</button>
           <div class="share-box pop-panel" id="share-box" role="dialog" aria-label="Поделиться номером" hidden></div>
         </div>
-        {% if firebase %}
+        {% if firebase and not n.needs_desc %}
         <a class="add-btn add-btn-s num-add" id="num-add" href="{{ root or './' }}add/{% if n.needs_fill %}#patch={{ n.id }}{% endif %}">{{ 'Дополнить работу направления' if n.offstage else 'Дополнить номер' }}</a>
-        <div id="pl-add" class="pl-add" data-number="{{ n.id }}"></div>
         {% endif %}
+        {% if firebase %}<div id="pl-add" class="pl-add" data-number="{{ n.id }}"></div>{% endif %}
       </div>
       {% set m = n.materials %}{% include "_materials.html" %}
       {% if firebase %}
@@ -69,7 +69,7 @@
 
     <aside class="number-side">
       <dl class="facts">
-        <div><dt>Концерт</dt><dd><a href="{{ root or './' }}?c={{ n.concert.slug }}">{{ n.concert.name }}</a>{% if n.concert.date %}, {{ n.concert.date|ru_date }}{% endif %}{% if n.concert.topic %}. {{ n.concert.topic }}{% endif %}</dd></div>
+        <div><dt>Концерт</dt><dd><a href="{{ root or './' }}concerts/#{{ n.concert.slug }}">{{ n.concert.name }}</a>{% if n.concert.date %}, {{ n.concert.date|ru_date }}{% endif %}{% if n.concert.topic %}. {{ n.concert.topic }}{% endif %}</dd></div>
         {% if n.concert.season %}<div><dt>Учебный год</dt><dd><a href="{{ root or './' }}?y={{ n.concert.season }}">{{ n.concert.season }}</a></dd></div>{% endif %}
         {% if n.directions %}<div><dt>Направление</dt><dd class="dirs">{% for d in n.directions %}<a class="dlink" href="{{ root or './' }}?d={{ d.slug }}">{{ dicon(d.icon) }}<span>{{ d.name }}</span></a>{% endfor %}</dd></div>{% endif %}
       </dl>
@@ -124,6 +124,12 @@
     </section>
     {% endif %}
   </div>
+  {% if firebase and n.needs_desc %}
+  <section class="num-more{% if n.offstage %} num-more-off{% endif %}">
+    <p class="num-more-t">У номера пока нет описания — расскажите, о чём он и чем запомнился зрителям.</p>
+    <a class="add-btn" id="num-add-low" href="{{ root or './' }}add/{% if n.needs_fill %}#patch={{ n.id }}{% endif %}">{{ 'Дополнить работу направления' if n.offstage else 'Дополнить номер' }}</a>
+  </section>
+  {% endif %}
 </article>
 {% endblock %}
 {% block after_main %}{% include "_dice.html" %}{% endblock %}

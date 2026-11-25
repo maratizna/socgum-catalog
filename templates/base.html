@@ -54,7 +54,8 @@
   </div>
   <nav class="foot-links" aria-label="Подвал сайта">
     {% if firebase %}<a href="{{ root or './' }}add/">Добавить в каталог</a>{% endif %}
-    {% if firebase %}<a href="{{ root or './' }}hot/">Самое обсуждаемое</a>{% endif %}
+    {% if firebase %}<a href="{{ root or './' }}concerts/">Концерты</a>
+      <a href="{{ root or './' }}hot/">Самое обсуждаемое</a>{% endif %}
     {% if firebase %}<a href="{{ root or './' }}faq/">Как это работает</a>{% endif %}
     {% if home_url %}<a href="{{ home_url }}">{{ home_label }}</a>{% endif %}
   </nav>

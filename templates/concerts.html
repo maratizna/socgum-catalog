@@ -1,0 +1,37 @@
+{% extends "base.html" %}
+{% block body_class %}page-concerts{% endblock %}
+
+{% block main %}
+<main id="main" class="page">
+  <h1>Концерты</h1>
+  <p class="page-lead">Все концерты каталога — от новых к старым. У каждого концерта есть свой блок: запись, номера и участники. Название концерта ведёт к его блоку на сайте СоцГума (стрелка ↗), здесь же — номера этого концерта.</p>
+
+  <details class="conc-jump-wrap">
+    <summary>Быстрый переход по концертам ({{ concerts|length }})</summary>
+    <nav class="conc-jump" aria-label="Список концертов">
+      {% for c in concerts %}<a href="#{{ c.slug }}">{{ c.name }}</a>{% endfor %}
+    </nav>
+  </details>
+
+  {% for c in concerts %}
+  <section class="conc" id="{{ c.slug }}">
+    <header class="conc-head">
+      <h2 class="conc-t">
+        {% if c.tilda %}<a href="{{ c.tilda }}" rel="noopener" target="_blank">{{ c.name }} <span class="conc-arrow" aria-hidden="true">↗</span></a>{% else %}{{ c.name }}{% endif %}
+      </h2>
+      <p class="conc-meta">{% if c.season %}Учебный год {{ c.season }}{% endif %}{% if c.date %} · {{ c.date|ru_date }}{% endif %}{% if c.topic %} · {{ c.topic }}{% endif %}</p>
+      {% if c.video_url %}<p class="conc-links"><a class="add-btn add-btn-s" href="{{ c.video_url }}" rel="noopener" target="_blank">Смотреть запись во ВКонтакте</a></p>{% endif %}
+    </header>
+    {% if c.numbers %}
+    <ol class="conc-nums">
+      {% for n in c.numbers %}
+      <li><a href="{{ root or './' }}n/{{ n.id }}/">{{ n.title }}</a>{% if n.collective %}<span class="conc-num-s">{{ n.collective }}</span>{% endif %}</li>
+      {% endfor %}
+    </ol>
+    {% else %}
+    <p class="c-hint">Номера этого концерта ещё не заведены.</p>
+    {% endif %}
+  </section>
+  {% endfor %}
+</main>
+{% endblock %}

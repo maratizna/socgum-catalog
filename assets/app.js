@@ -486,6 +486,41 @@
       a = +a;
       return isFinite(a) && a >= 0 ? a : null;
     }
+
+    /* После окончания номера предлагаем оценить его в один тап. Показываем один раз за визит. */
+    var endedCta = null, endedDone = false;
+    function hideEndCta() { if (endedCta) { endedCta.remove(); endedCta = null; } }
+    function openRate() {
+      hideEndCta();
+      var d = document.querySelector("details.rate-box");
+      if (d) {
+        d.open = true;
+        d.scrollIntoView({ block: "center", behavior: reduceMotion ? "auto" : "smooth" });
+        var r = d.querySelector("input[type=range]");
+        if (r) setTimeout(function () { try { r.focus({ preventScroll: true }); } catch (e) { } }, 350);
+      } else {
+        var cm = document.getElementById("comments");
+        if (cm) cm.scrollIntoView({ block: "start", behavior: reduceMotion ? "auto" : "smooth" });
+      }
+    }
+    function showEndCta() {
+      if (endedDone || endedCta) return;
+      endedDone = true;
+      endedCta = document.createElement("div");
+      endedCta.className = "ended-cta";
+      var t = document.createElement("p"); t.className = "ended-cta-t"; t.textContent = "Как вам номер?";
+      var row = document.createElement("div"); row.className = "ended-cta-row";
+      var b = document.createElement("button");
+      b.type = "button"; b.className = "btn"; b.textContent = "Оценить в один тап";
+      b.addEventListener("click", openRate);
+      var later = document.createElement("button");
+      later.type = "button"; later.className = "linkbtn"; later.textContent = "Позже";
+      later.addEventListener("click", hideEndCta);
+      row.append(b, later);
+      endedCta.append(t, row);
+      var anchor = (resumeBox && resumeBox.parentNode) ? resumeBox : stage;
+      if (anchor && anchor.parentNode) anchor.parentNode.insertBefore(endedCta, anchor.nextSibling);
+    }
     function hookPos() {
       if (!vk || typeof vk.on !== "function") return;
       var last = 0, ticked = false, playing = false, poll = 0;
@@ -503,11 +538,17 @@
         } catch (e) { }
       }
       function on(ev, fn) { try { vk.on(ev, fn); } catch (e) { } }
-      on("timeupdate", function (a) { ticked = true; rec(tnum(a)); });
+      on("timeupdate", function (a) {
+        ticked = true;
+        var t = tnum(a);
+        rec(t);
+        // номер закончился: запись концерта длиннее, поэтому ловим конец таймкода
+        if (endSec && t !== null && t >= endSec - 1) showEndCta();
+      });
       on("started", function () { playing = true; });
       on("resumed", function () { playing = true; });
       on("paused", function () { playing = false; ask(); });
-      on("ended", function () { playing = false; posDrop(); });
+      on("ended", function () { playing = false; posDrop(); showEndCta(); });
       // если плеер не присылает время сам, спрашиваем его раз в несколько секунд
       poll = setInterval(function () { if (!ticked) ask(); }, 5000);
       window.addEventListener("pagehide", function () { clearInterval(poll); if (!ticked || playing) ask(); });
@@ -682,6 +723,16 @@
     x.focus();
   }
   window.SGPhoto = { open: gallery };
+
+  /* Клик по аватарке пользователя — открыть фото в том же окне, что и остальные фотографии */
+  document.addEventListener("click", function (e) {
+    var t = e.target;
+    if (!t || t.tagName !== "IMG" || !t.classList.contains("avatar")) return;
+    if (!t.hasAttribute("data-photo")) return;
+    if (t.closest("button, a")) return;
+    e.preventDefault();
+    gallery([{ url: t.currentSrc || t.src, alt: t.alt || "" }], 0, {});
+  });
 
   function cover() {
     var poster = document.querySelector(".stage-poster");

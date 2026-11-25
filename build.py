@@ -407,6 +407,7 @@ SPEC = {
         "about": ["описание"], "cover": ["обложка"], "start": ["начало"], "end": ["конец"],
         "old_url": ["старый адрес"], "links": ["ссылки", "соцсети", "группа"], "track": ["трек", "саундтрек"], "direction2": ["ещё направление", "еще направление", "второе направление"],
         "photos": ["фото", "фотографии", "фото номера"], "video": ["видео", "видео номера", "запись"],
+        "start2": ["начало 2", "начало во второй записи"], "end2": ["конец 2", "конец во второй записи"],
     },
     "Люди": {"name": ["имя"], "about": ["о себе", "описание"], "link": ["ссылка"], "id": ["id"]},
     "Формы": {"title": ["форма"], "url": ["ссылка для сотрудников", "ссылка"]},
@@ -721,6 +722,29 @@ ICON_RULES = [
 ]
 
 
+def tilda_link(name, season):
+    """Ссылка на блок концерта на тильда-странице СоцГума (только для известных типов)."""
+    k = norm(name)
+    m = re.search(r"(20\d\d)", season or "")
+    yy = m.group(1)[2:] if m else ""
+    if not yy:
+        return ""
+    if "гала" in k and "универ" in k:
+        return f"https://socgumsu.tilda.ws/all_concert/socgum#galkaunivera{yy}"
+    if "дебют" in k and "гала" in k:
+        return f"https://socgumsu.tilda.ws/all_concert/socgum#galkadebutov{yy}"
+    if "дебют" in k:
+        for word, fac in (("соцфак", "socfuck"), ("ффж", "ffg"), ("истфак", "istfuck"), ("психфак", "psihfuck")):
+            if word in k:
+                return f"https://socgumsu.tilda.ws/all_concert/{fac}#debut{fac}{yy}"
+        return ""
+    if "лаваш" in k:
+        return f"https://socgumsu.tilda.ws/all_concert/socgum#letovesnasocgum{yy}"
+    if "весна" in k or "студвесна" in k:
+        return f"https://socgumsu.tilda.ws/all_concert/socgum#vesnasocgum{yy}"
+    return ""
+
+
 def direction_icon(name):
     k = norm(name)
     for word, icon in ICON_RULES:
@@ -848,7 +872,7 @@ def build_model(wb, report):
             "performers": split_people(r.get("performers")), "choreographers": split_people(r.get("choreographers")),
             "about": r.get("about", ""), "cover_name": r.get("cover", ""), "start": start, "end": end,
             "old_url": r.get("old_url", ""), "social": social_links(r.get("links")), "tracks": track_links(r.get("track")),
-            "photos": r.get("photos", ""), "video": r.get("video", ""),
+            "photos": r.get("photos", ""), "video": r.get("video", ""), "start2": (r.get("start2") or "").strip(), "end2": (r.get("end2") or "").strip(),
             "offstage": any(d.get("offstage") for d in dirs_found),
             "rate_dir": next((d for d in dirs_found if d.get("offstage")), None) or next((d for d in dirs_found if d.get("criteria")), None),
         }
@@ -1213,6 +1237,10 @@ def build_site(concerts, directions, numbers, people, report, demo, source, admi
         n["age_days"] = (dt.date.today() - d).days if d else 0
         n["photos_list"] = [u for u in re.split(r"[\s,;]+", (n.get("photos") or "").strip()) if u.startswith(("http://", "https://"))][:12]
         n["video_obj"] = parse_video(n.get("video") or "")
+        n["start2"] = (n.get("start2") or "").strip()
+        n["end2"] = (n.get("end2") or "").strip()
+        # если описания нет — кнопку «Дополнить» показываем не в верхнем ряду, а ниже, вместе с «Добавить в каталог»
+        n["needs_desc"] = not (n.get("about") or "").strip()
         # «важные» данные: коллектив, участники, постановщики, обложка и таймкод (для внесценических время не нужно)
         n["needs_fill"] = not (
             bool((n.get("collective") or "").strip())
@@ -1251,6 +1279,18 @@ def build_site(concerts, directions, numbers, people, report, demo, source, admi
             root="../", page_title=f"Правка каталога: {cfg['site_title']}", canonical="", og_image="", description="", **ctx_common))
         write(TMP / "add" / "index.html", env.get_template("add.html").render(
             root="../", page_title=f"Добавить в каталог: {cfg['site_title']}", canonical="", og_image="", description="", **ctx_common))
+        concert_list = []
+        for c in concerts.values():
+            v = c.get("video")
+            vurl = f"https://vk.com/video{v['oid']}_{v['id']}" if v and v.get("oid") else ""
+            concert_list.append({"slug": c["slug"], "name": c["name"], "season": c["season"], "date": c["date"],
+                                 "topic": c.get("topic", ""), "tilda": tilda_link(c["name"], c["season"]),
+                                 "video_url": vurl, "numbers": c["numbers"]})
+        concert_list.sort(key=lambda c: (c["season"] or "", c["date"] or dt.date.min), reverse=True)
+        write(TMP / "concerts" / "index.html", env.get_template("concerts.html").render(
+            root="../", concerts=concert_list, page_title=f"Концерты: {cfg['site_title']}",
+            canonical=f"{site_url}/concerts/" if site_url else "", og_image="",
+            description="Все концерты каталога СоцГума: записи, номера и участники.", **ctx_common))
         write(TMP / "faq" / "index.html", env.get_template("faq.html").render(
             root="../", page_title=f"Как это работает: {cfg['site_title']}",
             canonical=f"{site_url}/faq/" if site_url else "", og_image="",
@@ -1316,7 +1356,7 @@ def build_site(concerts, directions, numbers, people, report, demo, source, admi
             return str(v).strip()
 
         NUM_KEYS = ("title", "collective", "concert", "direction", "direction2", "performers",
-                    "choreographers", "about", "cover", "start", "end", "old_url", "links", "track", "photos", "video")
+                    "choreographers", "about", "cover", "start", "end", "old_url", "links", "track", "photos", "video", "start2", "end2")
         CON_KEYS = ("name", "date", "video", "video2", "about", "cover", "topic", "season", "year", "ctype", "playlist")
         # id связанных номеров («другое исполнение») — для формы дополнения на /add/
         rel_ids = {}
@@ -1364,7 +1404,7 @@ def build_site(concerts, directions, numbers, people, report, demo, source, admi
     write(TMP / "rate.json", json.dumps(rate_feed, ensure_ascii=False, separators=(",", ":")))
 
     if site_url:
-        urls = [f"{site_url}/"] + [f"{site_url}/n/{n['id']}/" for n in numbers.values()] + [f"{site_url}/p/{p['slug']}/" for p in people.values()]
+        urls = [f"{site_url}/"] + [f"{site_url}/concerts/"] + [f"{site_url}/n/{n['id']}/" for n in numbers.values()] + [f"{site_url}/p/{p['slug']}/" for p in people.values()]
         if firebase:
             urls.append(f"{site_url}/faq/")
         write(TMP / "sitemap.xml", '<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n'

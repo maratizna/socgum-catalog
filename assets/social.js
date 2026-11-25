@@ -470,7 +470,7 @@
 
   function avatarNode(uid, name, size) {
     var cls = "avatar avatar-" + (size || "s");
-    if (avatars[uid]) return el("img", { class: cls, src: avatars[uid], alt: "" });
+    if (avatars[uid]) return el("img", { class: cls, src: avatars[uid], alt: "", "data-photo": avatars[uid] });
     var ch = (String(name || "?").trim().charAt(0) || "?").toUpperCase();
     var n = el("span", { class: cls + " avatar-init", "aria-hidden": "true", text: ch });
     n.style.background = "hsl(" + hue(String(uid || name)) + ",35%,32%)";
@@ -711,6 +711,7 @@
   });
   document.addEventListener("keydown", function (e) { if (menuOpen && e.key === "Escape") setMenu(false, true); });
   var UM_ICON = {
+    list: '<svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><path d="M8 6h12M8 12h12M8 18h12" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><circle cx="4" cy="6" r="1.6" fill="currentColor"/><circle cx="4" cy="12" r="1.6" fill="currentColor"/><circle cx="4" cy="18" r="1.6" fill="currentColor"/></svg>',
     page: '<svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><circle cx="12" cy="8" r="4" fill="none" stroke="currentColor" stroke-width="2"/><path d="M4.5 20c.8-3.6 3.7-5.5 7.5-5.5s6.7 1.9 7.5 5.5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>',
     gear: '<svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><circle cx="12" cy="12" r="3.2" fill="none" stroke="currentColor" stroke-width="2"/><path d="M12 2.8v3M12 18.2v3M2.8 12h3M18.2 12h3M5.5 5.5l2.1 2.1M16.4 16.4l2.1 2.1M18.5 5.5l-2.1 2.1M7.6 16.4l-2.1 2.1" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>',
     admin: '<svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><path d="M12 3l7.5 3v5.5c0 4.6-3.1 8.2-7.5 9.5-4.4-1.3-7.5-4.9-7.5-9.5V6z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/></svg>',
@@ -743,6 +744,7 @@
         el("div", { class: "um-head" }, avatarNode(uid, nm, "s"),
           el("div", { class: "um-who" }, el("b", { text: nm }), state.admin ? el("span", { class: "c-hint", text: "Администратор" }) : null)),
         umItem(ownPageUrl(), "page", "Моя страница"),
+        umItem(ROOT + "u/?id=" + encodeURIComponent(uid) + "#requests", "list", "Мои заявки"),
         umItem(ROOT + "settings/", "gear", "Настройки профиля"));
       var admItem = null;
       if (state.admin) { admItem = umItem(ROOT + "account/", "admin", "Кабинет администратора"); menu.append(admItem); }
@@ -797,6 +799,22 @@
   function loadingState(text) {
     return el("div", { class: "loading-state", role: "status", "aria-live": "polite" },
       el("span", { class: "spinner", "aria-hidden": "true" }), el("span", { text: text || "Загружаем…" }));
+  }
+  /* Скелетоны: держат место списка, пока данные грузятся (страница не «прыгает») */
+  function skelRow(kind) {
+    var row = el("div", { class: "skel-row" + (kind ? " skel-" + kind : "") });
+    if (kind === "comment") row.append(el("span", { class: "skel-ava" }));
+    var lines = el("span", { class: "skel-lines" });
+    lines.append(el("span", { class: "skel-line skel-w40" }));
+    lines.append(el("span", { class: "skel-line skel-w90" }));
+    if (kind === "comment") lines.append(el("span", { class: "skel-line skel-w60" }));
+    row.append(lines);
+    return row;
+  }
+  function skeletonList(rows, kind) {
+    var box = el("div", { class: "skeleton-list", role: "status", "aria-label": "Загружаем…" });
+    for (var i = 0, n = rows || 3; i < n; i++) box.append(skelRow(kind));
+    return box;
   }
   function setLoading(btn, on, label) {
     btn.disabled = !!on;
@@ -1374,7 +1392,7 @@
 
     function drawList() {
       clear(list);
-      if (!loaded) { sortBar.hidden = true; list.append(loadingState("Загружаем комментарии…")); return; }
+      if (!loaded) { sortBar.hidden = true; list.append(skeletonList(3, "comment")); return; }
       if (fail) { sortBar.hidden = true; list.append(errorState(fail, function () { loadComments(true).then(draw); })); return; }
       var top = comments.filter(function (c) { return !c.parentId; });
       var byParent = {};
@@ -2112,6 +2130,60 @@
       draw();
     }, function (e) { loadErr = errText(e); draw(); });
   }
+  function dateShort(ts) {
+    try {
+      var d = ts && ts.toDate ? ts.toDate() : (ts ? new Date(ts) : null);
+      if (!d || isNaN(d.getTime())) return "";
+      var p = function (n) { return (n < 10 ? "0" : "") + n; };
+      return p(d.getDate()) + "." + p(d.getMonth() + 1) + "." + d.getFullYear() + " " + p(d.getHours()) + ":" + p(d.getMinutes());
+    } catch (e) { return ""; }
+  }
+  /* «Мои заявки»: что человек отправил на сайт и на каком это этапе */
+  function panelRequests(panel) {
+    var uid = state.user && state.user.uid;
+    if (!uid) { clear(panel).append(signInPrompt("Войдите, чтобы увидеть свои заявки")); return Promise.resolve(); }
+    clear(panel).append(skeletonList(3, "row"));
+    var KIND = { "number": "Номер", "number-new": "Новый номер", "number-extra": "Ссылки номера", "team": "Команда направления", "concert-new": "Новый концерт" };
+    var STATUS = {
+      "new": ["На проверке", "adm-chip-new"],
+      "approved": ["Одобрено", "adm-chip-new"],
+      "applied": ["Принято", "adm-chip-applied"],
+      "error": ["Ошибка переноса", "adm-chip-error"],
+      "rejected": ["Отклонено", "adm-chip-error"]
+    };
+    return cached("user:reqs:" + uid, TTL.pub, false, function () {
+      return fb.f.getDocs(fb.f.query(fcol("submissions"), fb.f.where("uid", "==", uid), fb.f.limit(30))).then(function (q) {
+        return q.docs.map(function (d) {
+          var x = d.data() || {};
+          return { id: d.id, kind: x.kind, number: x.number, concert: x.concert, status: x.status, createdAt: x.createdAt, fields: x.fields || {}, error: x.error || "" };
+        }).sort(function (a, b) { return ms(b.createdAt) - ms(a.createdAt); });
+      });
+    }).then(function (list) {
+      clear(panel);
+      if (!list.length) {
+        panel.append(emptyState("Заявок пока нет", "Дополните номер или добавьте концерт — заявка появится здесь и будет видна, на каком она этапе.",
+          el("a", { class: "btn btn-s", href: ROOT + "add/", text: "Добавить в каталог" }), "✎"));
+        return;
+      }
+      var box = el("div", { class: "req-list" });
+      list.forEach(function (r) {
+        var st = STATUS[r.status] || ["В обработке", "adm-chip-new"];
+        var title = r.number || r.concert || (r.fields && (r.fields.title || r.fields.name)) || "заявка";
+        var fields = Object.keys(r.fields || {}).filter(function (k) { return r.fields[k]; }).length;
+        box.append(el("article", { class: "req" },
+          el("div", { class: "req-top" },
+            el("p", { class: "req-t" }, el("b", { text: title })),
+            el("span", { class: "adm-chip " + st[1], text: st[0] })),
+          el("p", { class: "req-s", text: [KIND[r.kind] || "Заявка", r.concert || "", fields ? "полей: " + fields : ""].filter(Boolean).join(" · ") }),
+          r.status === "error" && r.error ? el("p", { class: "req-err", text: r.error }) : null,
+          el("p", { class: "req-date", text: dateShort(r.createdAt) })));
+      });
+      panel.append(box);
+      panel.append(el("p", { class: "c-hint", text: "Заявку проверяет администратор. После проверки она уходит в таблицу и появляется на сайте." }));
+    }, function (e) {
+      clear(panel).append(errorState(errText(e), function () { cdrop("user:reqs:" + uid); panelRequests(panel); }));
+    });
+  }
   function panelPlaylists(panel, uid, self, info) {
     var menuOpen = {}, editMode = {}, openState = {}, curList = [], loadErr = "";   // состояния по id переживают перерисовку
     function closeMenus() {
@@ -2219,6 +2291,7 @@
     var defs = [];
     if (nums) defs.push({ id: "nums", label: "Номера", panel: nums });
     defs.push({ id: "comments", label: "Комментарии" }, { id: "ratings", label: "Оценки" }, { id: "playlists", label: "Плейлисты" });
+    if (o.self) defs.push({ id: "requests", label: "Мои заявки" });
     var bar = el("div", { class: "ptabs-bar", role: "tablist" });
     host.insertBefore(bar, host.firstChild); st.nodes.push(bar);
     defs.forEach(function (d) {
@@ -2247,8 +2320,9 @@
       var d = defs.filter(function (x) { return x.id === id; })[0];
       if (!d || d.id === "nums" || (st.loaded[id] && !force)) return;
       st.loaded[id] = true;
-      clear(d.panel).append(loadingState("Загружаем вкладку…"));
+      clear(d.panel).append(skeletonList(4, "row"));
       catalogInfo().then(function (info) {
+        if (id === "requests") return panelRequests(d.panel);
         if (id === "comments") return panelComments(d.panel, st.uid, info, st.self);
         if (id === "ratings") return panelRatings(d.panel, st.uid, info, st.self);
         return panelPlaylists(d.panel, st.uid, st.self, info);
@@ -2382,7 +2456,7 @@
       ]).then(function (r) {
         claimsOf = r[0] || {}; data = r[1]; info = r[3];
         var pids = Object.keys(claimsOf).filter(function (p) { return claimsOf[p].status === "approved"; });
-        if (pids.length) { moved = true; location.replace(ROOT + "p/" + pids[0] + "/"); return; }
+        if (pids.length && (location.hash || "") !== "#requests") { moved = true; location.replace(ROOT + "p/" + pids[0] + "/"); return; }
         done = true;
       });
     }
@@ -2914,7 +2988,7 @@
       var openStrip = function () {
         if (done || !strip.open) return;
         done = true;
-        clear(row).append(el("li", { class: "hot-wait" }, loadingState("Загружаем обсуждаемое…")));
+        clear(row).append(el("li", { class: "hot-wait" }, skeletonList(2, "hot")));
         loadHot("a", 5).then(function (arr) {
           var cards = (arr || []).map(function (it) { return hotCard(meta, it); }).filter(Boolean);
           clear(row);
@@ -2930,7 +3004,7 @@
     if (page) {
       var wk = document.getElementById("hot-week"), all = document.getElementById("hot-all");
       var fill = function (box, kind, lim, emptyTitle, emptyText) {
-        clear(box).append(loadingState("Загружаем обсуждаемое…"));
+        clear(box).append(skeletonList(3, "hot"));
         return loadHot(kind, lim).then(function (arr) {
           var items = (arr || []).filter(function (it) { return meta[it.id]; }).map(function (it, i) {
             return el("li", null, el("span", { class: "hot-rank", text: String(i + 1) }), hotCard(meta, it));
@@ -3671,6 +3745,77 @@
         el("button", { type: "button", class: "add-link", text: label, onclick: function () { D.done = false; D.cur = null; goMode(""); } }));
     }
 
+    /* Иконка направления — та же логика, что в build.py (assets/dir-icons.svg) */
+    function dirIconName(d) {
+      var rules = [["вокально", "note"], ["вокал", "mic"], ["инструмент", "guitar"], ["барабан", "drum"], ["удар", "drum"],
+        ["хореограф", "dance"], ["танц", "dance"], ["театр", "ticket"], ["актер", "star"], ["оригинал", "spiral"],
+        ["smm", "megaphone"], ["сценар", "script"], ["админ", "clipboard"], ["раб", "hammer"], ["декор", "spray"],
+        ["футаж", "video"], ["видео", "video"], ["фото", "photo"]];
+      var k = norm(d);
+      for (var i = 0; i < rules.length; i++) if (k.indexOf(rules[i][0]) >= 0) return rules[i][1];
+      return "star";
+    }
+    function dirField(opts) {
+      opts = opts || {};
+      var chosen = opts.value || "", team = !!opts.team;
+      var box = el("div", { class: "add-dirs" });
+      var hidden = el("input", { type: "hidden", name: "direction", value: chosen });
+      var list;
+      if (team) {
+        list = OFFSTAGE.filter(function (x) { return directions().indexOf(x) >= 0; });
+        if (!list.length) list = OFFSTAGE.slice();
+      } else {
+        var all = directions();
+        var STAGE_ORDER = ["Хореография", "Вокал", "Театр", "Оригинальный жанр", "Инструментал", "Вокально-инструментальное", "Актёрка"];
+        var stage = all.filter(function (d) { return OFFSTAGE.indexOf(d) < 0; })
+          .sort(function (a, b) {
+            var ia = STAGE_ORDER.indexOf(a), ib = STAGE_ORDER.indexOf(b);
+            if (ia < 0) ia = 99; if (ib < 0) ib = 99;
+            return ia - ib || a.localeCompare(b, "ru");
+          });
+        var off = all.filter(function (d) { return OFFSTAGE.indexOf(d) >= 0; });
+        list = stage.concat(off);
+      }
+      list.forEach(function (d) {
+        var ic = el("span", { class: "add-dir-ic", "aria-hidden": "true" });
+        ic.innerHTML = '<svg class="di" aria-hidden="true" focusable="false"><use href="' + ROOT + 'assets/dir-icons.svg#di-' + dirIconName(d) + '"/></svg>';
+        var b = el("button", { type: "button", class: "add-dir" + (chosen === d ? " is-on" : "") }, ic, el("span", { text: d }));
+        b.addEventListener("click", function () {
+          chosen = d; hidden.value = d;
+          Array.prototype.forEach.call(box.querySelectorAll(".add-dir"), function (x) { x.classList.toggle("is-on", x === b); });
+        });
+        box.append(b);
+      });
+      box.append(hidden);
+      return el("div", { class: "add-field add-field-wide" },
+        el("span", { class: "add-label", text: "Направление" }),
+        el("p", { class: "add-hint", text: team ? "Внесценические направления." : "Сначала сценические, ниже — внесценические." }),
+        box);
+    }
+    function concertField(hintText) {
+      var picked = "", sec = el("div", { class: "add-field add-field-wide" });
+      var inp = el("input", { class: "add-in add-search", type: "search", placeholder: "Начните вводить: гала, студвесна, 2025" });
+      var hidden = el("input", { type: "hidden", name: "concert", value: "" });
+      var picks = el("div", { class: "add-picks" });
+      function fill() {
+        var q = norm(inp.value), items = concerts().filter(function (c) {
+          return !q || norm((c.name || "") + " " + (c.season || "") + " " + (c.year || "")).indexOf(q) >= 0;
+        }).slice(0, 8);
+        clear(picks);
+        if (!items.length) { picks.append(el("p", { class: "add-pick-empty", text: "Концерт не найден — возможно, его ещё нет в каталоге." })); return; }
+        items.forEach(function (c) {
+          var b = el("button", { type: "button", class: "add-pick" + (picked === c.name ? " is-on" : "") },
+            el("span", { class: "add-pick-t", text: c.name }),
+            el("span", { class: "add-pick-s", text: [c.season, c.year, plural((numbersOf(c.name) || []).length, "номер", "номера", "номеров")].filter(Boolean).join(" · ") }));
+          b.addEventListener("click", function () { picked = c.name; hidden.value = c.name; inp.value = c.name; fill(); });
+          picks.append(b);
+        });
+      }
+      inp.addEventListener("input", function () { picked = ""; hidden.value = ""; fill(); });
+      fill();
+      sec.append(el("span", { class: "add-label", text: "Концерт" }), el("p", { class: "add-hint", text: hintText || "" }), inp, hidden, picks);
+      return sec;
+    }
     function chooseView() {
       var wrap = el("div", { class: "add-modes" });
       [["concert", "Концерт"], ["number", "Номер и команда направления"], ["patch", "Дополнить номер"]].forEach(function (pair) {
@@ -3690,16 +3835,16 @@
       wrap.append(backLink("← Добавить в каталог"));
       var form = el("form", { class: "add-form" });
       var grid = el("div", { class: "add-grid" });
-      var nameF = field("Название концерта", input("title", "Например: Гала-концерт СоцГум, осень 2024"), "Как в афише: тип концерта, сезон и год.");
+      var nameF = field("Название концерта", input("topic", "Например: Отель Соблазн"), "Необязательно — если пусто, соберём из типа и сезона.");
       nameF.classList.add("add-field-wide");
       grid.append(nameF);
       grid.append(field("Дата", input("date", "14.05.2026", { mode: "numeric" }), "Можно не заполнять — поставим, когда появятся номера."));
       grid.append(field("Ссылка на запись в VK", input("video", "https://vk.ru/video-227636138_456239051"), "Нужна ссылка на видео, а не на пост с анонсом. Если записи ещё нет — вставьте ссылку на пост: заменим позже."));
       grid.append(field("Тип концерта", select("ctype", CTYPES, "auto")));
+      grid.append(field("Сезон", select("season", seasons().map(function (s) { return [s, s]; }), "2025–2026"), "Из типа и сезона соберём название, если не заполнить поле выше."));
       var seas = seasons().map(function (s) { return [s, s]; });
-      grid.append(field("Учебный год", select("season", seas, "2025–2026")));
-      grid.append(field("Тема", input("topic", "Например: Отель Соблазн")));
-      grid.append(field("Обложка", input("cover", "ссылка на картинку"), "Только ссылка — файл загружать не нужно."));
+
+      grid.append(field("Аватарка", input("cover", "ссылка на картинку"), "Только ссылка — файл загружать не нужно."));
       grid.append(field("Описание", area("about", "Что это за концерт, для зрителя", 4), "Необязательно.", true));
       form.append(grid);
       var more = el("details", { class: "add-more" });
@@ -3711,8 +3856,8 @@
           el("span", { class: "add-hint", text: "Например, запись с другой камеры. Обычно не нужна." }))));
       form.append(more);
       form.append(sendSummary(form, {
-        title: "Название", date: "Дата", video: "Ссылка на запись", video2: "Вторая запись",
-        ctype: "Тип концерта", season: "Учебный год", topic: "Тема", cover: "Обложка", about: "Описание",
+        topic: "Название", date: "Дата", video: "Ссылка на запись", video2: "Вторая запись",
+        ctype: "Тип концерта", season: "Сезон", cover: "Аватарка", about: "Описание",
       }));
       form.append(el("div", { class: "add-actions" },
         el("button", { type: "submit", class: "btn", text: "Отправить заявку" }),
@@ -3720,7 +3865,10 @@
       form.addEventListener("submit", function (e) {
         e.preventDefault();
         var f = collect(form);
-        if (!f.title) { formMsg(form, "Напишите название концерта.", true); return; }
+        var ctypeLabel = "";
+        CTYPES.forEach(function (x) { if (x[0] === f.ctype) ctypeLabel = x[1]; });
+        if (!f.topic) f.topic = (ctypeLabel && f.ctype !== "auto" ? ctypeLabel : "Концерт") + (f.season ? ", " + f.season : "");
+        f.title = f.topic;
         if (!f.video || !URL_RE.test(f.video)) { formMsg(form, "Нужна ссылка на запись в VK — начните с https://", true); return; }
         if (f.video2 && !URL_RE.test(f.video2)) { formMsg(form, "Вторая запись тоже должна быть ссылкой.", true); return; }
         if (f.date && !DATE_RE.test(f.date)) { formMsg(form, "Дата — в виде 14.05.2026.", true); return; }
@@ -3748,34 +3896,36 @@
       var form = el("form", { class: "add-form" });
       var grid = el("div", { class: "add-grid" });
       if (team) {
-        grid.append(field("Концерт", select("concert", [["", "— выберите концерт —"]].concat(conList), ""), "Команда относится к конкретному концерту.", true));
-        grid.append(field("Направление", select("direction", dirList, ""), "Внесценическое: SMM, сценарка, админка, декор, сцена, футажи."));
+        grid.append(concertField("Команда относится к конкретному концерту."));
+        grid.append(dirField({ team: true }));
         grid.append(field("Название", input("title", "оставьте пустым — будет «Команда СММ»"), "Можно не заполнять."));
         grid.append(field("Участники", area("performers", "Алиев Марат, Куницына Арина", 3), "Через запятую.", true));
         grid.append(field("Постановщики", area("choreographers", "кто ведёт направление", 2), "Через запятую."));
         grid.append(field("Описание", area("about", "Чем занимается команда", 3), "Необязательно.", true));
-        grid.append(field("Обложка", input("cover", "ссылка на картинку"), "Только ссылка."));
+        grid.append(field("Аватарка", input("cover", "ссылка на картинку"), "Только ссылка."));
       } else {
-        grid.append(field("Концерт", select("concert", [["", "— выберите концерт —"]].concat(conList), ""), "Номер привяжется к этому концерту."));
-        grid.append(field("Направление", select("direction", dirList, "")));
+        grid.append(concertField("Номер привяжется к этому концерту."));
+        grid.append(dirField({}));
         grid.append(field("Название номера", input("title", "Например: Ритм сердца")));
         grid.append(field("Коллектив", input("collective", "Например: Limerence"), "Сольный номер — оставьте пустым."));
         grid.append(field("Участники", area("performers", "Алиев Марат, Куницына Арина", 3), "Через запятую."));
         grid.append(field("Постановщики", area("choreographers", "ФИО постановщиков", 2), "Через запятую."));
         grid.append(field("Начало", input("start", "0:52:10", { mode: "numeric" }), "Время в записи концерта."));
         grid.append(field("Конец", input("end", "0:58:10", { mode: "numeric" })));
+        grid.append(field("Начало 2", input("start2", "0:12:30", { mode: "numeric" }), "Если номер есть и во второй записи концерта."));
+        grid.append(field("Конец 2", input("end2", "0:18:40", { mode: "numeric" }), "Можно не заполнять."));
         grid.append(field("Ссылки", input("links", "трек, группа — через запятую")));
         grid.append(field("Описание", area("about", "О чём номер, кто автор", 4), "Необязательно.", true));
-        grid.append(field("Обложка", input("cover", "ссылка на картинку"), "Только ссылка — файл загружать не нужно.", true));
+        grid.append(field("Аватарка", input("cover", "ссылка на картинку"), "Только ссылка — файл загружать не нужно.", true));
       }
       form.append(grid);
       form.append(sendSummary(form, team ? {
         concert: "Концерт", direction: "Направление", title: "Название", performers: "Участники",
-        choreographers: "Постановщики", about: "Описание", cover: "Обложка",
+        choreographers: "Постановщики", about: "Описание", cover: "Аватарка",
       } : {
         concert: "Концерт", direction: "Направление", title: "Название", collective: "Коллектив",
         performers: "Участники", choreographers: "Постановщики", start: "Начало", end: "Конец",
-        links: "Ссылки", about: "Описание", cover: "Обложка",
+        start2: "Начало 2", end2: "Конец 2", links: "Ссылки", about: "Описание", cover: "Аватарка",
       }));
       form.append(el("div", { class: "add-actions" },
         el("button", { type: "submit", class: "btn", text: "Отправить заявку" }),
@@ -3791,6 +3941,8 @@
         } else if (!f.title) { formMsg(form, "Напишите название номера.", true); return; }
         if (f.start && !TIME_RE.test(f.start)) { formMsg(form, "Начало — мм:сс или ч:мм:сс.", true); return; }
         if (f.end && !TIME_RE.test(f.end)) { formMsg(form, "Конец — мм:сс или ч:мм:сс.", true); return; }
+        if (f.start2 && !TIME_RE.test(f.start2)) { formMsg(form, "Начало во второй записи — мм:сс или ч:мм:сс.", true); return; }
+        if (f.end2 && !TIME_RE.test(f.end2)) { formMsg(form, "Конец во второй записи — мм:сс или ч:мм:сс.", true); return; }
         if (f.cover && !URL_RE.test(f.cover) && !/^[^\s/]+\.(jpe?g|png|webp)$/i.test(f.cover)) { formMsg(form, "Обложка — ссылка на картинку.", true); return; }
         submitNew(team ? "team" : "number-new", f, form, team ? "Заявка на команду направления отправлена" : "Заявка на новый номер отправлена");
       });
@@ -4022,10 +4174,20 @@
         more.append(el("summary", { text: "Вторая запись концерта — нужна редко" }));
         var v2 = el("input", { class: "add-in", type: "text", placeholder: "https://vk.ru/video..." });
         v2.dataset.x = "video2"; v2.dataset.was = c.video2 || ""; v2.value = c.video2 || "";
+        var v2s = el("input", { class: "add-in", type: "text", placeholder: "0:12:30", inputmode: "numeric" });
+        v2s.dataset.k = "start2"; v2s.dataset.was = n.start2 || ""; v2s.value = n.start2 || "";
+        var v2e = el("input", { class: "add-in", type: "text", placeholder: "0:18:40", inputmode: "numeric" });
+        v2e.dataset.k = "end2"; v2e.dataset.was = n.end2 || ""; v2e.value = n.end2 || "";
         more.append(el("div", { class: "add-more-body" },
           el("label", { class: "add-field" },
             el("span", { class: "add-label", text: "Ссылка на вторую запись" }), v2,
-            el("span", { class: "add-hint", text: "Если концерт выложен ещё раз отдельным видео — вставьте ссылку." }))));
+            el("span", { class: "add-hint", text: "Если концерт выложен ещё раз отдельным видео — вставьте ссылку." })),
+          el("label", { class: "add-field" },
+            el("span", { class: "add-label", text: "Начало во второй записи" }), v2s,
+            el("span", { class: "add-hint", text: "Где номер начинается в этой записи. Можно не заполнять." })),
+          el("label", { class: "add-field" },
+            el("span", { class: "add-label", text: "Конец во второй записи" }), v2e,
+            el("span", { class: "add-hint", text: "Можно не заполнять." }))));
         form.append(more);
       }
 

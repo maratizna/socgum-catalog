@@ -1238,3 +1238,71 @@ body.lb-on{overflow:hidden}
 .faq-note{color:var(--ash);font-size:.9rem;max-width:70ch}
 .settings-offline{color:var(--ash);font-size:.9rem;margin:22px 0 0}
 .settings-offline .linkbtn{margin-left:6px}
+
+/* «Дополнить номер» ниже, когда у номера нет описания */
+.num-more{display:flex;gap:14px;align-items:center;justify-content:space-between;flex-wrap:wrap;margin:8px 0 0;padding:16px 18px;border:1px solid var(--line);border-radius:12px;background:var(--coal)}
+.num-more-t{margin:0;color:var(--ash);max-width:62ch}
+.num-more .add-btn{flex:0 0 auto}
+@media (max-width:760px){.num-more{padding:14px 16px;gap:10px}.num-more .add-btn{width:100%;justify-content:center}}
+
+/* подсказка после окончания записи номера */
+.ended-cta{margin:12px 0 0;padding:14px 16px;border:1px solid var(--ember);border-radius:12px;background:var(--coal);display:flex;gap:12px;align-items:center;justify-content:space-between;flex-wrap:wrap}
+.ended-cta-t{margin:0;font-weight:600}
+.ended-cta-row{display:flex;gap:8px;flex-wrap:wrap}
+@media (max-width:760px){.ended-cta{padding:12px 14px}.ended-cta-row{width:100%}.ended-cta-row .btn{flex:1 1 auto;justify-content:center}}
+
+/* Скелетоны загрузки: держат место списка, чтобы страница не «прыгала» */
+.skeleton-list{display:grid;gap:12px;margin:12px 0}
+.skel-row{display:grid;grid-template-columns:auto minmax(0,1fr);gap:12px;align-items:start;padding:14px 16px;border:1px solid var(--line);border-radius:12px;background:var(--coal)}
+.skel-row.skel-hot{padding:10px 12px;grid-template-columns:minmax(0,1fr)}
+.skel-ava{width:36px;height:36px;border-radius:50%;background:var(--coal-2)}
+.skel-lines{display:grid;gap:8px;min-width:0}
+.skel-line{display:block;height:11px;border-radius:6px;background:var(--coal-2)}
+.skel-w40{width:40%}.skel-w60{width:62%}.skel-w90{width:92%}
+.skel-ava,.skel-line{animation:skelPulse 1.4s ease-in-out infinite}
+@keyframes skelPulse{0%,100%{opacity:.55}50%{opacity:1}}
+@media (prefers-reduced-motion:reduce){.skel-ava,.skel-line{animation:none}}
+
+/* «Мои заявки» на своей странице /u/ */
+.req-list{display:grid;gap:12px;margin:12px 0}
+.req{padding:14px 16px;border:1px solid var(--line);border-radius:12px;background:var(--coal)}
+.req-top{display:flex;gap:10px;align-items:flex-start;justify-content:space-between;flex-wrap:wrap}
+.req-t{margin:0}
+.req-s{margin:6px 0 0;color:var(--ash)}
+.req-date{margin:6px 0 0;color:var(--ash);font-size:12.5px}
+.req-err{margin:6px 0 0;color:#ffb27a;font-size:13px}
+@media (max-width:760px){.req{padding:12px 14px}}
+
+/* Страница «Концерты»: список концертов и их номера */
+.page-concerts .page-lead{max-width:72ch}
+.conc{margin:28px 0 0;padding-top:22px;border-top:1px solid var(--line);scroll-margin-top:96px}
+.conc:first-of-type{border-top:0;padding-top:0;margin-top:10px}
+.conc-h2{font-family:var(--font-display);font-size:17px;margin:0 0 10px}
+.conc-jump{display:flex;flex-wrap:wrap;gap:8px 14px;margin:0 0 4px}
+.conc-jump a{color:var(--ash)}
+.conc-jump a:hover{color:var(--ember-hi)}
+.conc-t{font-family:var(--font-display);font-size:clamp(20px,2.6vw,26px);margin:0;line-height:1.25}
+.conc-t a{color:var(--ink);text-decoration:none;border-bottom:1px solid transparent}
+.conc-t a:hover{color:var(--ember-hi);border-bottom-color:currentColor}
+.conc-arrow{font-size:.8em;color:var(--ember)}
+.conc-meta{margin:6px 0 0;color:var(--ash)}
+.conc-links{margin:10px 0 0}
+.conc-nums{margin:14px 0 0;padding:0;list-style:none;display:grid;gap:2px}
+.conc-nums li{display:flex;gap:10px;align-items:baseline;flex-wrap:wrap;padding:4px 0;border-bottom:1px solid rgba(52,39,27,.55)}
+.conc-nums a{color:var(--ink)}
+.conc-nums a:hover{color:var(--ember-hi)}
+.conc-num-s{color:var(--ash);font-size:13px}
+
+/* Форма номера: выбор направления иконками и поиск концерта */
+.add-dirs{display:flex;flex-wrap:wrap;gap:8px}
+.add-dir{display:inline-flex;align-items:center;gap:7px;min-height:44px;padding:8px 12px;border:1px solid var(--line);border-radius:999px;background:var(--coal);color:var(--ink);cursor:pointer}
+.add-dir .di{width:18px;height:18px;color:var(--ember)}
+.add-dir:hover{border-color:var(--ember)}
+.add-dir.is-on{border-color:var(--ember);background:var(--ember);color:var(--night)}
+.add-dir.is-on .di{color:var(--night)}
+.add-pick-empty{margin:8px 0 0;color:var(--ash);font-size:13px}
+
+/* быстрый переход по концертам — свёрнут, чтобы не растягивать страницу */
+.conc-jump-wrap{margin:14px 0 6px;border:1px solid var(--line);border-radius:12px;background:var(--coal);padding:12px 16px}
+.conc-jump-wrap summary{cursor:pointer;font-weight:600}
+.conc-jump-wrap[open] summary{margin-bottom:10px}
