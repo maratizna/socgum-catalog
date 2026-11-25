@@ -1207,7 +1207,7 @@ def build_site(concerts, directions, numbers, people, report, demo, source, admi
     today = dt.date.today().isoformat()
     fbc = cfg.get("firebase") or {}
     firebase = {k: fbc[k] for k in ("apiKey", "authDomain", "projectId", "appId") if fbc.get(k)} if fbc.get("apiKey") and fbc.get("projectId") else None
-    asset_v = hashlib.sha1(b"".join((ROOT / "assets" / f).read_bytes() for f in ("style.css", "app.js", "social.js", "graph.js", "dir-icons.svg", "player.js"))).hexdigest()[:8]
+    asset_v = hashlib.sha1(b"".join((ROOT / "assets" / f).read_bytes() for f in ("style.css", "app.js", "lightbox.js", "social.js", "graph.js", "dir-icons.svg", "player.js"))).hexdigest()[:8]
     stat = {
         "numbers": f"{len(numbers)} {ru_plural(len(numbers), 'номер', 'номера', 'номеров')}",
         "concerts": f"{len(concerts)} {ru_plural(len(concerts), 'концерт', 'концерта', 'концертов')}",
@@ -1319,7 +1319,7 @@ def build_site(concerts, directions, numbers, people, report, demo, source, admi
     write(TMP / "offline.html", env.get_template("offline.html").render(
         root=base_path, page_title=f"Нет соединения: {cfg['site_title']}", canonical="", og_image="", description="", **{**ctx_common, "firebase": None}))
     core = ["./", "offline.html", "catalog.json", "rate.json", "manifest.webmanifest",
-            f"assets/style.css?v={asset_v}", f"assets/app.js?v={asset_v}", f"assets/graph.js?v={asset_v}", f"assets/dir-icons.svg?v={asset_v}"]
+            f"assets/style.css?v={asset_v}", f"assets/app.js?v={asset_v}", f"assets/lightbox.js?v={asset_v}", f"assets/graph.js?v={asset_v}", f"assets/dir-icons.svg?v={asset_v}"]
     if firebase:
         core.append(f"assets/social.js?v={asset_v}")
     if brand_font:

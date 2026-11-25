@@ -110,6 +110,7 @@
 })();
 </script>
 {% block scripts %}{% endblock %}
+<script src="{{ root }}assets/lightbox.js?v={{ asset_v }}" defer></script>
 {% if firebase %}<script type="module" src="{{ root }}assets/social.js?v={{ asset_v }}"></script>{% endif %}
 </body>
 </html>
