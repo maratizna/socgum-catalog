@@ -97,7 +97,7 @@
 <aside class="concert-panel" data-concert="{{ c.slug }}" hidden>
   {% if c.cover_url %}<img class="concert-cover" src="{{ c.cover_url }}" alt="" width="160" height="160" loading="lazy" decoding="async" referrerpolicy="no-referrer">{% endif %}
   <div class="concert-text">
-    {% if c.topic %}<h2>{{ c.topic }}</h2><p class="concert-name">{{ c.name }}</p>{% else %}<h2>{{ c.name }}</h2>{% endif %}
+    {% if c.topic %}<h2>{% if c.tilda %}<a class="conc-link" href="{{ c.tilda }}" rel="noopener" target="_blank">{{ c.topic }} <span class="conc-arrow" aria-hidden="true">↗</span></a>{% else %}{{ c.topic }}{% endif %}</h2><p class="concert-name">{{ c.name }}</p>{% else %}<h2>{% if c.tilda %}<a class="conc-link" href="{{ c.tilda }}" rel="noopener" target="_blank">{{ c.name }} <span class="conc-arrow" aria-hidden="true">↗</span></a>{% else %}{{ c.name }}{% endif %}</h2>{% endif %}
     <p class="concert-meta">{% if c.season %}{{ c.season }}{% endif %}{% if c.date %}{% if c.season %}, {% endif %}{{ c.date|ru_date }}{% endif %}</p>
     {% if c.about %}<p>{{ c.about }}</p>{% endif %}
     {% for l in c.links %}<a class="add-btn add-btn-s" href="{{ l.url }}" rel="noopener" target="_blank">Смотреть запись {{ l.label }}</a> {% endfor %}

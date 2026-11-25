@@ -723,12 +723,21 @@ ICON_RULES = [
 
 
 def tilda_link(name, season):
-    """Ссылка на блок концерта на тильда-странице СоцГума (только для известных типов)."""
+    """Ссылка на блок концерта на тильда-странице СоцГума (только для известных типов).
+
+    Год в якоре — год события: берём из названия, иначе из учебного года
+    (для осенних концертов — следующий календарный год).
+    """
     k = norm(name)
-    m = re.search(r"(20\d\d)", season or "")
-    yy = m.group(1)[2:] if m else ""
-    if not yy:
-        return ""
+    m = re.search(r"(20\d\d)", name or "")
+    if m:
+        yy = m.group(1)[2:]
+    else:
+        ms = re.search(r"(20\d\d)", season or "")
+        if not ms:
+            return ""
+        base = int(ms.group(1)) + (1 if "осень" in k else 0)
+        yy = str(base % 100).zfill(2)
     if "гала" in k and "универ" in k:
         return f"https://socgumsu.tilda.ws/all_concert/socgum#galkaunivera{yy}"
     if "дебют" in k and "гала" in k:
@@ -738,6 +747,8 @@ def tilda_link(name, season):
             if word in k:
                 return f"https://socgumsu.tilda.ws/all_concert/{fac}#debut{fac}{yy}"
         return ""
+    if "гала" in k and "соцгум" in k:
+        return f"https://socgumsu.tilda.ws/all_concert/socgum#galkadebutov{yy}"
     if "лаваш" in k:
         return f"https://socgumsu.tilda.ws/all_concert/socgum#letovesnasocgum{yy}"
     if "весна" in k or "студвесна" in k:
@@ -797,6 +808,7 @@ def build_model(wb, report):
             "year": year, "topic": r.get("topic", ""), "cover_url": cover_url,
             "ctype": concert_type(r.get("ctype"), name, r.get("topic", "")),
             "playlist": playlist_entry(r.get("playlist")),
+            "tilda": tilda_link(name, season),
         }
 
     # Направления

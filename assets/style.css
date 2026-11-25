@@ -1306,3 +1306,8 @@ body.lb-on{overflow:hidden}
 .conc-jump-wrap{margin:14px 0 6px;border:1px solid var(--line);border-radius:12px;background:var(--coal);padding:12px 16px}
 .conc-jump-wrap summary{cursor:pointer;font-weight:600}
 .conc-jump-wrap[open] summary{margin-bottom:10px}
+
+/* плашка концерта на главной: название со стрелкой на тильду */
+.concert-panel .conc-link{color:inherit;text-decoration:none}
+.concert-panel .conc-link:hover,.concert-panel .conc-link:focus-visible{color:var(--ember-hi)}
+.concert-panel .conc-arrow{color:var(--ember);font-size:.7em;vertical-align:.15em;margin-left:6px}
