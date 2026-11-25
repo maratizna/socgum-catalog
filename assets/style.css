@@ -703,7 +703,7 @@ html[data-signed="1"] .head-ph{display:inline-block}
 .hot-n{color:var(--ember);font-size:.9rem}
 .hot-page section{margin:26px 0 0}
 .hot-page h2{font-size:1.15rem;margin:0 0 6px}
-.hot-list{list-style:none;margin:12px 0 0;padding:0;display:grid;gap:10px;max-width:720px}
+.hot-list{list-style:none;margin:12px 0 0;padding:0;display:grid;grid-template-columns:minmax(0,1fr);gap:10px;max-width:720px}
 .hot-list>li{display:flex;gap:12px;align-items:center}
 .hot-list .hot-card{flex:1;min-width:0}
 .hot-list .hot-card img{width:96px;height:72px}
