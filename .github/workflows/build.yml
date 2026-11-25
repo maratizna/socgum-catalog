@@ -40,6 +40,13 @@ jobs:
         run: python build.py
         env:
           SHEET_ID: ${{ vars.SHEET_ID }}
+      # Аватары пользователей и пустые сводки оценок: страницы читают их из своих файлов
+      # и из одного документа Firestore, а не запросами на каждого человека.
+      - name: Подготовить аватары и сводки оценок
+        continue-on-error: true
+        run: python tools/export_public.py
+        env:
+          GOOGLE_SA_JSON: ${{ secrets.GOOGLE_SA_JSON }}
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
         with:

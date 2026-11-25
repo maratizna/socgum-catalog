@@ -164,6 +164,10 @@ service cloud.firestore {
             || getAfter(monthPath()).data.get('avatars', 0) == prevCount(monthPath(), 'avatars') + 1)
         && (request.resource.data.get('nick', '') == (resource == null ? '' : resource.data.get('nick', ''))
             || getAfter(monthPath()).data.get('renames', 0) == prevCount(monthPath(), 'renames') + 1);
+      // администратор может убрать фото пользователя (например, неуместное): меняется только avatar, становится пусто
+      allow update: if isAdmin()
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['avatar'])
+        && request.resource.data.get('avatar', '') == '';
       allow delete: if signedIn() && (request.auth.uid == uid || isAdmin());
     }
 
@@ -394,6 +398,17 @@ service cloud.firestore {
             || isAdmin()
             || (exists(/databases/$(database)/documents/comments/$(resource.data.commentId))
                 && get(/databases/$(database)/documents/comments/$(resource.data.commentId)).data.uid == request.auth.uid));
+    }
+
+    // Свёртка своих лайков: likesByUser/{uid} = { ids: {id комментария: 1} }.
+    // Один документ на аккаунт вместо чтения коллекции likes — страница читает его один раз.
+    match /likesByUser/{uid} {
+      allow read: if signedIn() && request.auth.uid == uid;
+      allow create, update: if signedIn() && request.auth.uid == uid
+        && request.resource.data.keys().hasOnly(['ids', 'updatedAt'])
+        && request.resource.data.ids is map
+        && request.resource.data.ids.size() <= 1000;
+      allow delete: if false;
     }
   }
 }

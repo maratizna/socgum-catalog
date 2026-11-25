@@ -43,7 +43,8 @@
      note — сохранение слова постановщика;
      avatar — смена фото, ника или соцсетей, вход/выход;
      likers — постановка или снятие лайка у этого комментария. */
-  var TTL = { me: 3 * 86400e3, pub: 10 * 60e3, comments: 10 * 60e3, commentsOld: 3600e3, note: 2 * 60e3, avatar: 14 * 86400e3, likers: 30e3 };
+  var TTL = { me: 3 * 86400e3, pub: 10 * 60e3, comments: 10 * 60e3, commentsOld: 3600e3, note: 2 * 60e3, avatar: 14 * 86400e3, likers: 30e3,
+    cmtFresh: 30 * 60e3, cmtMid: 6 * 3600e3, cmtDay: 24 * 3600e3, userPage: 6 * 3600e3 };
   var MEM = {};
   function store() { try { return window.localStorage; } catch (e) { return null; } }
   function pack(v) {
@@ -198,7 +199,19 @@
       return sdk(SDK_FALLBACK);
     }).then(function (m) {
       var app = m[0].initializeApp(CFG);
-      fb = { a: m[1], f: m[2], auth: m[1].getAuth(app), db: m[2].getFirestore(app) };
+      /* Кэш Firestore в браузере (IndexedDB): страницы и данные открываются быстрее,
+         повторный заход и работа без сети не требуют загрузки заново. Если браузер не
+         поддерживает — работаем как раньше, без кэша. */
+      var db;
+      try {
+        db = m[2].initializeFirestore(app, {
+          localCache: m[2].persistentLocalCache({ tabManager: m[2].persistentMultipleTabManager() })
+        });
+      } catch (e) {
+        if (window.console) console.warn("Кэш Firestore недоступен, работаю без него", e);
+        db = m[2].getFirestore(app);
+      }
+      fb = { a: m[1], f: m[2], auth: m[1].getAuth(app), db: db };
     });
   }
 
@@ -411,26 +424,46 @@
     });
   }
 
-  /* фото пользователей: users/{uid}.avatar, маленькая картинка. Несколько uid читаются одним запросом. */
-  function loadAvatars(uids, fresh) {
-    var need = [];
-    uids.forEach(function (u) {
-      if (!u || (!fresh && avatars[u] !== undefined)) return;
-      var hit = fresh ? null : cget("ua:" + u, TTL.avatar);
-      if (hit) { avatars[u] = hit.v.a || ""; nicks[u] = hit.v.n || ""; realNames[u] = hit.v.m || ""; userLinks[u] = hit.v.l || {}; } else if (need.indexOf(u) === -1) need.push(u);
-    });
-    if (!need.length) return Promise.resolve();
-    var jobs = [];
-    for (var i = 0; i < need.length; i += 30) {
-      (function (chunk) {
-        jobs.push(fb.f.getDocs(fb.f.query(fcol("users"), fb.f.where(fb.f.documentId(), "in", chunk))).then(function (s) {
-          var got = {}, gotN = {}, gotM = {}, gotL = {};
-          s.forEach(function (d) { var x = d.data(); got[d.id] = x.avatar || ""; gotN[d.id] = x.nick || ""; gotM[d.id] = x.name || ""; gotL[d.id] = x.links || {}; });
-          chunk.forEach(function (u) { avatars[u] = got[u] || ""; nicks[u] = gotN[u] || ""; realNames[u] = gotM[u] || ""; userLinks[u] = gotL[u] || {}; putUA(u); });
-        }, function () { chunk.forEach(function (u) { if (avatars[u] === undefined) { avatars[u] = ""; nicks[u] = ""; realNames[u] = ""; userLinks[u] = {}; } }); }));
-      })(need.slice(i, i + 30));
+  /* Файл avatars.json собирается при сборке сайта (tools/export_public.py):
+     в нём фото, ники, имена и ссылки всех пользователей. Читаем один раз,
+     поэтому страницы не делают по запросу в Firestore на каждого автора.
+     Если файла нет (старая сборка), тихо возвращаемся к чтению из базы. */
+  var staticUsers = null, staticUsersJob = null;
+  function loadStaticUsers() {
+    if (staticUsers) return Promise.resolve(staticUsers);
+    if (!staticUsersJob) {
+      staticUsersJob = fetch(ROOT + "avatars.json", { cache: "no-cache" })
+        .then(function (r) { return r.ok ? r.json() : {}; })
+        .then(function (j) { staticUsers = j || {}; return staticUsers; }, function () { staticUsers = {}; return staticUsers; });
     }
-    return Promise.all(jobs);
+    return staticUsersJob;
+  }
+  function useUser(u, a, n, m, l) { avatars[u] = a || ""; nicks[u] = n || ""; realNames[u] = m || ""; userLinks[u] = l || {}; }
+  /* фото пользователей: users/{uid}.avatar, маленькая картинка. Из avatars.json, при промахе — из базы одним запросом. */
+  function loadAvatars(uids, fresh) {
+    return loadStaticUsers().then(function (fixed) {
+      var need = [];
+      uids.forEach(function (u) {
+        if (!u || (!fresh && avatars[u] !== undefined)) return;
+        var hit = fresh ? null : cget("ua:" + u, TTL.avatar);
+        if (hit) { useUser(u, hit.v.a, hit.v.n, hit.v.m, hit.v.l); return; }
+        var f = fixed[u];
+        if (f && !fresh) { useUser(u, f.a, f.n, f.m, f.l); putUA(u); return; }
+        if (need.indexOf(u) === -1) need.push(u);
+      });
+      if (!need.length) return;
+      var jobs = [];
+      for (var i = 0; i < need.length; i += 30) {
+        (function (chunk) {
+          jobs.push(fb.f.getDocs(fb.f.query(fcol("users"), fb.f.where(fb.f.documentId(), "in", chunk))).then(function (s) {
+            var got = {}, gotN = {}, gotM = {}, gotL = {};
+            s.forEach(function (d) { var x = d.data(); got[d.id] = x.avatar || ""; gotN[d.id] = x.nick || ""; gotM[d.id] = x.name || ""; gotL[d.id] = x.links || {}; });
+            chunk.forEach(function (u) { useUser(u, got[u], gotN[u], gotM[u], gotL[u]); putUA(u); });
+          }, function () { chunk.forEach(function (u) { if (avatars[u] === undefined) useUser(u, "", "", "", {}); }); }));
+        })(need.slice(i, i + 30));
+      }
+      return Promise.all(jobs);
+    });
   }
   function hue(s) { var h = 0; for (var i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) % 360; return h; }
   /* круглая картинка: фото или первая буква имени */
@@ -484,7 +517,7 @@
   function statItem(n, one, few, many) { return el("li", null, el("b", { text: String(n) }), " " + plural(n, one, few, many)); }
   /* число комментариев пользователя: считает сервис без загрузки самих комментариев, ответ держится в кеше */
   function commentCount(uid, fresh) {
-    return cached("user:ccount:" + uid, TTL.pub, fresh === true, function () {
+    return cached("user:ccount:" + uid, TTL.userPage, fresh === true, function () {
       var q = fb.f.query(fcol("comments"), fb.f.where("uid", "==", uid), fb.f.where("status", "==", "visible"));
       if (fb.f.getCountFromServer) return fb.f.getCountFromServer(q).then(function (s) { return s.data().count; });
       return fb.f.getDocs(q).then(function (s) { return s.size; });
@@ -862,9 +895,27 @@
     var PAGE = 5;                 // сколько комментариев подгружаем за раз
     var commentsDone = false;     // «Показать ещё» больше нечего грузить
     var lastMs = 0;               // createdAt последнего загруженного комментария (для следующей страницы)
-    /* У номеров старше недели комментарии почти не меняются — кэшируем час вместо обычных десяти минут */
+    /* Кэш комментариев зависит от активности номера: свежие отзывы — 30 минут,
+       были в этом веке, но не на этой неделе — 6 часов, совсем тихие — сутки.
+       Время последнего отзыва запоминаем сами при загрузке, поэтому лишних чтений нет. */
     var nAge = parseInt(root.dataset.age || "0", 10) || 0;
-    function commentsTTL() { return nAge > 7 ? TTL.commentsOld : TTL.comments; }
+    function lastCommentKey() { return "sg:lastc:" + nid; }
+    function markLastComment(list) {
+      try {
+        var st = store(); if (!st) return;
+        var best = 0;
+        (list || []).forEach(function (c) { var v = ms(c); if (v > best) best = v; });
+        var prev = parseInt(st.getItem(lastCommentKey()) || "0", 10) || 0;
+        if (!prev || (best && best - prev > 60000)) st.setItem(lastCommentKey(), String(best || prev || Date.now()));
+      } catch (e) { }
+    }
+    function commentsTTL() {
+      var t = 0;
+      try { var st = store(); t = st ? parseInt(st.getItem(lastCommentKey()) || "0", 10) || 0 : 0; } catch (e) { }
+      if (!t) return TTL.cmtDay;
+      var age = Date.now() - t;
+      return age < 86400e3 ? TTL.cmtFresh : age < 7 * 86400e3 ? TTL.cmtMid : TTL.cmtDay;
+    }
 
     var sumBox = el("div", { class: "rate-sum", hidden: true });
     var sortBar = el("div", { class: "c-sort", hidden: true });
@@ -895,6 +946,7 @@
     function fetchPage(limit, afterMs) {
       return fb.f.getDocs(commentsQuery(limit, afterMs)).then(function (s) {
         var list = s.docs.map(docToComment);
+        markLastComment(list);
         return { list: list, lastMs: list.length ? ms(list[list.length - 1]) : (afterMs || 0), all: false };
       }, function (e) {
         /* нет составного индекса (numberId+createdAt) — откатываемся к загрузке всех без сортировки */
@@ -902,7 +954,7 @@
           var q0 = state.admin
             ? fb.f.query(fcol("comments"), fb.f.where("numberId", "==", nid))
             : fb.f.query(fcol("comments"), fb.f.where("numberId", "==", nid), fb.f.where("status", "==", "visible"));
-          return fb.f.getDocs(q0).then(function (s) { return { list: s.docs.map(docToComment), lastMs: 0, all: true }; });
+          return fb.f.getDocs(q0).then(function (s) { var all = s.docs.map(docToComment); markLastComment(all); return { list: all, lastMs: 0, all: true }; });
         }
         throw e;
       });
@@ -915,7 +967,7 @@
         var q0 = state.admin
           ? fb.f.query(fcol("comments"), fb.f.where("numberId", "==", nid))
           : fb.f.query(fcol("comments"), fb.f.where("numberId", "==", nid), fb.f.where("status", "==", "visible"));
-        fetchFn = function () { return fb.f.getDocs(q0).then(function (s) { return { list: s.docs.map(docToComment), lastMs: 0, all: true }; }); };
+        fetchFn = function () { return fb.f.getDocs(q0).then(function (s) { var all = s.docs.map(docToComment); markLastComment(all); return { list: all, lastMs: 0, all: true }; }); };
       } else {
         fetchFn = function () { return fetchPage(PAGE, 0); };
       }
@@ -943,30 +995,37 @@
         return null;
       });
     }
-    /* Лайки читаются только мои (чтобы закрасить сердечко); число лайков приходит вместе с комментарием.
-       Полный список лайкнувших грузится лишь когда его раскрывают. */
+    /* Лайки читаются одним документом на аккаунт: likesByUser/{uid} = { ids: {id комментария: 1} }.
+       Старые лайки ещё лежат в коллекции likes (по документу), поэтому при первом заходе
+       без свёртки собираем их один раз и сохраняем — дальше только одно чтение. */
     function loadMyLikes(fresh) {
       myLikes = {};
       if (!state.user) return Promise.resolve();
       var uid = state.user.uid;
       return cached("likes:" + nid + ":" + uid, TTL.comments, fresh, function () {
-        return fb.f.getDocs(fb.f.query(fcol("likes"), fb.f.where("uid", "==", uid), fb.f.where("numberId", "==", nid))).then(function (s) {
-          return s.docs.map(function (d) { return d.data().commentId; });
+        return fb.f.getDoc(fdoc("likesByUser/" + uid)).then(function (s) {
+          if (s.exists()) return Object.keys((s.data() || {}).ids || {});
+          return fb.f.getDocs(fb.f.query(fcol("likes"), fb.f.where("uid", "==", uid), fb.f.where("numberId", "==", nid))).then(function (q) {
+            var ids = q.docs.map(function (d) { return d.data().commentId; }).filter(Boolean);
+            if (ids.length) {
+              var map = {};
+              ids.forEach(function (id) { map[id] = 1; });
+              fb.f.setDoc(fdoc("likesByUser/" + uid), { ids: map, updatedAt: fb.f.serverTimestamp() }, { merge: true }).catch(function () { });
+            }
+            return ids;
+          });
         });
       }).then(function (ids) { (ids || []).forEach(function (id) { myLikes[id] = true; }); }, function () { });
     }
     /* Оценки: по одному документу на человека и номер (ratings/номер_аккаунт).
        Итоги номера лежат одним документом rateAgg/номер: читаем его (одно чтение), а сами оценки берём только у авторов
-       комментариев на странице и мою. Пока сводки нет (старые номера до первого пересчёта), читаем список целиком, как раньше. */
+       комментариев на странице и мою. Если сводки ещё нет (номер без оценок), полный список оценок не читаем. */
     var agg = null;
     function ratingFrom(d) {
       var x = d.data(), o = { uid: x.uid };
       if (x.ctx) o.ctx = x.ctx;
       RATE.forEach(function (r) { if (typeof x[r[0]] === "number") o[r[0]] = x[r[0]]; });
       return o;
-    }
-    function ratingsAll() {
-      return fb.f.getDocs(fb.f.query(fcol("ratings"), fb.f.where("numberId", "==", nid), fb.f.limit(500))).then(function (s) { return s.docs.map(ratingFrom); });
     }
     function ratingsOf(uids) {
       var ids = [], seen = {};
@@ -982,7 +1041,7 @@
       return cached("ragg:" + nid, TTL.comments, fresh, function () {
         return fb.f.getDoc(fdoc("rateAgg/" + nid)).then(function (s) { return s.exists() ? s.data() : null; });
       }).then(function (a) { agg = a || null; }, function () { agg = null; }).then(function () {
-        if (!agg) return cached("ratings:" + nid, TTL.comments, fresh, ratingsAll);
+        if (!agg) return [];
         var who = comments.map(function (c) { return c.uid; }); if (me) who.push(me);
         return cached("ratings:" + nid + ":" + me, TTL.comments, fresh, function () { return ratingsOf(who); });
       }).then(function (arr) {
@@ -997,16 +1056,20 @@
     }
     function toggleLike(c) {
       if (!state.user) { toast("Войдите, чтобы ставить лайки."); return Promise.resolve(); }
-      var uid = state.user.uid, on = !myLikes[c.id], b = fb.f.writeBatch(fb.db), ref = fdoc("likes/" + c.id + "_" + uid), cref = fdoc("comments/" + c.id);
+      var uid = state.user.uid, on = !myLikes[c.id], b = fb.f.writeBatch(fb.db), ref = fdoc("likes/" + c.id + "_" + uid), cref = fdoc("comments/" + c.id), mine = fdoc("likesByUser/" + uid);
       return (on ? readUsage("d") : Promise.resolve({})).then(function (cur) {
         if (on && (cur.likes || 0) >= LIM.likes) throw new Error("Лимит: " + LIM.likes + " лайков в день. Продолжить можно завтра.");
         if (on) {
+          var addMap = {}; addMap[c.id] = 1;
           b.set(ref, { commentId: c.id, numberId: nid, uid: uid, userName: myName(), createdAt: fb.f.serverTimestamp() });
           b.update(cref, { likeCount: fb.f.increment(1) });
+          b.set(mine, { ids: addMap, updatedAt: fb.f.serverTimestamp() }, { merge: true });
           bumpUsage(b, "d", cur, "likes");
         } else {
+          var delMap = {}; delMap[c.id] = fb.f.deleteField();
           b.delete(ref);
           b.update(cref, { likeCount: fb.f.increment(-1) });
+          b.set(mine, { ids: delMap, updatedAt: fb.f.serverTimestamp() }, { merge: true });
         }
         return b.commit();
       }).then(function () {
@@ -1042,16 +1105,11 @@
     }
     /* комментарий удаляется вместе со своими лайками одним пакетом */
     function deleteComment(c) {
-      return Promise.all([
-        fb.f.getDocs(fb.f.query(fcol("likes"), fb.f.where("commentId", "==", c.id), fb.f.limit(450))),
-        fb.f.getDocs(fb.f.query(fcol("commentPhotos"), fb.f.where("commentId", "==", c.id), fb.f.limit(10)))
-      ]).then(function (res) {
-        var s = res[0], ph = res[1];
+      return fb.f.getDocs(fb.f.query(fcol("likes"), fb.f.where("commentId", "==", c.id), fb.f.limit(450))).then(function (s) {
         return (c.status === "visible" ? readBuzz(nid) : Promise.resolve(null)).then(function (buz) {
           var run = function (withBuzz) {
             var b = fb.f.writeBatch(fb.db);
             s.forEach(function (d) { b.delete(d.ref); });
-            ph.forEach(function (d) { b.delete(d.ref); });
             b.delete(fdoc("comments/" + c.id));
             if (withBuzz && buz) buzzSet(b, nid, buz, -1, ms(c), c.id);
             return b.commit().catch(function (e) { if (withBuzz && buz && isDenied(e)) return run(false); throw e; });
@@ -1063,14 +1121,9 @@
     /* скрыть или показать комментарий (администратор); счётчик обсуждаемого меняется вместе с ним */
     function toggleHidden(c) {
       var show = c.status === "hidden", upd = { status: show ? "visible" : "hidden" };
-      return Promise.all([
-        readBuzz(nid),
-        fb.f.getDocs(fb.f.query(fcol("commentPhotos"), fb.f.where("commentId", "==", c.id), fb.f.limit(10)))
-      ]).then(function (res) {
-        var buz = res[0], ph = res[1];
+      return readBuzz(nid).then(function (buz) {
         var b = fb.f.writeBatch(fb.db);
         b.update(fdoc("comments/" + c.id), upd);
-        ph.forEach(function (d) { b.update(d.ref, { status: upd.status }); });
         if (buz) buzzSet(b, nid, buz, show ? 1 : -1, ms(c), null);
         return b.commit().catch(function (e) {
           if (buz && isDenied(e)) return fb.f.updateDoc(fdoc("comments/" + c.id), upd);
@@ -1905,7 +1958,7 @@
     });
   }
   function loadUserComments(uid, fresh) {
-    return cached("user:comments3:" + uid, TTL.pub, fresh === true, function () {
+    return cached("user:comments3:" + uid, TTL.userPage, fresh === true, function () {
       return fetchUserPage("comments", uid, [["status", "==", "visible"]], "createdAt", mapComment, USER_PAGE, 0);
     });
   }
@@ -1913,12 +1966,12 @@
     return fetchUserPage("comments", uid, [["status", "==", "visible"]], "createdAt", mapComment, USER_PAGE, afterMs);
   }
   function loadUserRatings(uid, fresh) {
-    return cached("user:ratings:" + uid, TTL.pub, fresh === true, function () {
+    return cached("user:ratings:" + uid, TTL.userPage, fresh === true, function () {
       return fb.f.getDocs(fb.f.query(fcol("ratings"), fb.f.where("uid", "==", uid), fb.f.limit(300))).then(function (s) { return s.docs.map(mapRating); });
     });
   }
   function loadUserRatingsFirst(uid, fresh) {
-    return cached("user:ratingspage:" + uid, TTL.pub, fresh === true, function () {
+    return cached("user:ratingspage:" + uid, TTL.userPage, fresh === true, function () {
       return fetchUserPage("ratings", uid, [], "updatedAt", mapRating, USER_PAGE, 0);
     });
   }
@@ -1926,7 +1979,7 @@
     return fetchUserPage("ratings", uid, [], "updatedAt", mapRating, USER_PAGE, afterMs);
   }
   function loadUserPlaylists(uid, fresh) {
-    return cached("user:pl:" + uid, TTL.comments, fresh === true, function () {
+    return cached("user:pl:" + uid, TTL.userPage, fresh === true, function () {
       return fb.f.getDocs(fb.f.query(fcol("playlists"), fb.f.where("uid", "==", uid), fb.f.limit(60))).then(function (s) {
         return s.docs.map(function (d) { var x = d.data(); return { id: d.id, name: x.name, numberIds: x.numberIds || [], createdAt: x.createdAt }; });
       });
