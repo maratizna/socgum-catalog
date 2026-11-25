@@ -747,6 +747,10 @@ def tilda_link(name, season):
             if word in k:
                 return f"https://socgumsu.tilda.ws/all_concert/{fac}#debut{fac}{yy}"
         return ""
+    if "весна" in k:
+        for word, fac in (("соцфак", "socfuck"), ("ффж", "ffg"), ("истфак", "istfuck"), ("психфак", "psihfuck")):
+            if word in k:
+                return f"https://socgumsu.tilda.ws/all_concert/{fac}#vesna{fac}{yy}"
     if "гала" in k and "соцгум" in k:
         return f"https://socgumsu.tilda.ws/all_concert/socgum#galkadebutov{yy}"
     if "лаваш" in k:
